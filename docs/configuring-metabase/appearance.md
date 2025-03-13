@@ -33,7 +33,7 @@ Appearance settings are split across different tabs:
 In the Branding tab, you can configure your Metabase to match your brand visuals and voice.
 
 - [Color palette](#color-palette)
-- [user interface colors](#user-interface-colors)
+- [User interface colors](#user-interface-colors)
 - [Chart colors](#chart-colors)
 - [Logo](#logo)
 - [Font](#font)
@@ -58,15 +58,15 @@ You can customize the colors that Metabase uses throughout the app:
 
 ![Chart colors](./images/chart-colors.png)
 
-You can choose up to 24 hex values. If you choose fewer than 24 colors, Metabase will auto-generate colors to fill in the rest of the values.
+You can choose up to 24 hex values. If you choose fewer than 24 colors, Metabase will auto-generate colors to fill in the rest of the values. And don't bother ordering the colors here, as their order doesn't apply to the order of colors for series on charts. When building a chart, Metabase will select colors to make each series easy to distinguish.
 
 Custom colors are unavailable for:
 
-- [Number charts](../questions/sharing/visualizing-results.md#numbers)
-- [Trend charts](../questions/sharing/visualizing-results.md#trends)
-- [Funnel charts](../questions/sharing/visualizing-results.md#funnel-charts)
-- Conditional formatting ([tables](../questions/sharing/visualizing-results.md#tables) and [pivot tables](../questions/sharing/visualizing-results.md#pivot-tables))
-- [Maps](../questions/sharing/visualizing-results.md#maps)
+- [Number charts](../questions/visualizations/numbers.md)
+- [Trend charts](../questions/visualizations/trend.md)
+- [Funnel charts](../questions/visualizations/funnel.md)
+- Conditional formatting ([tables](../questions/visualizations/table.md) and [pivot tables](../questions/visualizations/pivot-table.md))
+- [Maps](../questions/visualizations/map.md)
 
 ## Logo
 
@@ -167,6 +167,6 @@ Metabase will display this illustration when searches don't return any results.
 
 ## Further reading
 
-- [Customer-facing analytics](https://www.metabase.com/learn/customer-facing-analytics).
+- [Customer-facing analytics](https://www.metabase.com/learn/metabase-basics/embedding).
 - [Embedding introduction](../embedding/start.md).
-- [Brand your Metabase](https://www.metabase.com/learn/embedding/brand).
+- [Brand your Metabase](https://www.metabase.com/learn/metabase-basics/embedding/brand).

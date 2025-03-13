@@ -24,6 +24,7 @@ export const PaginationControls = ({
   showTotal = false,
   onNextPage,
   onPreviousPage,
+  ...props
 }: PaginationControlsProps) => {
   const isSinglePage = total !== undefined && total <= pageSize;
 
@@ -36,19 +37,25 @@ export const PaginationControls = ({
     total != null ? isLastPage(page, pageSize, total) : !onNextPage;
 
   return (
-    <Group align="center" fw="bold" aria-label="pagination" role="navigation">
-      <Text span mr="sm">
+    <Group
+      align="center"
+      fw="bold"
+      aria-label="pagination"
+      role="navigation"
+      {...props}
+    >
+      <Text component="span" mr="sm">
         {page * pageSize + 1} - {page * pageSize + itemsLength}
         {showTotal && (
           <>
-            <Text span c="text-light">
+            <Text component="span" c="text-light">
               &nbsp;
               {c(
                 "Appears in phrases like '1-10 of 100', referring to a page of results",
               ).t`of`}
               &nbsp;
             </Text>
-            <Text span data-testid="pagination-total">
+            <Text component="span" data-testid="pagination-total">
               {total}
             </Text>
           </>

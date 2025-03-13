@@ -1,7 +1,9 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import { color, alpha } from "metabase/lib/colors";
+import { alpha } from "metabase/lib/colors";
 import { space } from "metabase/styled-components/theme";
 
 export const THUMB_SIZE = "1.2rem";
@@ -24,7 +26,7 @@ const thumbStyles = `
   border-radius: 50%;
   border: 2px solid var(--mb-color-brand);
   box-sizing: border-box;
-  background-color: ${color("white")};
+  background-color: var(--mb-color-bg-white);
   cursor: pointer;
   box-shadow: 0 0 2px 1px var(--mb-color-brand);
   pointer-events: all;
@@ -42,16 +44,20 @@ export const SliderInput = styled.input`
   outline: none;
   background: none;
   pointer-events: none;
+
   &::-webkit-slider-thumb {
     ${thumbStyles}
   }
+
   &::-moz-range-thumb {
     ${thumbStyles}
   }
+
   &:focus {
     &::-webkit-slider-thumb {
       ${activeThumbStyle}
     }
+
     &::-moz-range-thumb {
       ${activeThumbStyle}
     }
@@ -81,7 +87,7 @@ export const SliderTooltip = styled.div`
   text-align: center;
   padding: ${space(0.5)} ${space(1)};
   background: var(--mb-color-bg-black);
-  color: ${color("white")};
+  color: var(--mb-color-text-white);
   display: block;
   border-radius: ${space(1)};
   opacity: 0;

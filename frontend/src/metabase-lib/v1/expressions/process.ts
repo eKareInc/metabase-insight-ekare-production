@@ -1,23 +1,41 @@
-import { t } from "ttag";
+import { c, t } from "ttag";
 
 import * as Lib from "metabase-lib";
+import type { Expression } from "metabase-types/api";
 
-import { parse, adjustBooleans } from "./recursive-parser";
+import { parseDimension, parseMetric, parseSegment } from "./identifier";
+import { adjustBooleans, parse } from "./recursive-parser";
 import { resolve } from "./resolver";
-
-import { parseDimension, parseMetric, parseSegment } from "./index";
 
 export function processSource(options: {
   source: string;
   query: Lib.Query;
   stageIndex: number;
   startRule: string;
+  expressionIndex?: number | undefined;
   name?: string;
-}) {
+}): {
+  source: string;
+  expression: Expression | null;
+  expressionClause: Lib.ExpressionClause | null;
+  compileError: Error | null;
+} {
   const resolveMBQLField = (kind: string, name: string) => {
     if (kind === "metric") {
       const metric = parseMetric(name, options);
       if (!metric) {
+        const dimension = parseDimension(name, options);
+        const isNameKnown = Boolean(dimension);
+
+        if (isNameKnown) {
+          const error = c(
+            "{0} is an identifier of the field provided by user in a custom expression",
+          )
+            .t`No aggregation found in: ${name}. Use functions like Sum() or custom Metrics`;
+
+          throw new Error(error);
+        }
+
         throw new Error(t`Unknown Metric: ${name}`);
       }
 
@@ -30,10 +48,8 @@ export function processSource(options: {
 
       return Lib.legacyRef(query, stageIndex, segment);
     } else {
-      const reference = options.name ?? ""; // avoid circular reference
-
       // fallback
-      const dimension = parseDimension(name, { reference, ...options });
+      const dimension = parseDimension(name, options);
       if (!dimension) {
         throw new Error(t`Unknown Field: ${name}`);
       }
@@ -46,7 +62,7 @@ export function processSource(options: {
 
   let expression = null;
   let expressionClause = null;
-  let compileError;
+  let compileError = null;
   try {
     const parsed = parse(source);
     expression = adjustBooleans(
@@ -63,7 +79,11 @@ export function processSource(options: {
     }
   } catch (e) {
     console.warn("compile error", e);
-    compileError = e;
+    if (e instanceof Error) {
+      compileError = e;
+    } else {
+      compileError = new Error(t`Unknown error`);
+    }
   }
 
   return {

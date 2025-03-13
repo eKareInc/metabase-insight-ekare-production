@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { darken } from "metabase/lib/colors";
@@ -6,6 +7,7 @@ export const LegendRoot = styled.div<{ isVertical: boolean }>`
   display: flex;
   flex-direction: ${({ isVertical }) => (isVertical ? "column" : "row")};
   overflow: ${({ isVertical }) => (isVertical ? "" : "hidden")};
+  padding: 2px;
 `;
 
 export const LegendLink = styled.div`
@@ -24,4 +26,5 @@ export const LegendLinkContainer = styled.div<{ isVertical: boolean }>`
 
 export const LegendPopoverContainer = styled.div`
   padding: 0.5rem;
+  overflow-x: hidden;
 `;

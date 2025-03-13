@@ -7,7 +7,7 @@ import { ORDERS_PRODUCTS_ACCESS } from "./test_roles";
  * For that reason, we have some sanity checks in the `default.cy.snap.js` spec.
  *
  * SAMPLE_DB_TABLES contains only the references to the four main tables ids in sample database.
- * We need these references to avoid circular dependecy issue in custom commands and e2e helpers.
+ * We need these references to avoid circular dependency issue in custom commands and e2e helpers.
  * That is the only place they should be used. NEVER use them in tests!
  *
  * USER_GROUPS
@@ -107,6 +107,17 @@ export const USERS = {
     user_group_memberships: [
       { id: ALL_USERS_GROUP, is_group_manager: false },
       { id: READONLY_GROUP, is_group_manager: false },
+    ],
+  },
+  readonlynosql: {
+    first_name: "Read Only Data No Sql",
+    last_name: "Tableton",
+    email: "readonlynosql@metabase.test",
+    password: "12341234",
+    user_group_memberships: [
+      { id: ALL_USERS_GROUP, is_group_manager: false },
+      { id: READONLY_GROUP, is_group_manager: false },
+      { id: NOSQL_GROUP, is_group_manager: false },
     ],
   },
   // Users with access to data, but no access to collections

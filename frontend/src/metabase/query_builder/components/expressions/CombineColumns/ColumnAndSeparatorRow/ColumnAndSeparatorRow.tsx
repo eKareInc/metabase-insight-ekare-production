@@ -2,11 +2,11 @@ import type { FocusEvent } from "react";
 import { useState } from "react";
 import { t } from "ttag";
 
-import { Button, Icon, Flex, TextInput, Text, rem } from "metabase/ui";
+import { Button, Flex, Icon, Text, TextInput, rem } from "metabase/ui";
 import { getThemeOverrides } from "metabase/ui/theme";
 import type * as Lib from "metabase-lib";
 
-import { label, formatSeparator } from "../util";
+import { formatSeparator, label } from "../util";
 
 import styles from "./ColumnAndSeparatorRow.module.css";
 import { ColumnInput } from "./ColumnInput";
@@ -69,7 +69,7 @@ export const ColumnAndSeparatorRow = ({
             },
           }}
           aria-label={t`Remove column`}
-          leftIcon={<Icon name="close" />}
+          leftSection={<Icon name="close" />}
           variant="default"
           onClick={() => {
             onRemove(index);

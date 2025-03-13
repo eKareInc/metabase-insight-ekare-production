@@ -4,6 +4,12 @@ title: Working with JSON
 
 # Working with JSON
 
+## Filtering JSON
+
+In the [query builder](../questions/query-builder/editor.md), Metabase can't parse JSON in columns, so you can only filter by "Is empty" or "Not empty".
+
+## JSON unfolding
+
 With [some databases](#databases-that-support-json-unfolding), Metabase can unfold JSON columns into their component fields, which you can then filter on using the query builder.
 
 Here is a table with a column that contains JSON.
@@ -35,8 +41,8 @@ To turn off JSON unfolding for a database:
 5. Click **Show advanced options**.
 6. Toggle **Allow unfolding of JSON columns**.
 7. Scroll down and click the **Save changes** button.
-8. Click **Sync database schema now**.
-9. Click **Re-scan field values now**.
+8. Click **Sync database schema**.
+9. Click **Re-scan field values**.
 
 ## Toggling JSON unfolding for a specific column
 
@@ -62,3 +68,5 @@ For example, if you upload a CSV with JSON in it, you might need to update the d
 - [PostgreSQL](../databases/connections/postgresql.md)
 - [MySQL](../databases/connections/mysql.md)
 - [Druid (JDBC)](../databases/connections/druid.md)
+
+A note on [BigQuery](../databases/connections/bigquery.md): Metabase supports the [STRUCT data type](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#struct_type) in BigQuery, but it won't unfold JSON stored in BigQuery as the `JSON` type. If your data is stored in the `STRUCT` type in BigQuery, you can query the table's nested fields. Some background here: BigQuery differs from other databases in that nested fields are _part of the table definition itself_. So when Metabase syncs with your BigQuery database, it'll be able to get metadata about any of your tables, including tables with nested fields. Querying nested fields, however, doesn't extend to arrays (REPEATED (STRUCT)) in BigQuery.

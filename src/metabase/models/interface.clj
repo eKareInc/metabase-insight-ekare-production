@@ -1,27 +1,32 @@
 (ns metabase.models.interface
   (:require
    [buddy.core.codecs :as codecs]
-   [cheshire.core :as json]
-   [cheshire.generate :as json.generate]
    [clojure.core.memoize :as memoize]
+   [clojure.set :as set]
    [clojure.spec.alpha :as s]
+   [clojure.string :as str]
    [clojure.walk :as walk]
-   [malli.core :as mc]
    [malli.error :as me]
+   [medley.core :as m]
    [metabase.legacy-mbql.normalize :as mbql.normalize]
    [metabase.legacy-mbql.schema :as mbql.s]
+   [metabase.lib.binning :as lib.binning]
    [metabase.lib.core :as lib]
    [metabase.lib.metadata.protocols :as lib.metadata.protocols]
+   [metabase.lib.temporal-bucket :as lib.temporal-bucket]
    [metabase.models.dispatch :as models.dispatch]
    [metabase.models.json-migration :as jm]
+   [metabase.models.resolution]
    [metabase.plugins.classloader :as classloader]
    [metabase.util :as u]
    [metabase.util.cron :as u.cron]
    [metabase.util.encryption :as encryption]
    [metabase.util.i18n :refer [tru]]
+   [metabase.util.json :as json]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
    [metabase.util.malli.registry :as mr]
+   [metabase.util.string :as string]
    [methodical.core :as methodical]
    [potemkin :as p]
    [taoensso.nippy :as nippy]
@@ -40,6 +45,10 @@
 
 (set! *warn-on-reflection* true)
 
+(comment
+  ;; load this so dynamic model resolution works as expected
+  metabase.models.resolution/keep-me)
+
 (p/import-vars
  [models.dispatch
   toucan-instance?
@@ -52,6 +61,11 @@
   deserialization. Most notably, we don't want to generate an `:entity_id`, as that would lead to duplicated entities
   on a future deserialization."
   false)
+
+(def ^{:arglists '([x & _args])} dispatch-on-model
+  "Helper dispatch function for multimethods. Dispatches on the first arg, using [[models.dispatch/model]]."
+  ;; make sure model namespace gets loaded e.g. `:model/Database` should load `metabase.model.database` if needed.
+  (comp t2/resolve-model t2.u/dispatch-on-first-arg))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                               Toucan Extensions                                                |
@@ -75,7 +89,11 @@
   (let [fn-symb (symbol (str (ns-name *ns*)) (name fn-name))]
     (when-let [existing-fn-symb (get @defined-hydration-methods hydration-key)]
       (when (not= fn-symb existing-fn-symb)
-        (throw (ex-info (format "Hydration key %s already exists at %s" hydration-key existing-fn-symb)
+        (throw (ex-info (str (format "Hydration key %s already exists at %s" hydration-key existing-fn-symb)
+                             "\n\n"
+                             "You can remove it with"
+                             "\n"
+                             (pr-str (list 'swap! `defined-hydration-methods 'dissoc hydration-key)))
                         {:hydration-key       hydration-key
                          :existing-definition existing-fn-symb}))))
     (swap! defined-hydration-methods assoc hydration-key fn-symb))
@@ -132,12 +150,12 @@
   [obj]
   (if (string? obj)
     obj
-    (json/generate-string obj)))
+    (json/encode obj)))
 
 (defn- json-out [s keywordize-keys?]
   (if (string? s)
     (try
-      (json/parse-string s keywordize-keys?)
+      (json/decode s keywordize-keys?)
       (catch Throwable e
         (log/error e "Error parsing JSON")
         s))
@@ -154,9 +172,29 @@
   [obj]
   (json-out obj false))
 
+(defn- elide-data [obj]
+  (walk/postwalk (fn [x] (cond
+                           (string? x) (string/elide x 250)
+                           (and (sequential? x) (> (count x) 50)) (take 50 x)
+                           :else x)) obj))
+
+(defn- json-in-with-eliding
+  [obj]
+  (if (string? obj)
+    obj
+    (json/encode (elide-data obj))))
+
 (def transform-json
   "Transform for json."
   {:in  json-in
+   :out json-out-with-keywordization})
+
+(def transform-json-eliding
+  "Serializes object as JSON, but:
+    - elides any long strings to a max of 250 chars
+    - limits sequences to the first 50 entries
+   Useful for debugging/human-consuming information which can be unbounded-ly large"
+  {:in  json-in-with-eliding
    :out json-out-with-keywordization})
 
 (defn- serialize-mlv2-query
@@ -214,6 +252,17 @@
   (or (mbql.normalize/normalize-fragment [:parameters] parameters)
       []))
 
+(defn- keywordize-temporal_units
+  [parameter]
+  (m/update-existing parameter :temporal_units (fn [units] (mapv keyword units))))
+
+(defn normalize-card-parameters-list
+  "Normalize `parameters` of actions, cards, and dashboards when coming out of the application database."
+  [parameters]
+  (->> parameters
+       normalize-parameters-list
+       (mapv keywordize-temporal_units)))
+
 (def transform-metabase-query
   "Transform for metabase-query."
   {:in  (comp json-in (partial maybe-normalize-query :in))
@@ -223,6 +272,11 @@
   "Transform for parameters list."
   {:in  (comp json-in normalize-parameters-list)
    :out (comp (catch-normalization-exceptions normalize-parameters-list) json-out-with-keywordization)})
+
+(def transform-card-parameters-list
+  "Transform for parameters list."
+  {:in  (comp json-in normalize-card-parameters-list)
+   :out (comp (catch-normalization-exceptions normalize-card-parameters-list) json-out-with-keywordization)})
 
 (def transform-field-ref
   "Transform field refs"
@@ -234,7 +288,12 @@
   [metadata]
   ;; TODO -- can we make this whole thing a lazy seq?
   (when-let [metadata (not-empty (json-out-with-keywordization metadata))]
-    (seq (map mbql.normalize/normalize-source-metadata metadata))))
+    (not-empty (mapv #(-> %
+                          mbql.normalize/normalize-source-metadata
+                          ;; This is necessary, because in the wild, there may be cards created prior to this change.
+                          lib.temporal-bucket/ensure-temporal-unit-in-display-name
+                          lib.binning/ensure-binning-in-display-name)
+                     metadata))))
 
 (def transform-result-metadata
   "Transform for card.result_metadata like columns."
@@ -251,6 +310,44 @@
   {:in  json-in
    :out json-out-without-keywordization})
 
+(mu/defn assert-enum
+  "Assert that a value is one of the values in `enum`."
+  [enum :- [:set :any]
+   value]
+  (when-not (contains? enum value)
+    (throw (ex-info (format "Invalid value %s. Must be one of %s" value (str/join ", " enum)) {:status-code 400
+                                                                                               :value       value}))))
+
+(mu/defn assert-namespaced
+  "Assert that a value is a namespaced keyword under `qualified-ns`."
+  [qualified-ns :- string?
+   value]
+  (when-not (= qualified-ns (-> value keyword namespace))
+    (throw (ex-info (format "Must be a namespaced keyword under :%s, got: %s" qualified-ns value) {:status-code 400
+                                                                                                   :value       value}))))
+
+(defn transform-validator
+  "Given a transform, returns a transform that call `assert-fn` on the \"out\" value.
+
+  E.g: A keyword transfomer that throw an error if the value is not namespaced
+    (transform-validator
+      transform-keyword (fn [x]
+      (when-not (-> x namespace some?)
+        (throw (ex-info \"Value is not namespaced\")))))"
+  [tf assert-fn]
+  (-> tf
+      ;; deserialization
+      (update :out (fn [f]
+                     (fn [x]
+                       (let [out (f x)]
+                         (assert-fn out)
+                         out))))
+      ;; serialization
+      (update :in (fn [f]
+                    (fn [x]
+                      (assert-fn x)
+                      (f x))))))
+
 (def encrypted-json-in
   "Serialize encrypted json."
   (comp encryption/maybe-encrypt json-in))
@@ -260,7 +357,7 @@
   [v]
   (let [decrypted (encryption/maybe-decrypt v)]
     (try
-      (json/parse-string decrypted true)
+      (json/decode+kw decrypted)
       (catch Throwable e
         (if (or (encryption/possibly-encrypted-string? decrypted)
                 (encryption/possibly-encrypted-bytes? decrypted))
@@ -282,7 +379,7 @@
    to modern MBQL clauses so things work correctly."
   [viz-settings]
   (letfn [(normalize-column-settings-key [k]
-            (some-> k u/qualified-name json/parse-string mbql.normalize/normalize json/generate-string))
+            (some-> k u/qualified-name json/decode mbql.normalize/normalize json/encode))
           (normalize-column-settings [column-settings]
             (into {} (for [[k v] column-settings]
                        [(normalize-column-settings-key k) (walk/keywordize-keys v)])))
@@ -304,6 +401,8 @@
                    form)))
              form))]
     (cond-> (walk/keywordize-keys (dissoc viz-settings "column_settings" "graph.metrics"))
+      ;; "key" is an old unused value
+      true                                 (m/update-existing :table.columns (fn [cols] (mapv #(dissoc % :key) cols)))
       (get viz-settings "column_settings") (assoc :column_settings (normalize-column-settings (get viz-settings "column_settings")))
       true                                 normalize-mbql-clauses
       ;; exclude graph.metrics from normalization as it may start with
@@ -316,12 +415,16 @@
 
 (defmethod ^:private migrate-viz-settings* [1 2] [viz-settings _]
   (let [{percent? :pie.show_legend_perecent ;; [sic]
-         legend?  :pie.show_legend} viz-settings]
-    (if-let [new-value (cond
-                         legend?  "inside"
-                         percent? "legend")]
-      (assoc viz-settings :pie.percent_visibility new-value)
-      viz-settings))) ;; if nothing was explicitly set don't default to "off", let the FE deal with it
+         legend?  :pie.show_legend} viz-settings
+        new-visibility              (cond
+                                      legend?  "inside"
+                                      percent? "legend")
+        new-linktype                (when (= "page" (-> viz-settings :click_behavior :linkType))
+                                      "dashboard")]
+    (cond-> viz-settings
+      ;; if nothing was explicitly set don't default to "off", let the FE deal with it
+      new-visibility (assoc :pie.percent_visibility new-visibility)
+      new-linktype   (assoc-in [:click_behavior :linkType] new-linktype))))
 
 (defn- migrate-viz-settings
   [viz-settings]
@@ -338,7 +441,7 @@
    :out (comp migrate-viz-settings normalize-visualization-settings json-out-without-keywordization)})
 
 (def ^{:arglists '([s])} ^:private validate-cron-string
-  (let [validator (mc/validator u.cron/CronScheduleString)]
+  (let [validator (mr/validator u.cron/CronScheduleString)]
     (partial mu/validate-throw validator)))
 
 (def transform-cron-string
@@ -346,27 +449,25 @@
   {:in  validate-cron-string
    :out identity})
 
-(def ^:private LegacyMetricSegmentDefinition
+(mr/def ::legacy-metric-segment-definition
   [:map
    [:filter      {:optional true} [:maybe mbql.s/Filter]]
    [:aggregation {:optional true} [:maybe [:sequential ::mbql.s/Aggregation]]]])
 
-(def ^:private ^{:arglists '([definition])} validate-legacy-metric-segment-definition
-  (let [explainer (mr/explainer LegacyMetricSegmentDefinition)]
-    (fn [definition]
-      (if-let [error (explainer definition)]
-        (let [humanized (me/humanize error)]
-          (throw (ex-info (tru "Invalid Metric or Segment: {0}" (pr-str humanized))
-                          {:error     error
-                           :humanized humanized})))
-        definition))))
+(defn- validate-legacy-metric-segment-definition
+  [definition]
+  (if-let [error (mr/explain ::legacy-metric-segment-definition definition)]
+    (let [humanized (me/humanize error)]
+      (throw (ex-info (tru "Invalid Metric or Segment: {0}" (pr-str humanized))
+                      {:error     error
+                       :humanized humanized})))
+    definition))
 
 ;; `metric-segment-definition` is, predictably, for Metric/Segment `:definition`s, which are just the inner MBQL query
 (defn- normalize-legacy-metric-segment-definition [definition]
   (when (seq definition)
     (u/prog1 (mbql.normalize/normalize-fragment [:query] definition)
       (validate-legacy-metric-segment-definition <>))))
-
 
 (def transform-legacy-metric-segment-definition
   "Transform for inner queries like those in Metric definitions."
@@ -405,6 +506,15 @@
 
 ;; --- predefined hooks
 
+(defmulti non-timestamped-fields
+  "Return a set of fields that should not affect the timestamp of a model."
+  {:arglists '([instance])}
+  dispatch-on-model)
+
+(defmethod non-timestamped-fields :default
+  [_]
+  #{})
+
 (defn now
   "Return a HoneySQL form for a SQL function call to get current moment in time. Currently this is `now()` for Postgres
   and H2 and `now(6)` for MySQL/MariaDB (`now()` for MySQL only return second resolution; `now(6)` uses the
@@ -412,20 +522,22 @@
   []
   (classloader/require 'metabase.driver.sql.query-processor)
   (let [db-type ((requiring-resolve 'metabase.db/db-type))]
-   ((resolve 'metabase.driver.sql.query-processor/current-datetime-honeysql-form) db-type)))
+    ((resolve 'metabase.driver.sql.query-processor/current-datetime-honeysql-form) db-type)))
 
 (defn- add-created-at-timestamp [obj & _]
   (cond-> obj
     (not (:created_at obj)) (assoc :created_at (now))))
 
 (defn- add-updated-at-timestamp [obj]
-  ;; don't stomp on `:updated_at` if it's already explicitly specified.
-  (let [changes-already-include-updated-at? (if (t2/instance? obj)
-                                              (:updated_at (t2/changes obj))
-                                              (:updated_at obj))]
+  (let [changed-fields (set (keys (if (t2/instance obj)
+                                    (t2/changes obj)
+                                    obj)))
+        ; don't stomp on `:updated_at` if it's already explicitly specified.
+        changes-already-include-updated-at? (some #{:updated_at} changed-fields)
+        has-non-ignored-fields? (seq (set/difference changed-fields (non-timestamped-fields obj)))
+        should-set-updated-at? (or (empty? changed-fields) (and has-non-ignored-fields? (not changes-already-include-updated-at?)))]
     (cond-> obj
-      (not changes-already-include-updated-at?) (assoc :updated_at (now)))))
-
+      should-set-updated-at? (assoc :updated_at (now)))))
 
 (t2/define-before-insert :hook/timestamped?
   [instance]
@@ -492,10 +604,8 @@
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                             New Permissions Stuff                                              |
 ;;; +----------------------------------------------------------------------------------------------------------------+
-(def ^{:arglists '([x & _args])} dispatch-on-model
-  "Helper dispatch function for multimethods. Dispatches on the first arg, using [[models.dispatch/model]]."
-  ;; make sure model namespace gets loaded e.g. `:model/Database` should load `metabase.model.database` if needed.
-  (comp t2/resolve-model t2.u/dispatch-on-first-arg))
+
+;;; TODO -- consider moving all this stuff into the `permissions` module
 
 (defmulti perms-objects-set
   "Return a set of permissions object paths that a user must have access to in order to access this object. This should
@@ -585,22 +695,33 @@
   [& _]
   @(requiring-resolve 'metabase.api.common/*is-superuser?*))
 
+(defn current-user-id
+  "Return the ID of the current user."
+  []
+  @(requiring-resolve 'metabase.api.common/*current-user-id*))
+
 (defn- current-user-permissions-set []
   @@(requiring-resolve 'metabase.api.common/*current-user-permissions-set*))
 
 (defn- current-user-has-root-permissions? []
   (contains? (current-user-permissions-set) "/"))
 
-(defn- check-perms-with-fn
-  ([fn-symb read-or-write a-model object-id]
+(mu/defn- check-perms-with-fn
+  ([fn-symb       :- qualified-symbol?
+    read-or-write :- [:enum :read :write]
+    a-model       :- qualified-keyword?
+    object-id     :- [:or pos-int? string?]]
    (or (current-user-has-root-permissions?)
        (check-perms-with-fn fn-symb read-or-write (t2/select-one a-model (first (t2/primary-keys a-model)) object-id))))
 
-  ([fn-symb read-or-write object]
+  ([fn-symb       :- qualified-symbol?
+    read-or-write :- [:enum :read :write]
+    object        :- :map]
    (and object
         (check-perms-with-fn fn-symb (perms-objects-set object read-or-write))))
 
-  ([fn-symb perms-set]
+  ([fn-symb   :- qualified-symbol?
+    perms-set :- [:set :string]]
    (let [f (requiring-resolve fn-symb)]
      (assert f)
      (u/prog1 (f (current-user-permissions-set) perms-set)
@@ -611,14 +732,14 @@
   "Implementation of [[can-read?]]/[[can-write?]] for the old permissions system. `true` if the current user has *full*
   permissions for the paths returned by its implementation of [[perms-objects-set]]. (`read-or-write` is either `:read` or
   `:write` and passed to [[perms-objects-set]]; you'll usually want to partially bind it in the implementation map)."
-  (partial check-perms-with-fn 'metabase.models.permissions/set-has-full-permissions-for-set?))
+  (partial check-perms-with-fn 'metabase.permissions.models.permissions/set-has-full-permissions-for-set?))
 
 (def ^{:arglists '([read-or-write model object-id] [read-or-write object] [perms-set])}
   current-user-has-partial-permissions?
   "Implementation of [[can-read?]]/[[can-write?]] for the old permissions system. `true` if the current user has *partial*
   permissions for the paths returned by its implementation of [[perms-objects-set]]. (`read-or-write` is either `:read` or
   `:write` and passed to [[perms-objects-set]]; you'll usually want to partially bind it in the implementation map)."
-  (partial check-perms-with-fn 'metabase.models.permissions/set-has-partial-permissions-for-set?))
+  (partial check-perms-with-fn 'metabase.permissions.models.permissions/set-has-partial-permissions-for-set?))
 
 (defmethod can-read? ::read-policy.always-allow
   ([_instance]
@@ -684,9 +805,9 @@
 (methodical/defmethod to-json :default
   "Default method for encoding instances of a Toucan model to JSON."
   [instance json-generator]
-  (json.generate/encode-map instance json-generator))
+  (json/generate-map instance json-generator))
 
-(json.generate/add-encoder
+(json/add-encoder
  Instance
  #'to-json)
 
@@ -701,6 +822,7 @@
   [(u/->snake_case_en (keyword (str (name dest-key) "_id")))])
 
 (mu/defn instances-with-hydrated-data
+  ;; TODO: this example is wrong, we don't get a vector of tables
   "Helper function to write batched hydrations.
   Assoc to each `instances` a key `hydration-key` with data from calling `instance-key->hydrated-data-fn` by `instance-key`.
 
@@ -734,34 +856,3 @@
 (defmethod exclude-internal-content-hsql :default
   [_model & _]
   [:= [:inline 1] [:inline 1]])
-
-(defmulti parent-collection-id-for-perms
-  "What is the ID of the parent collection that should determine the perms objects set for this object?"
-  {:arglists '([instance])}
-  dispatch-on-model)
-
-(defmethod parent-collection-id-for-perms ::has-trashed-from-collection-id
-  [instance]
-  (cond
-    (not (:archived instance)) (:collection_id instance)
-    (contains? instance :trashed_from_collection_id) (:trashed_from_collection_id instance)
-    ;; If we're supposed to get permissions from the `trashed_from_collection_id` but it isn't present, we can't check
-    ;; permissions correctly.
-    :else (throw (ex-info "Missing trashed_from_collection_id" {:instance instance}))))
-
-(defmethod parent-collection-id-for-perms :default
-  [instance]
-  (:collection_id instance))
-
-(defmulti parent-collection-id-column-for-perms
-  "What column should we use to determine the perms for this model?"
-  {:arglists '([model])}
-  identity)
-
-(defmethod parent-collection-id-column-for-perms :default
-  [_model]
-  :collection_id)
-
-(defmethod parent-collection-id-column-for-perms ::has-trashed-from-collection-id
-  [_model]
-  [:coalesce :trashed_from_collection_id :collection_id])

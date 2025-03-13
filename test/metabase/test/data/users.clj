@@ -5,10 +5,8 @@
    [medley.core :as m]
    [metabase.db :as mdb]
    [metabase.http-client :as client]
-   [metabase.models.permissions-group :refer [PermissionsGroup]]
-   [metabase.models.permissions-group-membership :refer [PermissionsGroupMembership]]
-   [metabase.models.user :refer [User]]
-   [metabase.server.middleware.session :as mw.session]
+   [metabase.request.core :as request]
+   [metabase.session.core :as session]
    [metabase.test.initialize :as initialize]
    [metabase.util :as u]
    [metabase.util.malli :as mu]
@@ -68,10 +66,10 @@
              active    true}}]
   {:pre [(string? email) (string? first-name) (string? last-name) (string? password) (m/boolean? superuser) (m/boolean? active)]}
   (initialize/initialize-if-needed! :db)
-  (or (t2/select-one User :email email)
+  (or (t2/select-one :model/User :email email)
       (locking create-user-lock
-        (or (t2/select-one User :email email)
-            (first (t2/insert-returning-instances! User
+        (or (t2/select-one :model/User :email email)
+            (first (t2/insert-returning-instances! :model/User
                                                    {:email        email
                                                     :first_name   first-name
                                                     :last_name    last-name
@@ -80,7 +78,7 @@
                                                     :is_qbnewb    true
                                                     :is_active    active}))))))
 
-(mu/defn fetch-user :- (ms/InstanceOf User)
+(mu/defn fetch-user :- (ms/InstanceOf :model/User)
   "Fetch the User object associated with `username`. Creates user if needed.
 
     (fetch-user :rasta) -> {:id 100 :first_name \"Rasta\" ...}"
@@ -107,9 +105,9 @@
   User could be a keyword like `:rasta` or a user object."
   [user]
   (cond
-   (keyword user)       (user-descriptor (fetch-user user))
-   (:is_superuser user) "admin"
-   :else                "non-admin"))
+    (keyword user)       (user-descriptor (fetch-user user))
+    (:is_superuser user) "admin"
+    :else                "non-admin"))
 
 (mu/defn user->credentials :- [:map
                                [:username [:fn
@@ -127,14 +125,30 @@
 
 (defonce ^:private tokens (atom {}))
 
-(mu/defn username->token :- [:re u/uuid-regex]
+;;; This is done by hitting the app DB directly instead of hitting [[metabase.http-client/authenticate]] to avoid
+;;; deadlocks in MySQL that I haven't been able to figure out yet. The session endpoint updates User last_login and
+;;; updated_at which requires a lock on that User row which other parallel test threads seem to already have for one
+;;; reason or another...
+;;;
+;;;    DRIVERS=mysql clj -X:dev:user/mysql:ee:ee-dev:test :only metabase.query-processor.card-test
+;;;
+;;; consistently fails for me when using [[metabase.http-client/authenticate]] instead of the code below. See #48489 for
+;;; more info
+(mu/defn ^:private authenticate! :- ms/UUIDString
+  "Create a new `:model/Session` for one of the test users."
+  [username :- TestUserName]
+  (let [session-key (session/generate-session-key)]
+    (t2/insert! :model/Session {:id (session/generate-session-id) :key_hashed (session/hash-session-key session-key), :user_id (user->id username)})
+    session-key))
+
+(mu/defn username->token :- ms/UUIDString
   "Return cached session token for a test User, logging in first if needed."
   [username :- TestUserName]
   (or (@tokens username)
       (locking tokens
         (or (@tokens username)
-            (u/prog1 (client/authenticate (user->credentials username))
-                     (swap! tokens assoc username <>))))
+            (u/prog1 (authenticate! username)
+              (swap! tokens assoc username <>))))
       (throw (Exception. (format "Authentication failed for %s with credentials %s"
                                  username (user->credentials username))))))
 
@@ -167,16 +181,20 @@
 
 (defn- user-request
   [the-client user & args]
+  (initialize/initialize-if-needed! :db :test-users :web-server)
   (if (keyword? user)
     (do
-     (fetch-user user)
-     (apply client-fn the-client user args))
-    (let [user-id (u/the-id user)]
+      (fetch-user user)
+      (apply client-fn the-client user args))
+    (let [user-id (u/the-id user)
+          session-key (session/generate-session-key)]
       (when-not (t2/exists? :model/User :id user-id)
         (throw (ex-info "User does not exist" {:user user})))
-      (t2.with-temp/with-temp [:model/Session {session-id :id} {:id      (str (random-uuid))
-                                                                :user_id user-id}]
-        (apply the-client session-id args)))))
+      #_{:clj-kondo/ignore [:discouraged-var]}
+      (t2.with-temp/with-temp [:model/Session _ {:id (session/generate-session-id)
+                                                 :key_hashed (session/hash-session-key session-key)
+                                                 :user_id user-id}]
+        (apply the-client session-key args)))))
 
 (def ^{:arglists '([test-user-name-or-user-or-id method expected-status-code? endpoint
                     request-options? http-body-map? & {:as query-params}])} user-http-request
@@ -189,18 +207,18 @@
 
 (def ^{:arglists '([test-user-name-or-user-or-id method expected-status-code? endpoint
                     request-options? http-body-map? & {:as query-params}])} user-real-request
-  "Like `user-http-request` but instead of calling the app handler, this makes an actual http request."
+  "Like [[user-http-request]] but instead of calling the app handler, this makes an actual http request."
   (partial user-request client/real-client))
 
 (defn do-with-test-user [user-kwd thunk]
-  (t/testing (format "with test user %s\n" user-kwd)
-    (mw.session/with-current-user (some-> user-kwd user->id)
+  (t/testing (format "\nwith test user %s\n" user-kwd)
+    (request/with-current-user (some-> user-kwd user->id)
       (thunk))))
 
 (defmacro with-test-user
   "Call `body` with various `metabase.api.common` dynamic vars like `*current-user*` bound to the predefined test User
   named by `user-kwd`. If you want to bind a non-predefined-test User, use `mt/with-current-user` instead."
-  {:style/indent 1}
+  {:style/indent :defn}
   [user-kwd & body]
   `(do-with-test-user ~user-kwd (fn [] ~@body)))
 
@@ -215,9 +233,10 @@
     (u/the-id test-user-name-or-user-id)))
 
 (defn do-with-group-for-user [group test-user-name-or-user-id f]
-  (t2.with-temp/with-temp [PermissionsGroup           group group
-                           PermissionsGroupMembership _     {:group_id (u/the-id group)
-                                                             :user_id  (test-user-name-or-user-id->user-id test-user-name-or-user-id)}]
+  #_{:clj-kondo/ignore [:discouraged-var]}
+  (t2.with-temp/with-temp [:model/PermissionsGroup           group group
+                           :model/PermissionsGroupMembership _     {:group_id (u/the-id group)
+                                                                    :user_id  (test-user-name-or-user-id->user-id test-user-name-or-user-id)}]
     (f group)))
 
 (defmacro with-group

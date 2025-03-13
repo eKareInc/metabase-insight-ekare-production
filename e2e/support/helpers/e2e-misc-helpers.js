@@ -1,3 +1,6 @@
+import { pickEntity } from "./e2e-collection-helpers";
+import { modal } from "./e2e-ui-elements-helpers";
+
 // Find a text field by label text, type it in, then blur the field.
 // Commonly used in our Admin section as we auto-save settings.
 export function typeAndBlurUsingLabel(label, value) {
@@ -8,43 +11,6 @@ export function visitAlias(alias) {
   cy.get(alias).then(url => {
     cy.visit(url);
   });
-}
-
-/**
- * Open native (SQL) editor and alias it.
- *
- * @param {object} options
- * @param {string} [options.databaseName] - If there is more than one database, select the desired one by its name.
- * @param {string} [options.alias="editor"] - The alias that can be used later in the test as `cy.get("@" + alias)`.
- * @example
- * openNativeEditor().type("SELECT 123");
- * @example
- * openNativeEditor({ databaseName: "QA Postgres12" }).type("SELECT 123");
- */
-export function openNativeEditor({
-  databaseName,
-  alias = "editor",
-  fromCurrentPage,
-  newMenuItemTitle = "SQL query",
-} = {}) {
-  if (!fromCurrentPage) {
-    cy.visit("/");
-  }
-  cy.findByText("New").click();
-  cy.findByText(newMenuItemTitle).click();
-
-  databaseName && cy.findByText(databaseName).click();
-
-  return focusNativeEditor().as(alias);
-}
-
-export function focusNativeEditor() {
-  return cy
-    .findByTestId("native-query-editor")
-    .should("be.visible")
-    .should("have.class", "ace_editor")
-    .click()
-    .should("have.class", "ace_focus");
 }
 
 /**
@@ -93,8 +59,8 @@ export function interceptPromise(method, path) {
  * @param {Array.<Cypress.Chainable<any>>} commands - Cypress commands
  * @example
  * cypressWaitAll([
- *   cy.createQuestionAndAddToDashboard(firstQuery, 1),
- *   cy.createQuestionAndAddToDashboard(secondQuery, 1),
+ *   H.createQuestionAndAddToDashboard(firstQuery, 1),
+ *   H.createQuestionAndAddToDashboard(secondQuery, 1),
  * ]).then(() => {
  *   cy.visit(`/dashboard/1`);
  * });
@@ -215,7 +181,7 @@ function visitDashboardById(dashboard_id, config) {
   }).then(({ status, body: { dashcards, tabs } }) => {
     const dashboardAlias = "getDashboard" + dashboard_id;
 
-    cy.intercept("GET", `/api/dashboard/${dashboard_id}`).as(dashboardAlias);
+    cy.intercept("GET", `/api/dashboard/${dashboard_id}*`).as(dashboardAlias);
 
     const canViewDashboard = hasAccess(status);
 
@@ -292,7 +258,7 @@ function dashboardHasQuestions(cards) {
 }
 
 export function interceptIfNotPreviouslyDefined({ method, url, alias } = {}) {
-  const aliases = Object.keys(cy.state("aliases"));
+  const aliases = Object.keys(cy.state("aliases") ?? {});
 
   const isAlreadyDefined = aliases.find(a => a === alias);
 
@@ -301,30 +267,86 @@ export function interceptIfNotPreviouslyDefined({ method, url, alias } = {}) {
   }
 }
 
+/**
+ *
+ * @param {string=} name
+ * @param {Object=} options
+ * @param {boolean=} [options.addToDashboard]
+ * @param {boolean=} [options.wrapId]
+ * @param {string=} [options.idAlias]
+ */
 export function saveQuestion(
   name,
-  { wrapId = false, idAlias = "questionId" } = {},
+  {
+    addToDashboard = false,
+    wrapId = false,
+    idAlias = "questionId",
+    shouldReplaceOriginalQuestion = false,
+    shouldSaveAsNewQuestion = false,
+  } = {},
+  pickEntityOptions = null,
 ) {
   cy.intercept("POST", "/api/card").as("saveQuestion");
   cy.findByTestId("qb-header").button("Save").click();
+  if (shouldReplaceOriginalQuestion) {
+    modal().within(() => {
+      cy.log("Ensure that 'Replace original question' is checked");
+      cy.findByLabelText(/Replace original question/i).should("be.checked");
+      cy.button("Save").click();
+    });
+  }
+  if (shouldSaveAsNewQuestion) {
+    modal().within(() => {
+      cy.log("Select 'Save as new question'");
+      cy.findByLabelText(/Save as new question/i).click();
+    });
+  }
 
-  cy.findByTestId("save-question-modal").within(modal => {
+  cy.findByTestId("save-question-modal").within(() => {
     if (name) {
       cy.findByLabelText("Name").clear().type(name);
     }
-    cy.findByText("Save").click();
+
+    if (pickEntityOptions) {
+      cy.findByLabelText(/Where do you want to save this/).click();
+    }
   });
+
+  if (pickEntityOptions) {
+    pickEntity({ ...pickEntityOptions, select: true });
+  }
+
+  cy.findByTestId("save-question-modal").button("Save").click();
 
   cy.wait("@saveQuestion").then(({ response: { body } }) => {
     if (wrapId) {
       cy.wrap(body.id).as(idAlias);
     }
-  });
 
-  cy.get("#QuestionSavedModal").within(() => {
-    cy.findByText(/add this to a dashboard/i);
-    cy.findByText("Not now").click();
+    // if this question is saved to a dashboard
+    // we don't need to worry about the add to dash modal
+    const wasSavedToCollection = !body.dashboard_id;
+
+    if (wasSavedToCollection) {
+      cy.get("#QuestionSavedModal").within(() => {
+        cy.findByText(/add this to a dashboard/i).should("be.visible");
+
+        if (addToDashboard) {
+          cy.button("Yes please!").click();
+        } else {
+          cy.button("Not now").click();
+        }
+      });
+    }
   });
+}
+
+export function saveQuestionToCollection(
+  name,
+  pickEntityOptions = { tab: "Browse", path: ["Our analytics"] },
+  reqInfo,
+) {
+  saveQuestion(name, reqInfo, pickEntityOptions);
 }
 
 export function saveSavedQuestion() {
@@ -337,22 +359,47 @@ export function saveSavedQuestion() {
   cy.wait("@updateQuestion");
 }
 
-export function visitPublicQuestion(id) {
+/**
+ *
+ * @param {number} id
+ * @param {object} options
+ * @param {Record<string, string>} options.params
+ * @param {Record<string, string>} options.hash
+ */
+export function visitPublicQuestion(id, { params = {}, hash = {} } = {}) {
+  const searchParams = new URLSearchParams(params).toString();
+  const searchSection = searchParams ? `?${searchParams}` : "";
+  const hashParams = new URLSearchParams(hash).toString();
+  const hashSection = hashParams ? `#${hashParams}` : "";
+
   cy.request("POST", `/api/card/${id}/public_link`).then(
     ({ body: { uuid } }) => {
       cy.signOut();
-      cy.visit(`/public/question/${uuid}`);
+      cy.visit({
+        url: `/public/question/${uuid}` + searchSection + hashSection,
+      });
     },
   );
 }
 
-export function visitPublicDashboard(id, { params = {} } = {}) {
+/**
+ *
+ * @param {number} id
+ * @param {object} options
+ * @param {Record<string, string>} options.params
+ * @param {Record<string, string>} options.hash
+ */
+export function visitPublicDashboard(id, { params = {}, hash = {} } = {}) {
+  const searchParams = new URLSearchParams(params).toString();
+  const searchSection = searchParams ? `?${searchParams}` : "";
+  const hashParams = new URLSearchParams(hash).toString();
+  const hashSection = hashParams ? `#${hashParams}` : "";
+
   cy.request("POST", `/api/dashboard/${id}/public_link`).then(
     ({ body: { uuid } }) => {
       cy.signOut();
       cy.visit({
-        url: `/public/dashboard/${uuid}`,
-        qs: params,
+        url: `/public/dashboard/${uuid}` + searchSection + hashSection,
       });
     },
   );

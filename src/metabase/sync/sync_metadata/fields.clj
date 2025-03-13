@@ -40,6 +40,7 @@
     for logging purposes by higher-level sync logic."
   (:require
    [metabase.driver.util :as driver.u]
+   [metabase.models.setting :refer [defsetting]]
    [metabase.models.table :as table]
    [metabase.sync.fetch-metadata :as fetch-metadata]
    [metabase.sync.interface :as i]
@@ -53,20 +54,31 @@
    [toucan2.core :as t2]
    [toucan2.util :as t2.util]))
 
+(defsetting auto-cruft-columns
+  "A list of pattern strings that get converted into additional regexes that match Fields that should automatically be
+  marked as visibility-type = `:hidden`. Not to be set directly, this setting lives in the metabase_database.settings json blob."
+  :type :json
+  :database-local :only
+  :visibility :internal
+  :default []
+  :export? true
+  :encryption :no)
+
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                            PUTTING IT ALL TOGETHER                                             |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-(mu/defn ^:private sync-and-update! :- ms/IntGreaterThanOrEqualToZero
+(mu/defn- sync-and-update! :- ms/IntGreaterThanOrEqualToZero
   "Sync Field instances (i.e., rows in the Field table in the Metabase application DB) for a Table, and update metadata
   properties (e.g. base type and comment/remark) as needed. Returns number of Fields synced."
-  [table       :- i/TableInstance
+  [database    :- i/DatabaseInstance
+   table       :- i/TableInstance
    db-metadata :- [:set i/TableMetadataField]]
   (+ (sync-instances/sync-instances! table db-metadata (fields.our-metadata/our-metadata table))
      ;; Now that tables are synced and fields created as needed make sure field properties are in sync.
-     ;; Re-fetch our metadata because there might be somethings that have changed after calling
+     ;; Re-fetch our metadata because there might be some things that have changed after calling
      ;; `sync-instances`
-     (sync-metadata/update-metadata! table db-metadata (fields.our-metadata/our-metadata table))))
+     (sync-metadata/update-metadata! database table db-metadata (fields.our-metadata/our-metadata table))))
 
 (mu/defn sync-fields! :- [:map
                           [:updated-fields ms/IntGreaterThanOrEqualToZero]
@@ -77,7 +89,7 @@
     (let [driver          (driver.u/database->driver database)
           schemas?        (driver.u/supports? driver :schemas database)
           fields-metadata (if schemas?
-                            (fetch-metadata/fields-metadata database :schema-names (sync-util/db->sync-schemas database))
+                            (fetch-metadata/fields-metadata database :schema-names (sync-util/sync-schemas database))
                             (fetch-metadata/fields-metadata database))]
       (transduce (comp
                   (partition-by (juxt :table-name :table-schema))
@@ -89,10 +101,18 @@
                                                       :%lower.schema (some-> fst :table-schema t2.util/lower-case-en)
                                                       {:where sync-util/sync-tables-clause})
                                updated (if table
-                                         (try (sync-and-update! table (set table-metadata))
-                                              (catch Exception e
-                                                (log/error e)
-                                                0))
+                                         (try
+                                           ;; TODO: decouple nested field columns sync from field sync. This will allow
+                                           ;; describe-fields to be used for field sync for databases with nested field columns
+                                           ;; Also this should be a driver method, not a sql-jdbc.sync method
+                                           (let [all-metadata (fetch-metadata/include-nested-fields-for-table
+                                                               (set table-metadata)
+                                                               database
+                                                               table)]
+                                             (sync-and-update! database table all-metadata))
+                                           (catch Exception e
+                                             (log/error e)
+                                             0))
                                          0)]
                            {:total-fields   (count table-metadata)
                             :updated-fields updated}))))
@@ -109,6 +129,10 @@
   ([database :- i/DatabaseInstance
     table    :- i/TableInstance]
    (sync-util/with-error-handling (format "Error syncing Fields for Table ''%s''" (sync-util/name-for-logging table))
-     (let [db-metadata  (fetch-metadata/table-fields-metadata database table)]
+     (let [db-metadata (fetch-metadata/table-fields-metadata database table)
+           ;; TODO: decouple nested field columns sync from field sync. This will allow
+           ;; describe-fields to be used for field sync for databases with nested field columns
+           ;; Also this should be a driver method, not a sql-jdbc.sync method
+           db-metadata (fetch-metadata/include-nested-fields-for-table db-metadata database table)]
        {:total-fields   (count db-metadata)
-        :updated-fields (sync-and-update! table db-metadata)}))))
+        :updated-fields (sync-and-update! database table db-metadata)}))))

@@ -1,18 +1,15 @@
 (ns metabase.models.interface-test
   (:require
-   [cheshire.core :as json]
    [clojure.test :refer :all]
    [java-time.api :as t]
    [metabase.legacy-mbql.normalize :as mbql.normalize]
-   [metabase.models.field :refer [Field]]
    [metabase.models.interface :as mi]
-   [metabase.models.table :refer [Table]]
-   [metabase.test.util.log :as tu.log]
+   [metabase.test :as mt]
    [metabase.util :as u]
    [metabase.util.encryption :as encryption]
    [metabase.util.encryption-test :as encryption-test]
-   [toucan2.core :as t2]
-   [toucan2.tools.with-temp :as t2.with-temp])
+   [metabase.util.json :as json]
+   [toucan2.core :as t2])
   (:import (com.fasterxml.jackson.core JsonParseException)))
 
 ;; let's make sure the `transform-metabase-query`/`transform-metric-segment-definition`/`transform-parameters-list`
@@ -23,7 +20,7 @@
                 "response because of one malformed Card, dump the error to the logs and return nil.")
     (is (= nil
            ((:out mi/transform-metabase-query)
-            (json/generate-string
+            (json/encode
              {:database 1
               :type     :native
               :native   {:template-tags 1000}}))))))
@@ -46,14 +43,14 @@
   (testing "Legacy Metric/Segment definitions should get normalized"
     (is (= {:filter [:= [:field 1 nil] [:field 2 {:temporal-unit :month}]]}
            ((:out mi/transform-legacy-metric-segment-definition)
-            (json/generate-string
+            (json/encode
              {:filter [:= [:field-id 1] [:datetime-field [:field-id 2] :month]]}))))))
 
 (deftest ^:parallel dont-explode-on-way-out-from-db-test
   (testing "`metric-segment-definition`s should avoid explosions coming out of the DB..."
     (is (= nil
            ((:out mi/transform-legacy-metric-segment-definition)
-            (json/generate-string
+            (json/encode
              {:filter 1000}))))
 
     (testing "...but should still throw them coming in"
@@ -68,7 +65,7 @@
     (with-redefs [mbql.normalize/normalize-tokens (fn [& _] (throw (Exception. "BARF")))]
       (is (= nil
              ((:out mi/transform-parameters-list)
-              (json/generate-string
+              (json/encode
                [{:target [:dimension [:field "ABC" nil]]}])))))))
 
 (deftest do-not-eat-exceptions-test
@@ -81,7 +78,7 @@
 
 (deftest timestamped-property-test
   (testing "Make sure updated_at gets updated for timestamped models"
-    (t2.with-temp/with-temp [Table table {:updated_at #t "2023-02-02T01:00:00"}]
+    (mt/with-temp [:model/Table table {:updated_at #t "2023-02-02T01:00:00"}]
       (let [updated-at (:updated_at table)
             new-name   (u/qualified-name ::a-new-name)]
         (is (= 1
@@ -89,11 +86,11 @@
         (is (=? {:id         (:id table)
                  :name       new-name
                  :updated_at (partial not= updated-at)}
-                (t2/select-one [Table :id :name :updated_at] (u/the-id table))))))))
+                (t2/select-one [:model/Table :id :name :updated_at] (u/the-id table))))))))
 
 (deftest timestamped-property-do-not-stomp-on-explicit-values-test
   (testing "The :timestamped property should not stomp on :created_at/:updated_at if they are explicitly specified"
-    (t2.with-temp/with-temp [Field field]
+    (mt/with-temp [:model/Field field]
       (testing "Nothing specified: use now() for both"
         (is (=? {:created_at java.time.temporal.Temporal
                  :updated_at java.time.temporal.Temporal}
@@ -101,15 +98,31 @@
     (let [t                  #t "2022-10-13T19:21:00Z"
           expected-timestamp (t/offset-date-time "2022-10-13T19:21:00Z")]
       (testing "Explicitly specify :created_at"
-        (t2.with-temp/with-temp [Field field {:created_at t}]
+        (mt/with-temp [:model/Field field {:created_at t}]
           (is (=? {:created_at expected-timestamp
                    :updated_at java.time.temporal.Temporal}
                   field))))
       (testing "Explicitly specify :updated_at"
-        (t2.with-temp/with-temp [Field field {:updated_at t}]
+        (mt/with-temp [:model/Field field {:updated_at t}]
           (is (=? {:created_at java.time.temporal.Temporal
                    :updated_at expected-timestamp}
                   field)))))))
+
+(defmethod mi/non-timestamped-fields :test-model/updated-at-tester [_]
+  #{:non_timestamped :other})
+
+(deftest timestamped-property-skips-non-timestamped-fields-test
+  (testing "Does not add a timestamp if it only includes non-timestamped fields"
+    (let [instance (-> (t2/instance :test-model/updated-at-tester {:non_timestamped nil})
+                       (assoc :non_timestamped 1))]
+      (is (= {:non_timestamped 1}
+             (#'mi/add-updated-at-timestamp instance)))))
+  (testing "Adds a timestamp if it includes other fields"
+    (let [instance (-> (t2/instance :test-model/updated-at-tester {:non_timestamped nil :included nil})
+                       (assoc :non_timestamped 1)
+                       (assoc :included 2))]
+      (is (= {:non_timestamped 1 :included 2 :updated_at (mi/now)}
+             (#'mi/add-updated-at-timestamp instance))))))
 
 (deftest ^:parallel upgrade-to-v2-viz-settings-test
   (let [migrate #(select-keys (#'mi/migrate-viz-settings %)
@@ -146,44 +159,44 @@
                (mi/encrypted-json-out
                 (encryption/encrypt (encryption/secret-key->hash "qwe") "{\"a\": 1}"))))))
     (testing "Logs an error message when incoming data looks encrypted"
-      (is (=? [[:error JsonParseException "Could not decrypt encrypted field! Have you forgot to set MB_ENCRYPTION_SECRET_KEY?"]]
-              (tu.log/with-log-messages-for-level :error
-                (mi/encrypted-json-out
-                 (encryption/encrypt (encryption/secret-key->hash "qwe") "{\"a\": 1}"))))))
+      (mt/with-log-messages-for-level [messages :error]
+        (mi/encrypted-json-out
+         (encryption/encrypt (encryption/secret-key->hash "qwe") "{\"a\": 1}"))
+        (is (=? [{:level   :error
+                  :e       JsonParseException
+                  :message "Could not decrypt encrypted field! Have you forgot to set MB_ENCRYPTION_SECRET_KEY?"}]
+                (messages)))))
     (testing "Invalid JSON throws correct error"
-      (is (=? [[:error JsonParseException "Error parsing JSON"]]
-              (tu.log/with-log-messages-for-level :error
-                (mi/encrypted-json-out "{\"a\": 1"))))
-      (is (=? [[:error JsonParseException "Error parsing JSON"]]
-              (tu.log/with-log-messages-for-level :error
-                (encryption-test/with-secret-key "qwe"
-                  (mi/encrypted-json-out
-                   (encryption/encrypt (encryption/secret-key->hash "qwe") "{\"a\": 1")))))))))
+      (mt/with-log-messages-for-level [messages :error]
+        (mi/encrypted-json-out "{\"a\": 1")
+        (is (=? [{:level :error, :e JsonParseException, :message "Error parsing JSON"}]
+                (messages))))
+      (mt/with-log-messages-for-level [messages :error]
+        (encryption-test/with-secret-key "qwe"
+          (mi/encrypted-json-out
+           (encryption/encrypt (encryption/secret-key->hash "qwe") "{\"a\": 1")))
+        (is (=? [{:level :error, :e JsonParseException, :message "Error parsing JSON"}]
+                (messages)))))))
 
-(deftest instances-with-hydrated-data-test
+(deftest ^:parallel instances-with-hydrated-data-test
   (let [things [{:id 2} nil {:id 1}]]
     (is (= [{:id 2 :even-id? true} nil {:id 1 :even-id? false}]
            (mi/instances-with-hydrated-data
-             things :even-id?
-             #(into {} (comp (remove nil?)
-                             (map (juxt :id (comp even? :id))))
-                    things)
-             :id)))))
+            things :even-id?
+            #(into {} (comp (remove nil?)
+                            (map (juxt :id (comp even? :id))))
+                   things)
+            :id)))))
 
-(deftest normalize-mbql-clause-impostor-in-visualization-settings-test
+(deftest ^:parallel normalize-mbql-clause-impostor-in-visualization-settings-test
   (let [viz-settings
         {"table.pivot_column" "TAX",
          "graph.metrics" ["expression"],
          "pivot_table.column_split"
          {"rows"
-          [["field" 39 {"base-type" "type/DateTime", "temporal-unit" "month"}]
-           ["expression" "expression"]
-           ["field"
-            33
-            {"base-type" "type/Float",
-             "binning" {"strategy" "num-bins", "min-value" 0, "max-value" 12, "num-bins" 8, "bin-width" 2}}]],
+          ["CREATED_AT" "expression" "TAX"],
           "columns" [],
-          "values" [["aggregation" 0]]},
+          "values" ["sum"]},
          "pivot_table.column_widths" {"leftHeaderWidths" [141 99 80], "totalLeftHeaderWidths" 320, "valueHeaderWidths" {}},
          "table.cell_column" "expression",
          "table.column_formatting"
@@ -200,15 +213,9 @@
     (is (= {:table.pivot_column "TAX"
             :graph.metrics ["expression"]
             :pivot_table.column_split
-            {:rows
-             [[:field 39 {:base-type :type/DateTime, :temporal-unit :month}]
-              [:expression "expression"]
-              [:field
-               33
-               {:base-type :type/Float
-                :binning {:strategy :num-bins, :min-value 0, :max-value 12, :num-bins 8, :bin-width 2}}]]
+            {:rows ["CREATED_AT" "expression" "TAX"]
              :columns []
-             :values [[:aggregation 0]]}
+             :values ["sum"]}
             :pivot_table.column_widths {:leftHeaderWidths [141 99 80], :totalLeftHeaderWidths 320, :valueHeaderWidths {}}
             :table.cell_column "expression"
             :table.column_formatting
@@ -223,3 +230,17 @@
             :series_settings {:expression {:line.interpolate "step-after", :line.style "dotted"}}
             :graph.dimensions ["CREATED_AT"]}
            (mi/normalize-visualization-settings viz-settings)))))
+
+(deftest json-in-with-eliding
+  (is (= "{}" (#'mi/json-in-with-eliding {})))
+  (is (= (json/encode {:a "short"}) (#'mi/json-in-with-eliding {:a "short"})))
+  (is (= (json/encode {:a (str (apply str (repeat 247 "b")) "...")}) (#'mi/json-in-with-eliding {:a (apply str (repeat 500 "b"))})))
+  (is (= (json/encode {"ex-data" {"toucan2/context-trace" [["execute SQL with class com.mchange.v2.c3p0.impl.NewProxyConnection",
+                                                            {"toucan2.jdbc.query/sql-args" (str (apply str (repeat 247 "b")) "...")}]]}})
+         (#'mi/json-in-with-eliding {"ex-data" {"toucan2/context-trace" [["execute SQL with class com.mchange.v2.c3p0.impl.NewProxyConnection",
+                                                                          {"toucan2.jdbc.query/sql-args" (apply str (repeat 500 "b"))}]]}})))
+
+  (is (= (json/encode {:a (repeat 50 "x")}) (#'mi/json-in-with-eliding {:a (repeat 500 "x")})))
+
+  (testing "A passed string is not elided"
+    (is (= (apply str (repeat 1000 "a")) (#'mi/json-in-with-eliding (apply str (repeat 1000 "a")))))))

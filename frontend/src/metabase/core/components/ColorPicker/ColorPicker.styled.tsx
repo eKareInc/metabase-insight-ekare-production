@@ -1,12 +1,5 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
-
-import { color } from "metabase/lib/colors";
-
-export const TriggerContainer = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-`;
 
 export const ContentContainer = styled.div`
   display: flex;
@@ -20,6 +13,7 @@ export const ContentContainer = styled.div`
 // to fix this we copy relevant styles here
 // https://github.com/casesandberg/react-color/blob/v2.18.1/src/components/common/Hue.js#L78
 // https://github.com/casesandberg/react-color/blob/v2.18.1/src/components/common/Saturation.js#L94
+// eslint-disable-next-line no-color-literals
 export const ControlsRoot = styled.div`
   .hue-horizontal {
     background: linear-gradient(
@@ -58,8 +52,8 @@ export const HueContainer = styled.div`
   overflow: hidden;
 `;
 
-export const ControlsPointer = styled.div`
-  border: 2px solid ${color("white")};
+const ControlsPointer = styled.div`
+  border: 2px solid var(--mb-color-bg-white);
   border-radius: 50%;
   pointer-events: none;
 `;

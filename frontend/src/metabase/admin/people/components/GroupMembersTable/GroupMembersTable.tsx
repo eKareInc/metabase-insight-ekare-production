@@ -4,7 +4,7 @@ import { t } from "ttag";
 
 import { useListApiKeysQuery } from "metabase/api";
 import AdminContentTable from "metabase/components/AdminContentTable";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import { PaginationControls } from "metabase/components/PaginationControls";
 import Link from "metabase/core/components/Link";
 import CS from "metabase/css/core/index.css";
@@ -13,8 +13,8 @@ import { isAdminGroup, isDefaultGroup } from "metabase/lib/groups";
 import { isNotNull } from "metabase/lib/types";
 import { getFullName } from "metabase/lib/user";
 import { PLUGIN_GROUP_MANAGERS } from "metabase/plugins";
-import { Tooltip, Text, Icon } from "metabase/ui";
-import type { ApiKey, Group, Member, User as IUser } from "metabase-types/api";
+import { Icon, Text, Tooltip } from "metabase/ui";
+import type { ApiKey, Group, User as IUser, Member } from "metabase-types/api";
 import type { State } from "metabase-types/store";
 
 import AddMemberRow from "../AddMemberRow";
@@ -228,10 +228,10 @@ const ApiKeyRow = ({ apiKey }: { apiKey: ApiKey }) => {
   return (
     <tr>
       <td>
-        <Text weight="bold">{apiKey.name}</Text>
+        <Text fw="bold">{apiKey.name}</Text>
       </td>
       <td>
-        <Text weight="bold" color="text-medium">{t`API Key`}</Text>
+        <Text fw="bold" color="text-medium">{t`API Key`}</Text>
       </td>
       <td>{/* api keys don't have real emails */}</td>
       <td className={CS.textRight}>

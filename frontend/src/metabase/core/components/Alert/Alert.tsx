@@ -6,7 +6,7 @@ import { AlertIcon, AlertRoot } from "./Alert.styled";
 
 export type AlertVariant = "info" | "warning" | "error";
 
-interface AlertProps {
+export interface AlertProps {
   children: ReactNode;
   icon?: IconName;
   hasBorder?: boolean;
@@ -22,7 +22,12 @@ const Alert = ({
   className,
 }: AlertProps) => {
   return (
-    <AlertRoot hasBorder={hasBorder} className={className} variant={variant}>
+    <AlertRoot
+      hasBorder={hasBorder}
+      className={className}
+      variant={variant}
+      role="alert"
+    >
       {icon && <AlertIcon variant={variant} name={icon} size={24} />}
       <div>{children}</div>
     </AlertRoot>

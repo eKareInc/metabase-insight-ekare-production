@@ -8,20 +8,19 @@ import { t } from "ttag";
 
 import { Ellipsified } from "metabase/core/components/Ellipsified";
 import Markdown from "metabase/core/components/Markdown";
-import Tooltip from "metabase/core/components/Tooltip";
 import DashboardS from "metabase/css/dashboard.module.css";
 import QueryBuilderS from "metabase/css/query_builder.module.css";
 import EmbedFrameS from "metabase/public/components/EmbedFrame/EmbedFrame.module.css";
-import { useMantineTheme } from "metabase/ui";
+import { Tooltip, useMantineTheme } from "metabase/ui";
 
 import {
-  ScalarRoot,
-  ScalarValueWrapper,
-  ScalarTitleContainer,
   ScalarDescriptionContainer,
   ScalarDescriptionIcon,
   ScalarDescriptionPlaceholder,
+  ScalarRoot,
+  ScalarTitleContainer,
   ScalarTitleContent,
+  ScalarValueWrapper,
 } from "./ScalarValue.styled";
 import { findSize, getMaxFontSize } from "./utils";
 
@@ -38,12 +37,12 @@ const ScalarValue = ({
   fontFamily,
 }) => {
   const {
-    other: { scalar: scalarTheme },
+    other: { number: numberTheme },
   } = useMantineTheme();
 
   const fontSize = useMemo(() => {
-    if (scalarTheme?.value?.fontSize) {
-      return scalarTheme.value?.fontSize;
+    if (numberTheme?.value?.fontSize) {
+      return numberTheme.value?.fontSize;
     }
 
     return findSize({
@@ -64,14 +63,14 @@ const ScalarValue = ({
     totalNumGridCols,
     value,
     width,
-    scalarTheme?.value?.fontSize,
+    numberTheme?.value?.fontSize,
   ]);
 
   return (
     <ScalarValueWrapper
       className={cx(DashboardS.ScalarValue, QueryBuilderS.ScalarValue)}
       fontSize={fontSize}
-      lineHeight={scalarTheme?.value?.lineHeight}
+      lineHeight={numberTheme?.value?.lineHeight}
       data-testid="scalar-value"
     >
       {value ?? t`null`}
@@ -101,12 +100,12 @@ export const ScalarTitle = ({ lines = 2, title, description, onClick }) => (
     {description && description.length > 0 && (
       <ScalarDescriptionContainer data-testid="scalar-description">
         <Tooltip
-          tooltip={
+          label={
             <Markdown dark disallowHeading unstyleLinks>
               {description}
             </Markdown>
           }
-          maxWidth="22em"
+          maw="22em"
         >
           <ScalarDescriptionIcon name="info_filled" />
         </Tooltip>

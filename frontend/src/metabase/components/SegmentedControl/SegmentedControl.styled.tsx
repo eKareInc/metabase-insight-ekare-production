@@ -1,15 +1,14 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 import _ from "underscore";
 
-import { color, darken, alpha } from "metabase/lib/colors";
+import { alpha, color, darken } from "metabase/lib/colors";
 import type { IconProps } from "metabase/ui";
 import { Icon } from "metabase/ui";
 
-export type SegmentedControlVariant =
-  | "fill-text"
-  | "fill-background"
-  | "fill-all";
+type SegmentedControlVariant = "fill-text" | "fill-background" | "fill-all";
 
 type ColorProps = {
   isSelected: boolean;
@@ -104,7 +103,6 @@ type SegmentedItemProps = BorderStyleProps &
 export const SegmentedItem = styled.li<SegmentedItemProps>`
   display: flex;
   flex-grow: ${props => (props.fullWidth ? 1 : 0)};
-
   background-color: ${props => COLORS[props.variant].background(props)};
   border: 1px solid ${props => COLORS[props.variant].border(props)};
 
@@ -132,7 +130,11 @@ export const SegmentedItemLabel = styled.label<SegmentedItemLabelProps>`
   }
 `;
 
-export const SegmentedControlRadio = styled.input`
+export const SegmentedControlRadio = styled(
+  (props: React.InputHTMLAttributes<HTMLInputElement>) => (
+    <input {...props} type={props.type ?? "radio"} />
+  ),
+)`
   cursor: inherit;
   position: absolute;
   opacity: 0;
@@ -144,8 +146,6 @@ export const SegmentedControlRadio = styled.input`
   padding: 0;
   z-index: 1;
 `;
-
-SegmentedControlRadio.defaultProps = { type: "radio" };
 
 function IconWrapper(props: IconProps & { iconOnly?: boolean }) {
   return <Icon {..._.omit(props, "iconOnly")} />;

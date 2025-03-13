@@ -1,12 +1,14 @@
 import {
-  QA_POSTGRES_PORT,
+  QA_DB_CONFIG,
+  QA_DB_CREDENTIALS,
   QA_MONGO_PORT,
   QA_MYSQL_PORT,
-  QA_DB_CREDENTIALS,
+  QA_POSTGRES_PORT,
   WRITABLE_DB_CONFIG,
   WRITABLE_DB_ID,
-  QA_DB_CONFIG,
 } from "e2e/support/cypress_data";
+
+import { createQuestion } from "./api";
 
 /*****************************************
  **            QA DATABASES             **
@@ -121,6 +123,40 @@ function recursiveCheck(id, i = 0) {
     });
     if (database.initial_sync_status !== "complete") {
       recursiveCheck(id, ++i);
+    } else {
+      recursiveCheckFields(id);
+    }
+  });
+}
+
+function recursiveCheckFields(id, i = 0) {
+  // Let's not wait more than 10s for the sync to finish
+  if (i === 10) {
+    cy.task("log", "The field sync isn't complete");
+    return;
+  }
+
+  cy.wait(1000);
+
+  cy.request("GET", `/api/database/${id}/schemas`).then(({ body: schemas }) => {
+    const [schema] = schemas;
+    if (schema) {
+      cy.request("GET", `/api/database/${id}/schema/${schema}`)
+        .then(({ body: schema }) => {
+          return schema[0].id;
+        })
+        .then(tableId => {
+          cy.request("GET", `/api/table/${tableId}/query_metadata`).then(
+            ({ body: table }) => {
+              const field = table.fields.find(
+                field => field.semantic_type !== "type/PK",
+              );
+              if (!field.last_analyzed) {
+                recursiveCheckFields(id, ++i);
+              }
+            },
+          );
+        });
     }
   });
 }
@@ -180,6 +216,14 @@ export function queryWritableDB(query, type = "postgres") {
   });
 }
 
+export function resetWritableDb({ type = "postgres" }) {
+  cy.log(`Resetting ${type} writable DB`);
+  cy.task("resetWritableDb", { type });
+}
+
+/**
+ * Note: this function MUST come after the restore() function in the file, or it will get wiped out
+ */
 export function resetTestTable({ type, table }) {
   cy.task("resetTable", { type, table });
 }
@@ -213,7 +257,7 @@ export const createModelFromTableName = ({
   idAlias = "modelId",
 }) => {
   getTableId({ name: tableName }).then(tableId => {
-    cy.createQuestion(
+    createQuestion(
       {
         database: WRITABLE_DB_ID,
         name: modelName,

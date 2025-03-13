@@ -1,60 +1,30 @@
+const { H } = cy;
 import { SAMPLE_DB_ID } from "e2e/support/cypress_data";
 import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
-  ORDERS_QUESTION_ID,
   ORDERS_BY_YEAR_QUESTION_ID,
+  ORDERS_QUESTION_ID,
 } from "e2e/support/cypress_sample_instance_data";
-import {
-  restore,
-  modal,
-  popover,
-  openNativeEditor,
-  visualize,
-  mockSessionProperty,
-  sidebar,
-  summarize,
-  filter,
-  filterField,
-  visitQuestion,
-  visitDashboard,
-  startNewQuestion,
-  openQuestionActions,
-  closeQuestionActions,
-  visitCollection,
-  undo,
-  openQuestionsSidebar,
-  editDashboard,
-  getDashboardCard,
-  saveDashboard,
-  getNotebookStep,
-  selectFilterOperator,
-  focusNativeEditor,
-  echartsContainer,
-  entityPickerModal,
-  questionInfoButton,
-  entityPickerModalTab,
-  tableHeaderClick,
-} from "e2e/support/helpers";
 
 import {
-  turnIntoModel,
   assertIsModel,
-  assertQuestionIsBasedOnModel,
-  selectFromDropdown,
-  selectDimensionOptionFromSidebar,
-  saveQuestionBasedOnModel,
   assertIsQuestion,
+  assertQuestionIsBasedOnModel,
+  saveQuestionBasedOnModel,
+  selectDimensionOptionFromSidebar,
+  selectFromDropdown,
+  turnIntoModel,
 } from "./helpers/e2e-models-helpers";
 
 const { PRODUCTS, ORDERS_ID, PRODUCTS_ID } = SAMPLE_DATABASE;
 
 describe("scenarios > models", () => {
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
     cy.intercept("POST", "/api/dataset").as("dataset");
 
-    cy.createQuestion(
+    H.createQuestion(
       {
         name: "Products",
         query: { "source-table": PRODUCTS_ID },
@@ -71,14 +41,14 @@ describe("scenarios > models", () => {
       cy.request("PUT", `/api/card/${id}`, {
         name: "Products Model",
       });
-      visitQuestion(id);
+      H.visitQuestion(id);
 
       turnIntoModel();
-      openQuestionActions();
+      H.openQuestionActions();
       assertIsModel();
 
-      filter();
-      filterField("Vendor", {
+      H.filter();
+      H.filterField("Vendor", {
         operator: "Contains",
         value: "Fisher",
       });
@@ -113,7 +83,7 @@ describe("scenarios > models", () => {
   });
 
   it("allows to turn a native question into a model", () => {
-    cy.createNativeQuestion(
+    H.createNativeQuestion(
       {
         name: "Product Model",
         native: {
@@ -124,11 +94,11 @@ describe("scenarios > models", () => {
     );
 
     turnIntoModel();
-    openQuestionActions();
+    H.openQuestionActions();
     assertIsModel();
 
-    filter();
-    filterField("VENDOR", {
+    H.filter();
+    H.filterField("VENDOR", {
       operator: "Contains",
       value: "Fisher",
     });
@@ -162,23 +132,121 @@ describe("scenarios > models", () => {
     cy.location("pathname").should("eq", "/collection/root");
   });
 
-  it("changes model's display to table", () => {
-    visitQuestion(ORDERS_BY_YEAR_QUESTION_ID);
+  it("allows to turn a native question with a long alias into a model (metabase#47584)", () => {
+    const nativeQuery = `
+    SELECT
+      count(*) AS coun,
+      state AS Total_number_of_people_from_each_state_separated_by_state_and_then_we_do_a_count
+    FROM people
+    GROUP BY
+      Total_number_of_people_from_each_state_separated_by_state_and_then_we_do_a_count`;
+    H.createNativeQuestion(
+      {
+        name: "People Model with long alias",
+        native: {
+          query: nativeQuery,
+        },
+      },
+      { visitQuestion: true, wrapId: true },
+    );
 
-    echartsContainer();
-    // TODO (styles): migrate
-    cy.get(".test-TableInteractive").should("not.exist");
+    turnIntoModel();
+    H.openQuestionActions();
+    assertIsModel();
+
+    cy.get("@questionId").then(questionId => {
+      cy.wait("@dataset").then(({ response }) => {
+        expect(response.body.json_query.query["source-table"]).to.equal(
+          `card__${questionId}`,
+        );
+        expect(response.body.error).to.not.exist;
+      });
+    });
+
+    // Filtering on the long column is currently broken in master (metabase#47863),
+    // but this works in the release-x.50.x branch.
+    //
+    // filter();
+    // filterField(
+    //   "TOTAL_NUMBER_OF_PEOPLE_FROM_EACH_STATE_SEPARATED_BY_STATE_AND_THEN_WE_DO_A_COUNT",
+    //   {
+    //     operator: "Contains",
+    //     value: "A",
+    //   },
+    // );
+
+    // cy.findByTestId("apply-filters").click();
+    // cy.wait("@dataset").then(({ response }) => {
+    //   expect(response.body.error).to.not.exist;
+    // });
+
+    H.filter();
+    H.filterField("COUN", {
+      operator: "Greater than",
+      value: 30,
+    });
+
+    cy.findByTestId("apply-filters").click();
+    cy.wait("@dataset").then(({ response }) => {
+      expect(response.body.error).to.not.exist;
+    });
+
+    assertQuestionIsBasedOnModel({
+      model: "People Model with long alias",
+      collection: "Our analytics",
+      table: "People",
+    });
+
+    cy.get("@questionId").then(questionId => {
+      saveQuestionBasedOnModel({ modelId: questionId, name: "Q1" });
+    });
+
+    assertQuestionIsBasedOnModel({
+      questionName: "Q1",
+      model: "People Model with long alias",
+      collection: "Our analytics",
+      table: "People",
+    });
+
+    cy.findByTestId("qb-header").findAllByText("Our analytics").first().click();
+    getCollectionItemCard("People Model with long alias").within(() => {
+      cy.icon("model");
+    });
+    getCollectionItemRow("Q1").icon("table2");
+
+    cy.location("pathname").should("eq", "/collection/root");
+  });
+
+  it("changes model's display to table", () => {
+    H.visitQuestion(ORDERS_BY_YEAR_QUESTION_ID);
+
+    H.echartsContainer();
+    H.tableInteractive().should("not.exist");
 
     turnIntoModel();
 
-    // TODO (styles): migrate
-    cy.get(".test-TableInteractive");
-    echartsContainer().should("not.exist");
+    H.tableInteractive();
+    H.echartsContainer().should("not.exist");
+  });
+
+  it("only shows model info modal once when turning a question into a model", () => {
+    H.visitQuestion(ORDERS_BY_YEAR_QUESTION_ID);
+    H.echartsContainer();
+
+    turnIntoModel();
+    H.undoToast().findByText("This is a model now.").should("exist");
+    H.undo();
+
+    H.openQuestionActions();
+    H.popover().within(() => {
+      cy.icon("model").click();
+    });
+    H.modal().should("not.exist");
   });
 
   it("allows to undo turning a question into a model", () => {
-    visitQuestion(ORDERS_BY_YEAR_QUESTION_ID);
-    echartsContainer();
+    H.visitQuestion(ORDERS_BY_YEAR_QUESTION_ID);
+    H.echartsContainer();
 
     turnIntoModel();
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
@@ -186,8 +254,8 @@ describe("scenarios > models", () => {
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Undo").click();
 
-    echartsContainer();
-    openQuestionActions();
+    H.echartsContainer();
+    H.openQuestionActions();
     assertIsQuestion();
   });
 
@@ -196,8 +264,8 @@ describe("scenarios > models", () => {
     cy.intercept("PUT", `/api/card/${ORDERS_QUESTION_ID}`).as("cardUpdate");
     cy.visit(`/model/${ORDERS_QUESTION_ID}`);
 
-    openQuestionActions();
-    popover().within(() => {
+    H.openQuestionActions();
+    H.popover().within(() => {
       cy.findByText("Turn back to saved question").click();
     });
 
@@ -205,14 +273,44 @@ describe("scenarios > models", () => {
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("This is a question now.");
-    openQuestionActions();
+    H.openQuestionActions();
     assertIsQuestion();
 
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Undo").click();
     cy.wait("@cardUpdate");
-    openQuestionActions();
+    H.openQuestionActions();
     assertIsModel();
+  });
+
+  it("allows duplicating a model", () => {
+    cy.request("PUT", `/api/card/${ORDERS_QUESTION_ID}`, { type: "model" });
+    cy.intercept("POST", "/api/card").as("cardCreate");
+    cy.visit(`/model/${ORDERS_QUESTION_ID}`);
+
+    H.openQuestionActions();
+    H.popover().within(() => {
+      cy.findByText("Duplicate").click();
+    });
+
+    H.modal().within(() => {
+      cy.findByLabelText("Name").should("have.value", "Orders - Duplicate");
+      cy.findByLabelText(/Where do you want to save this/).click();
+    });
+
+    H.entityPickerModal().within(() => {
+      cy.findByRole("tab", { name: /Collections/ }).click();
+
+      cy.findByText(/Select a collection$/).should("exist"); // title should not have trailing "or dashboard"
+      cy.findByText("Orders in a dashboard").should("not.exist"); // this dashboard would be present if dashboards were an allowed save target
+      cy.findByText("First collection").should("exist").click();
+      cy.findByRole("button", { name: "Select this collection" }).click();
+    });
+
+    H.modal().within(() => {
+      cy.findByText("Duplicate").click();
+      cy.wait("@cardCreate");
+    });
   });
 
   it("shows 404 when opening a question with a /dataset URL", () => {
@@ -226,7 +324,7 @@ describe("scenarios > models", () => {
     // Important - do not use visitQuestion(ORDERS_QUESTION_ID) here!
     cy.visit("/question/" + ORDERS_QUESTION_ID);
     cy.wait("@dataset");
-    openQuestionActions();
+    H.openQuestionActions();
     assertIsModel();
     cy.url().should("include", "/model");
   });
@@ -238,51 +336,79 @@ describe("scenarios > models", () => {
     });
 
     it("transforms the data picker", () => {
-      startNewQuestion();
+      H.startNewQuestion();
 
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Models").click();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Collections").click();
         cy.findByText("Orders").should("exist");
         cy.findByText("Orders Model").should("exist");
-        cy.findByText("Orders, Count").should("not.exist");
-
-        entityPickerModalTab("Saved questions").click();
-        cy.findByText("Orders").should("not.exist");
-        cy.findByText("Orders Model").should("not.exist");
         cy.findByText("Orders, Count").should("exist");
         cy.findByText("Orders, Count, Grouped by Created At (year)").should(
           "exist",
         );
         cy.findByText("Products").should("exist");
 
-        entityPickerModalTab("Tables").click();
+        H.entityPickerModalTab("Tables").click();
         cy.findByText("Orders").should("exist");
         cy.findByText("People").should("exist");
         cy.findByText("Products").should("exist");
         cy.findByText("Reviews").should("exist");
         cy.findByText("Orders, Count").should("not.exist");
 
-        testDataPickerSearch({
-          query: "Ord",
-          models: true,
-          cards: true,
-          tables: true,
-        });
+        cy.findByPlaceholderText("Search this database or everywhere…").type(
+          "Ord",
+        );
+        cy.wait("@search");
+
+        getResults().should("have.length", 1);
+        cy.findByText("1 result").should("be.visible");
+        getResults()
+          .eq(0)
+          .should("have.attr", "data-model-type", "table")
+          .and("contain.text", "Orders");
+
+        cy.findByText("Everywhere").click();
+        getResults().should("have.length", 6);
+        cy.findByText("6 results").should("be.visible");
+        getResults()
+          .eq(0)
+          .should("have.attr", "data-model-type", "dataset")
+          .and("contain.text", "Orders Model");
+        getResults()
+          .eq(1)
+          .should("have.attr", "data-model-type", "dataset")
+          .and("contain.text", "Orders");
+        getResults()
+          .eq(2)
+          .should("have.attr", "data-model-type", "card")
+          .and("contain.text", "Orders, Count, Grouped by Created At (year)");
+        getResults()
+          .eq(3)
+          .should("have.attr", "data-model-type", "card")
+          .and("contain.text", "Orders, Count");
+        getResults()
+          .eq(4)
+          .should("have.attr", "data-model-type", "card")
+          .and("contain.text", "Orders");
+        getResults()
+          .eq(5)
+          .should("have.attr", "data-model-type", "table")
+          .and("contain.text", "Orders");
       });
     });
 
     it("allows to create a question based on a model", () => {
       cy.intercept(`/api/database/${SAMPLE_DB_ID}/schema/PUBLIC`).as("schema");
 
-      startNewQuestion();
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Models").click();
+      H.startNewQuestion();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Collections").click();
         cy.findByText("Orders").click();
       });
 
       cy.icon("join_left_outer").click();
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Tables").click();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Tables").click();
         cy.findByText("Orders").should("exist");
         cy.findByText("People").should("exist");
         cy.findByText("Products").should("exist");
@@ -291,29 +417,29 @@ describe("scenarios > models", () => {
         cy.findByText("Products").click();
       });
 
-      getNotebookStep("filter")
+      H.getNotebookStep("filter")
         .findByText("Add filters to narrow your answer")
         .click();
-      popover().within(() => {
-        cy.findByText("Product").click();
+      H.popover().within(() => {
+        cy.findByText("Products").click();
         cy.findByText("Price").click();
       });
-      selectFilterOperator("Less than");
-      popover().within(() => {
+      H.selectFilterOperator("Less than");
+      H.popover().within(() => {
         cy.findByPlaceholderText("Enter a number").type("50");
         cy.button("Add filter").click();
       });
 
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-      cy.findByText("Pick the metric you want to see").click();
+      cy.findByText("Pick a function or metric").click();
       selectFromDropdown("Count of rows");
 
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Pick a column to group by").click();
       selectFromDropdown("Created At");
 
-      visualize();
-      echartsContainer();
+      H.visualize();
+      H.echartsContainer();
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Save").click();
 
@@ -321,13 +447,13 @@ describe("scenarios > models", () => {
         cy.findByText("Save").click();
       });
 
-      cy.url().should("match", /\/question\/\d+-[a-z0-9-]*$/);
+      cy.url().should("match", /\/dashboard\/\d+-[a-z0-9-]*#edit$/);
     });
 
     it("should not display models if nested queries are disabled", () => {
-      mockSessionProperty("enable-nested-queries", false);
-      startNewQuestion();
-      entityPickerModal().within(() => {
+      H.mockSessionProperty("enable-nested-queries", false);
+      H.startNewQuestion();
+      H.entityPickerModal().within(() => {
         cy.findAllByRole("tab").should("not.exist");
 
         cy.findByText("Orders").should("exist");
@@ -350,8 +476,8 @@ describe("scenarios > models", () => {
       cy.visit(`/model/${ORDERS_QUESTION_ID}`);
       cy.wait("@dataset");
 
-      filter();
-      filterField("Discount", {
+      H.filter();
+      H.filterField("Discount", {
         operator: "Not empty",
       });
       cy.findByTestId("apply-filters").click();
@@ -363,7 +489,7 @@ describe("scenarios > models", () => {
         table: "Orders",
       });
 
-      summarize();
+      H.summarize();
 
       selectDimensionOptionFromSidebar("Created At");
       cy.wait("@dataset");
@@ -392,7 +518,7 @@ describe("scenarios > models", () => {
       cy.visit(`/model/${ORDERS_QUESTION_ID}`);
       cy.wait("@dataset");
 
-      tableHeaderClick("Subtotal");
+      H.tableHeaderClick("Subtotal");
       selectFromDropdown("Sum over time");
 
       assertQuestionIsBasedOnModel({
@@ -422,7 +548,7 @@ describe("scenarios > models", () => {
       cy.findByTestId("saved-question-header-title").clear().type("M1").blur();
       cy.wait("@updateCard");
 
-      questionInfoButton().click();
+      H.questionInfoButton().click();
 
       cy.findByPlaceholderText("Add description").type("foo").blur();
       cy.wait("@updateCard");
@@ -434,7 +560,7 @@ describe("scenarios > models", () => {
   });
 
   it("shouldn't allow to turn native questions with variables into models", () => {
-    cy.createNativeQuestion(
+    H.createNativeQuestion(
       {
         native: {
           query: "SELECT * FROM products WHERE {{ID}}",
@@ -454,23 +580,23 @@ describe("scenarios > models", () => {
       { visitQuestion: true },
     );
 
-    openQuestionActions();
-    popover().within(() => {
+    H.openQuestionActions();
+    H.popover().within(() => {
       cy.icon("model").click();
     });
-    modal().within(() => {
+    H.modal().within(() => {
       cy.findByText("Variables in models aren't supported yet");
       cy.button("Turn this into a model").should("not.exist");
       cy.icon("close").click();
     });
-    openQuestionActions();
+    H.openQuestionActions();
     assertIsQuestion();
-    closeQuestionActions();
+    H.closeQuestionActions();
 
     // Check card tags are supported by models
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText(/Open editor/i).click();
-    focusNativeEditor().type(
+    H.NativeEditor.focus().type(
       "{leftarrow}{leftarrow}{backspace}{backspace}#1-orders",
     );
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
@@ -481,22 +607,19 @@ describe("scenarios > models", () => {
     });
 
     turnIntoModel();
-    openQuestionActions();
+    H.openQuestionActions();
     assertIsModel();
   });
 
   it("shouldn't allow using variables in native models", () => {
-    cy.createNativeQuestion({
+    H.createNativeQuestion({
       native: { query: "SELECT * FROM products" },
     }).then(({ body: { id: modelId } }) => {
       cy.request("PUT", `/api/card/${modelId}`, { type: "model" }).then(() => {
         cy.visit(`/model/${modelId}/query`);
-        cy.get(".ace_editor:not(.ace_autocomplete)")
-          .should("be.visible")
-          .type("{movetoend}")
-          .type(" WHERE {{F", {
-            parseSpecialCharSequences: false,
-          });
+        H.NativeEditor.focus().type("{movetoend}").type(" WHERE {{F", {
+          parseSpecialCharSequences: false,
+        });
         cy.findByTestId("tag-editor-sidebar").should("not.exist");
       });
     });
@@ -504,7 +627,7 @@ describe("scenarios > models", () => {
 
   it("should correctly show native models for no-data users", () => {
     cy.intercept("POST", "/api/card/*/query").as("cardQuery");
-    cy.createNativeQuestion({
+    H.createNativeQuestion({
       name: "TEST MODEL",
       type: "model",
       native: {
@@ -519,25 +642,23 @@ describe("scenarios > models", () => {
   });
 
   it("should automatically pin newly created models", () => {
-    visitQuestion(ORDERS_QUESTION_ID);
-
+    H.visitQuestion(ORDERS_QUESTION_ID);
     turnIntoModel();
-
-    visitCollection("root");
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("Models");
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.findByText("A model");
+    H.visitCollection("root");
+    cy.findByTestId("pinned-items").within(() => {
+      cy.findByText("Models");
+      cy.findByText("A model");
+    });
   });
 
   it("should undo pinning a question if turning into a model was undone", () => {
-    visitQuestion(ORDERS_QUESTION_ID);
+    H.visitQuestion(ORDERS_QUESTION_ID);
 
     turnIntoModel();
-    undo();
+    H.undo();
     cy.wait("@cardUpdate");
 
-    visitCollection("root");
+    H.visitCollection("root");
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Useful data").should("not.exist");
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
@@ -555,21 +676,21 @@ describe("scenarios > models", () => {
     };
 
     beforeEach(() => {
-      cy.createQuestion(modelDetails, { wrapId: true, idAlias: "modelId" });
+      H.createQuestion(modelDetails, { wrapId: true, idAlias: "modelId" });
     });
 
     it("should allow adding models to dashboards", () => {
-      cy.createDashboard().then(({ body: { id: dashboardId } }) => {
-        visitDashboard(dashboardId);
-        editDashboard();
-        openQuestionsSidebar();
-        sidebar().findByText(modelDetails.name).click();
-        getDashboardCard().within(() => {
+      H.createDashboard().then(({ body: { id: dashboardId } }) => {
+        H.visitDashboard(dashboardId);
+        H.editDashboard();
+        H.openQuestionsSidebar();
+        H.sidebar().findByText(modelDetails.name).click();
+        H.getDashboardCard().within(() => {
           cy.findByText(modelDetails.name);
           cy.findByText("37.65");
         });
-        saveDashboard();
-        getDashboardCard().within(() => {
+        H.saveDashboard();
+        H.getDashboardCard().within(() => {
           cy.findByText(modelDetails.name);
           cy.findByText("37.65");
         });
@@ -579,13 +700,14 @@ describe("scenarios > models", () => {
     it("should allow using models in native queries", () => {
       cy.intercept("POST", "/api/dataset").as("query");
       cy.get("@modelId").then(id => {
-        openNativeEditor().type(`select * from {{#${id}}}`, {
+        H.startNewNativeQuestion();
+        H.NativeEditor.type(`select * from {{#${id}}}`, {
           parseSpecialCharSequences: false,
         });
       });
       cy.findByTestId("native-query-editor-container").icon("play").click();
       cy.wait("@query");
-      cy.findByTestId("TableInteractive-root").within(() => {
+      H.tableInteractive().within(() => {
         cy.findByText("USER_ID");
         cy.findByText("PRODUCT_ID");
         cy.findByText("TAX");
@@ -599,48 +721,9 @@ function getCollectionItemRow(itemName) {
 }
 
 function getCollectionItemCard(itemName) {
-  return cy.findByText(itemName).parent();
+  return cy.findByText(itemName).closest("a");
 }
 
-function testDataPickerSearch({
-  query,
-  models = false,
-  cards = false,
-  tables = false,
-} = {}) {
-  cy.findByPlaceholderText("Search…").type(query);
-  cy.wait("@search");
-
-  const searchResultItems = cy.findAllByTestId("result-item");
-
-  searchResultItems.then($results => {
-    const modelTypes = {};
-
-    for (const htmlElement of $results.toArray()) {
-      const type = htmlElement.getAttribute("data-model-type");
-      if (type in modelTypes) {
-        modelTypes[type] += 1;
-      } else {
-        modelTypes[type] = 1;
-      }
-    }
-
-    if (models) {
-      expect(modelTypes["dataset"]).to.be.greaterThan(0);
-    } else {
-      expect(Object.keys(modelTypes)).not.to.include("dataset");
-    }
-
-    if (cards) {
-      expect(modelTypes["card"]).to.be.greaterThan(0);
-    } else {
-      expect(Object.keys(modelTypes)).not.to.include("card");
-    }
-
-    if (tables) {
-      expect(modelTypes["table"]).to.be.greaterThan(0);
-    } else {
-      expect(Object.keys(modelTypes)).not.to.include("table");
-    }
-  });
+function getResults() {
+  return cy.findAllByTestId("result-item");
 }

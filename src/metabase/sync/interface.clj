@@ -1,7 +1,6 @@
 (ns metabase.sync.interface
   "Schemas and constants used by the sync code."
   (:require
-   [clojure.string :as str]
    [malli.util :as mut]
    [metabase.lib.schema.common :as lib.schema.common]
    [metabase.util.malli.registry :as mr]
@@ -16,7 +15,8 @@
    ;; for databases that support forcing query to include a filter (e.g: partitioned table on bigquery)
    [:database_require_filter {:optional true} [:maybe :boolean]]
    ;; `:description` in this case should be a column/remark on the Table, if there is one.
-   [:description             {:optional true} [:maybe :string]]])
+   [:description             {:optional true} [:maybe :string]]
+   [:visibility_type         {:optional true} [:maybe :string]]])
 
 (def DatabaseMetadataTable
   "Schema for the expected output of `describe-database` for a Table."
@@ -50,7 +50,8 @@
    [:database-is-auto-increment {:optional true} :boolean]
    ;; nullable for databases that don't support field partition
    [:database-partitioned       {:optional true} [:maybe :boolean]]
-   [:database-required          {:optional true} :boolean]])
+   [:database-required          {:optional true} :boolean]
+   [:visibility-type            {:optional true} [:maybe :keyword]]])
 
 (def TableMetadataField
   "Schema for a given Field as provided in [[metabase.driver/describe-table]]."
@@ -68,6 +69,16 @@
 (def TableIndexMetadata
   "Schema for a given Table as provided in [[metabase.driver/describe-table-indexes]]."
   [:ref ::TableIndexMetadata])
+
+(mr/def ::FieldIndexMetadata
+  [:map
+   [:table-schema [:maybe ::lib.schema.common/non-blank-string]]
+   [:table-name   ::lib.schema.common/non-blank-string]
+   [:field-name   ::lib.schema.common/non-blank-string]])
+
+(def FieldIndexMetadata
+  "Schema for a given result provided by [[metabase.driver/describe-indexes]]."
+  [:ref ::FieldIndexMetadata])
 
 (mr/def ::FieldMetadataEntry
   (-> (mr/schema ::TableMetadataField)
@@ -114,13 +125,7 @@
 ;; out from the ns declaration when running `cljr-clean-ns`. Plus as a bonus in the future we could add additional
 ;; validations to these, e.g. requiring that a Field have a base_type
 
-(mr/def ::no-kebab-case-keys
-  [:fn
-   {:error/message "Map should not contain any kebab-case keys"}
-   (fn [m]
-     (every? (fn [k]
-               (not (str/includes? k "-")))
-             (keys m)))])
+(mr/def ::no-kebab-case-keys (ms/MapWithNoKebabKeys))
 
 (mr/def ::DatabaseInstance
   [:and

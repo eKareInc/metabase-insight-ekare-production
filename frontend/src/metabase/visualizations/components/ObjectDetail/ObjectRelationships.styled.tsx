@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { color } from "metabase/lib/colors";
@@ -9,7 +10,7 @@ export const ObjectRelationships = styled.div`
   background-color: var(--mb-color-bg-light);
 `;
 
-export interface ObjectRelationshipContentProps {
+interface ObjectRelationshipContentProps {
   isClickable: boolean;
 }
 

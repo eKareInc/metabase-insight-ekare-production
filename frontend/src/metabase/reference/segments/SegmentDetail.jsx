@@ -2,13 +2,13 @@
 import cx from "classnames";
 import { useFormik } from "formik";
 import PropTypes from "prop-types";
-import { connect } from "react-redux";
 import { t } from "ttag";
 
 import List from "metabase/components/List";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import Link from "metabase/core/components/Link";
 import CS from "metabase/css/core/index.css";
+import { connect } from "metabase/lib/redux";
 import * as metadataActions from "metabase/redux/metadata";
 import Detail from "metabase/reference/components/Detail";
 import EditHeader from "metabase/reference/components/EditHeader";
@@ -20,14 +20,14 @@ import { getMetadata } from "metabase/selectors/metadata";
 
 import S from "../components/Detail.module.css";
 import {
-  getSegment,
-  getTable,
-  getFields,
   getError,
-  getLoading,
-  getUser,
+  getFields,
   getIsEditing,
   getIsFormulaExpanded,
+  getLoading,
+  getSegment,
+  getTable,
+  getUser,
 } from "../selectors";
 import { getQuestionUrl } from "../utils";
 

@@ -1,4 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { Icon } from "metabase/ui";
@@ -27,6 +29,7 @@ export const StyledSidebarLink = styled(SidebarLink)<{ isDragging: boolean }>`
     props.isDragging &&
     css`
       pointer-events: none;
+
       &:hover {
         background: var(--mb-color-bg-white);
 

@@ -1,25 +1,23 @@
 import { dissoc } from "icepick";
 import { t } from "ttag";
 
-import {
-  getInstanceAnalyticsCustomCollection,
-  isInstanceAnalyticsCollection,
-} from "metabase/collections/utils";
-import { useCollectionListQuery } from "metabase/common/hooks";
+import { useGetDefaultCollectionId } from "metabase/collections/hooks";
 import ModalContent from "metabase/components/ModalContent";
-import { CopyDashboardFormConnected } from "metabase/dashboard/containers/CopyDashboardForm";
+import {
+  CopyDashboardFormConnected,
+  type CopyDashboardFormProperties,
+} from "metabase/dashboard/containers/CopyDashboardForm";
 import { CopyQuestionForm } from "metabase/questions/components/CopyQuestionForm";
-import { Flex, Loader } from "metabase/ui";
 
 interface EntityCopyModalProps {
   entityType: string;
   entityObject: any;
-  copy: (data: any) => void;
+  copy: (data: any) => Promise<any>;
   title?: string;
   onClose: () => void;
-  onSaved: (newEntityObject: any) => void;
+  onSaved: (newEntityObject?: any) => void;
   overwriteOnInitialValuesChange?: boolean;
-  onValuesChange?: (values: Record<string, unknown>) => void;
+  onValuesChange?: (values: CopyDashboardFormProperties) => void;
   form?: any;
 }
 
@@ -32,18 +30,16 @@ const EntityCopyModal = ({
   onSaved,
   ...props
 }: EntityCopyModalProps) => {
-  const { data: collections = [] } = useCollectionListQuery();
-
   const resolvedObject =
     typeof entityObject?.getPlainObject === "function"
       ? entityObject.getPlainObject()
       : entityObject;
+  const defaultCollectionId = useGetDefaultCollectionId(
+    resolvedObject?.collection?.id,
+  );
 
-  if (isInstanceAnalyticsCollection(resolvedObject?.collection)) {
-    const customCollection = getInstanceAnalyticsCustomCollection(collections);
-    if (customCollection) {
-      resolvedObject.collection_id = customCollection.id;
-    }
+  if (defaultCollectionId) {
+    resolvedObject.collection_id = defaultCollectionId;
   }
 
   const initialValues = {
@@ -51,42 +47,30 @@ const EntityCopyModal = ({
     name: resolvedObject.name + " - " + t`Duplicate`,
   };
 
-  const renderForm = (props: any) => {
-    switch (entityType) {
-      case "dashboards":
-        return (
-          <CopyDashboardFormConnected
-            onSubmit={copy}
-            onClose={onClose}
-            onSaved={onSaved}
-            collections={collections}
-            {...props}
-          />
-        );
-      case "questions":
-        return (
-          <CopyQuestionForm
-            onSubmit={copy}
-            onClose={onClose}
-            onSaved={onSaved}
-            collections={collections}
-            {...props}
-          />
-        );
-    }
-  };
-
   return (
     <ModalContent
       title={title || t`Duplicate "${resolvedObject.name}"`}
       onClose={onClose}
     >
-      {!collections?.length ? (
-        <Flex justify="center" p="lg">
-          <Loader />
-        </Flex>
-      ) : (
-        renderForm({ ...props, initialValues })
+      {entityType === "dashboards" && (
+        <CopyDashboardFormConnected
+          onSubmit={copy}
+          onClose={onClose}
+          onSaved={onSaved}
+          initialValues={initialValues}
+          {...props}
+          originalDashboardId={resolvedObject.id}
+        />
+      )}
+      {entityType === "questions" && (
+        <CopyQuestionForm
+          onSubmit={copy}
+          onCancel={onClose}
+          onSaved={onSaved}
+          initialValues={initialValues}
+          model={entityObject?.type}
+          {...props}
+        />
       )}
     </ModalContent>
   );

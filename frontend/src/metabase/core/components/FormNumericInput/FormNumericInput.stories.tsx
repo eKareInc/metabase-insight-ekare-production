@@ -1,15 +1,15 @@
-import type { ComponentStory } from "@storybook/react";
+import type { StoryFn } from "@storybook/react";
 
 import { Form, FormProvider } from "metabase/forms";
 
 import FormNumericInput from "./FormNumericInput";
 
 export default {
-  title: "Core/FormNumericInput",
+  title: "Components/Ask Before Using/FormNumericInput",
   component: FormNumericInput,
 };
 
-const Template: ComponentStory<typeof FormNumericInput> = args => {
+const Template: StoryFn<typeof FormNumericInput> = args => {
   const initialValues = { value: undefined };
   const handleSubmit = () => undefined;
 
@@ -22,13 +22,19 @@ const Template: ComponentStory<typeof FormNumericInput> = args => {
   );
 };
 
-export const Default = Template.bind({});
-Default.args = {
-  title: "Title",
+export const Default = {
+  render: Template,
+
+  args: {
+    title: "Title",
+  },
 };
 
-export const WithDescription = Template.bind({});
-WithDescription.args = {
-  title: "Title",
-  description: "Description",
+export const WithDescription = {
+  render: Template,
+
+  args: {
+    title: "Title",
+    description: "Description",
+  },
 };

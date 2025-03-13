@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { lighten } from "metabase/lib/colors";
@@ -16,6 +17,6 @@ export const BreadcrumbsLink = styled.a`
   transition: color 200ms;
 
   &:hover {
-    color: ${lighten("accent7", 0.2)};
+    color: ${() => lighten("accent7", 0.2)};
   }
 `;

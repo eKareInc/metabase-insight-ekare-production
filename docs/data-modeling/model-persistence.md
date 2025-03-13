@@ -8,9 +8,9 @@ title: Model persistence
 
 Metabase can persist the results of your models so that your models (and the questions based on those models) load faster.
 
-You can think of persisted models as materialized views. Metabase will store model results in tables in a bespoke schema in your data warehouse (not the Metabase application database). When people ask questions based on your models, Metabase will use those stored results instead of re-running the model's query.
+Metabase will store model results in tables in a bespoke schema in your data warehouse (not the Metabase application database). When people ask questions based on your models, Metabase will use the tables with the stored results instead of re-running the model's query.
 
-> Model persistence doesn't work with [data sandboxing](../permissions/data-sandboxes.md).
+> Model persistence doesn't work with [data sandboxing](../permissions/data-sandboxes.md) or [impersonation](../permissions/impersonation.md).
 
 ## Turn on model persistence in Metabase
 
@@ -48,24 +48,24 @@ Once you've turned on model persistence for your Metabase, you'll need to set it
 
 {% include plans-blockquote.html feature="Individual model persistence" %}
 
-You can also toggle persistence on or off for individual models. When viewing a model, click on the **...** in the upper right and select **Turn model persistence on/off** (you'll need [Curate access](../permissions/collections.md#curate-access) to the model's collection to do this).
+You can also toggle persistence on or off for individual models. When viewing a model, click on the **...** in the upper right and select **Edit settings**. Toggle **Persist model data** on (you'll need [Curate access](../permissions/collections.md#curate-access) to the model's collection to do this).
 
 Toggling persistence for individual models is useful for models with data that updates at different frequencies than the schedule you set for other models in that database, or for models that are used more or less than other models in that database.
 
 ## Refreshing a model's persisted results
 
-To refresh a model's results, go to the model and click on the **i** info icon. In the info sidebar that opens, you'll see a note about when Metabase last refreshed the model's results, and an icon to refresh the results.
+To refresh a model's results, go to the model and click on the three-dot menu (**...**) and select **Edit settings**. In the info sidebar that opens, you'll see a note about when Metabase last refreshed the model's results, and an icon to refresh the results.
 
 ## View model persistence logs
 
-You can view the logs for model caching by clicking on the **gear** icon in the upper right and selecting **Admin settings** > **Tools** > **Model caching logs**. See [Admin tools](../usage-and-performance-tools/tools.md).
+You can view the logs for model persistence by clicking on the **gear** icon in the upper right and selecting **Admin settings** > **Tools** > **Model caching logs**. See [Admin tools](../usage-and-performance-tools/tools.md).
 
 ## Difference between persisted models and caching
 
 Persisted models differ from [cached results](../configuring-metabase/caching.md):
 
-- **Models are persisted in your data warehouse, cached results are stored in the application database**. Metabase stores cached results in its application database. Metabase persists models in your connected data warehouse as materialized views.
-- **Metabase refreshes model results and invalidates cached results**. Metabase will refresh results of models according to the schedule you set. That is, Metabase will re-run the model's query and store the results in your data warehouse. For cached results of saved questions and dashboards, Metabase won't run the queries automatically; it will cached results when people view the question or dashboard, and invalidate the cached results according to the caching policy you set.
+- **Models are persisted in your data warehouse; cached results are stored in the application database**. Metabase stores cached results in its application database. Metabase persists models in your connected data warehouse as tables.
+- **Metabase refreshes model results and invalidates cached results**. Metabase will refresh results of models according to the schedule you set. That is, Metabase will re-run the model's query and store the results in your data warehouse. For cached results of saved questions and dashboards, Metabase won't run the queries automatically; it will cache results when people view the question or dashboard, and invalidate the cached results according to the caching policy you set.
 
 ## Further reading
 

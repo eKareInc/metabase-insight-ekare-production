@@ -2,7 +2,6 @@ import fetchMock from "fetch-mock";
 import type { LocationDescriptorObject } from "history";
 
 import { createMockEntitiesState } from "__support__/store";
-import * as alert from "metabase/alert/alert";
 import Databases from "metabase/entities/databases";
 import Snippets from "metabase/entities/snippets";
 import * as CardLib from "metabase/lib/card";
@@ -13,7 +12,6 @@ import { getMetadata } from "metabase/selectors/metadata";
 import * as Lib from "metabase-lib";
 import Question from "metabase-lib/v1/Question";
 import type NativeQuery from "metabase-lib/v1/queries/NativeQuery";
-import type StructuredQuery from "metabase-lib/v1/queries/StructuredQuery";
 import type {
   Card,
   DatabaseId,
@@ -25,20 +23,21 @@ import type {
 } from "metabase-types/api";
 import { createMockSegment, createMockUser } from "metabase-types/api/mocks";
 import {
-  createSampleDatabase,
-  createAdHocCard,
-  createSavedStructuredCard,
-  createAdHocNativeCard,
-  createSavedNativeCard,
-  createStructuredModelCard,
-  createNativeModelCard,
   ORDERS_ID,
   SAMPLE_DB_ID,
+  createAdHocCard,
+  createAdHocNativeCard,
+  createNativeModelCard,
+  createSampleDatabase,
+  createSavedNativeCard,
+  createSavedStructuredCard,
+  createStructuredModelCard,
 } from "metabase-types/api/mocks/presets";
 import { createMockState } from "metabase-types/store/mocks";
 
 import * as querying from "../querying";
 
+import * as cardActions from "./card";
 import * as core from "./core";
 import { initializeQB } from "./initializeQB";
 
@@ -131,7 +130,9 @@ async function setup({
     fetchMock.get(`path:/api/card/${card.id}`, card);
   }
 
-  jest.spyOn(CardLib, "loadCard").mockReturnValue(Promise.resolve({ ...card }));
+  jest
+    .spyOn(cardActions, "loadCard")
+    .mockReturnValue(Promise.resolve({ ...card }));
 
   return baseSetup({ location, params, ...opts });
 }
@@ -318,17 +319,6 @@ describe("QB Actions > initializeQB", () => {
       const { card, questionType } = testCase;
 
       describe(questionType, () => {
-        it("fetches alerts", async () => {
-          const fetchAlertsForQuestionSpy = jest.spyOn(
-            alert,
-            "fetchAlertsForQuestion",
-          );
-
-          await setup({ card: card });
-
-          expect(fetchAlertsForQuestionSpy).toHaveBeenCalledWith(card.id);
-        });
-
         it("passes object ID from params correctly", async () => {
           const params = getQueryParamsForCard(card, { objectId: 123 });
           const { result } = await setup({ card: card, params });
@@ -440,7 +430,7 @@ describe("QB Actions > initializeQB", () => {
         fetchMock.get(`path:/api/card/${originalCard.id}`, originalCard);
 
         jest
-          .spyOn(CardLib, "loadCard")
+          .spyOn(cardActions, "loadCard")
           .mockReturnValueOnce(Promise.resolve({ ...originalCard }));
 
         return setup({ card: q, ...opts });
@@ -478,17 +468,6 @@ describe("QB Actions > initializeQB", () => {
         it("does not lock question display", async () => {
           const { result } = await setup({ card: card });
           expect(result.card.displayIsLocked).toBeFalsy();
-        });
-
-        it("does not try to fetch alerts", async () => {
-          const fetchAlertsForQuestionSpy = jest.spyOn(
-            alert,
-            "fetchAlertsForQuestion",
-          );
-
-          await setup({ card: card });
-
-          expect(fetchAlertsForQuestionSpy).not.toHaveBeenCalled();
         });
 
         it("does not show qbnewb modal", async () => {
@@ -703,9 +682,7 @@ describe("QB Actions > initializeQB", () => {
       });
 
       const question = new Question(result.card, metadata);
-      const query = question.legacyQuery({
-        useStructuredQuery: true,
-      }) as StructuredQuery;
+      const query = question.query();
 
       return {
         question,
@@ -740,9 +717,11 @@ describe("QB Actions > initializeQB", () => {
 
     it("applies 'segment' param correctly", async () => {
       const { query } = await setupOrdersTable({ segment: SEGMENT.id });
-      const [filter] = query.filters();
+      const stageIndex = -1;
+      const [filter] = Lib.filters(query, stageIndex);
+      const filterInfo = Lib.displayInfo(query, stageIndex, filter);
 
-      expect(filter.raw()).toEqual(["segment", SEGMENT.id]);
+      expect(filterInfo.displayName).toEqual(SEGMENT.name);
     });
 
     it("fetches question metadata", async () => {
@@ -768,17 +747,6 @@ describe("QB Actions > initializeQB", () => {
     it("does not lock question display", async () => {
       const { result } = await setupOrdersTable();
       expect(result.card.displayIsLocked).toBeFalsy();
-    });
-
-    it("does not try to fetch alerts", async () => {
-      const fetchAlertsForQuestionSpy = jest.spyOn(
-        alert,
-        "fetchAlertsForQuestion",
-      );
-
-      await setupOrdersTable();
-
-      expect(fetchAlertsForQuestionSpy).not.toHaveBeenCalled();
     });
 
     it("does not show qbnewb modal", async () => {

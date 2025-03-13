@@ -1,27 +1,15 @@
 import * as Tippy from "@tippyjs/react";
-import PropTypes from "prop-types";
-import { useMemo } from "react";
+import cx from "classnames";
 import * as React from "react";
+import { useMemo } from "react";
 import * as ReactIs from "react-is";
 
-import { EMBEDDING_SDK_ROOT_ELEMENT_ID } from "embedding-sdk/config";
-import { DEFAULT_Z_INDEX } from "metabase/components/Popover/constants";
+import ZIndex from "metabase/css/core/z-index.module.css";
+import { EMBEDDING_SDK_PORTAL_ROOT_ELEMENT_ID } from "metabase/embedding-sdk/config";
 import { isReducedMotionPreferred } from "metabase/lib/dom";
 import { isReactDOMTypeElement } from "metabase-types/guards";
 
 const TippyComponent = Tippy.default;
-
-Tooltip.propTypes = {
-  tooltip: PropTypes.node,
-  children: PropTypes.node,
-  reference: PropTypes.instanceOf(Element),
-  placement: PropTypes.string,
-  isEnabled: PropTypes.bool,
-  isOpen: PropTypes.bool,
-  isPadded: PropTypes.bool,
-  offset: PropTypes.oneOfType([PropTypes.array, PropTypes.func]),
-  maxWidth: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-};
 
 export interface TooltipProps
   extends Partial<
@@ -37,6 +25,7 @@ export interface TooltipProps
   isOpen?: boolean;
   maxWidth?: string | number | undefined;
   isPadded?: boolean;
+  className?: string;
 }
 
 // Tippy relies on child nodes forwarding refs, so when `children` is neither
@@ -62,7 +51,8 @@ function getTargetProps(
 
 function appendTo() {
   return (
-    document.getElementById(EMBEDDING_SDK_ROOT_ELEMENT_ID) || document.body
+    document.getElementById(EMBEDDING_SDK_PORTAL_ROOT_ELEMENT_ID) ||
+    document.body
   );
 }
 
@@ -81,6 +71,7 @@ function Tooltip({
   isPadded = true,
   preventOverflow = false,
   maxWidth = 300,
+  className,
 }: TooltipProps) {
   const visible = isOpen != null ? isOpen : undefined;
   const animationDuration = isReducedMotionPreferred() ? 0 : undefined;
@@ -108,11 +99,14 @@ function Tooltip({
   // Tippy theming API: https://atomiks.github.io/tippyjs/v6/themes/
   const theme = `tooltip ${isPadded ? "" : "no-padding"}`;
 
+  const zIndex = "var(--mb-overlay-z-index)" as unknown as number;
+
   if (tooltip && targetProps) {
     return (
       <TippyComponent
         theme={theme}
-        className="popover"
+        className={cx("popover", ZIndex.Overlay, className)}
+        zIndex={zIndex}
         appendTo={appendTo}
         content={tooltip}
         visible={visible}
@@ -123,7 +117,6 @@ function Tooltip({
         delay={delay}
         placement={placement}
         offset={offset}
-        zIndex={DEFAULT_Z_INDEX}
         popperOptions={popperOptions}
         {...targetProps}
       />

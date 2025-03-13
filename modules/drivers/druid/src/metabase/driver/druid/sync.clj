@@ -53,11 +53,9 @@
   {:pre [(map? (:details database))]}
   (ssh/with-ssh-tunnel [details-with-tunnel (:details database)]
     (let [druid-datasources (druid.client/GET (druid.client/details->url details-with-tunnel "/druid/v2/datasources")
-                             :auth-enabled     (-> database :details :auth-enabled)
-                             :auth-username    (-> database :details :auth-username)
-                             :auth-token-value (-> (:details database)
-                                                   (secret/db-details-prop->secret-map "auth-token")
-                                                   secret/value->string))]
+                                              :auth-enabled     (-> database :details :auth-enabled)
+                                              :auth-username    (-> database :details :auth-username)
+                                              :auth-token-value (secret/value-as-string :druid (:details database) "auth-token"))]
       {:tables (set (for [table-name druid-datasources]
                       {:schema nil, :name table-name}))})))
 
@@ -66,5 +64,8 @@
   [database]
   {:pre [(map? (:details database))]}
   (ssh/with-ssh-tunnel [details-with-tunnel (:details database)]
-    (-> (druid.client/GET (druid.client/details->url details-with-tunnel "/status"))
+    (-> (druid.client/GET (druid.client/details->url details-with-tunnel "/status")
+                          :auth-enabled     (-> database :details :auth-enabled)
+                          :auth-username    (-> database :details :auth-username)
+                          :auth-token-value (secret/value-as-string :druid (:details database) "auth-token"))
         (select-keys [:version]))))

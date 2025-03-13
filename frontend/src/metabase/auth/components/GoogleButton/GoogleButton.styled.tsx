@@ -1,7 +1,7 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import Link from "metabase/core/components/Link";
-import { color } from "metabase/lib/colors";
 
 export const GoogleButtonRoot = styled.div`
   display: flex;
@@ -21,7 +21,7 @@ export const AuthErrorRoot = styled.div`
 
 export const TextLink = styled(Link)`
   cursor: pointer;
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-dark);
 
   &:hover {
     color: var(--mb-color-brand);

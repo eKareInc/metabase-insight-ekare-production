@@ -142,9 +142,16 @@
                     ;; top-level transaction, commit
                     (.commit connection))
                   result)
-                (catch Throwable e
-                  (.rollback connection savepoint)
-                  (throw e)))))]
+                (catch Throwable txn-e
+                  (try
+                    (.rollback connection savepoint)
+                    (catch Exception rollback-e
+                      (throw (ex-info
+                              (str "Error rolling back after previous error: " (ex-message txn-e))
+                              {:rollback-error rollback-e}
+                              txn-e))))
+
+                  (throw txn-e)))))]
     ;; optimization: don't set and unset autocommit if it's already false
     (if (.getAutoCommit connection)
       (try
@@ -155,9 +162,9 @@
       (thunk))))
 
 (comment
- ;; in toucan2.jdbc.connection, there is a 'defmethod' for t2.conn/do-with-transaction java.sql.Connection
- ;; since we don't want our implementation to be overwritten, we need to require it here first before defininng ours
- t2.jdbc.conn/keepme)
+  ;; in toucan2.jdbc.connection, there is a 'defmethod' for t2.conn/do-with-transaction java.sql.Connection
+  ;; since we don't want our implementation to be overwritten, we need to require it here first before defininng ours
+  t2.jdbc.conn/keepme)
 
 (methodical/defmethod t2.conn/do-with-transaction java.sql.Connection
   "Support nested transactions without introducing a lock like `next.jdbc` does, as that can cause deadlocks -- see
@@ -175,19 +182,18 @@
   [^java.sql.Connection connection {:keys [nested-transaction-rule] :or {nested-transaction-rule :allow} :as options} f]
   (assert (#{:allow :ignore :prohibit} nested-transaction-rule))
   (cond
-   (and (pos? *transaction-depth*)
-        (= nested-transaction-rule :ignore))
-   (f connection)
+    (and (pos? *transaction-depth*)
+         (= nested-transaction-rule :ignore))
+    (f connection)
 
-   (and (pos? *transaction-depth*)
-        (= nested-transaction-rule :prohibit))
-   (throw (ex-info "Attempted to create nested transaction with :nested-transaction-rule set to :prohibit"
-                   {:options options}))
+    (and (pos? *transaction-depth*)
+         (= nested-transaction-rule :prohibit))
+    (throw (ex-info "Attempted to create nested transaction with :nested-transaction-rule set to :prohibit"
+                    {:options options}))
 
-   :else
-   (binding [*transaction-depth* (inc *transaction-depth*)]
-     (do-transaction connection f))))
-
+    :else
+    (binding [*transaction-depth* (inc *transaction-depth*)]
+      (do-transaction connection f))))
 
 (methodical/defmethod t2.pipeline/transduce-query :before :default
   "Make sure application database calls are not done inside core.async dispatch pool threads. This is done relatively

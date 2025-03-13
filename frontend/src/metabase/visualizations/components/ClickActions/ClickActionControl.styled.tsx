@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import Button from "metabase/core/components/Button";
@@ -6,7 +7,6 @@ import { Icon, rem } from "metabase/ui";
 
 export const ClickActionButtonIcon = styled(Icon)`
   margin-right: 0.2rem;
-  color: var(--mb-color-brand);
   transition: all 200ms linear;
 `;
 
@@ -16,12 +16,11 @@ export const ClickActionButtonTextIcon = styled.span`
   text-align: center;
   font-weight: 700;
   font-size: 1.25rem;
-  color: var(--mb-color-brand);
   transition: all 200ms linear;
 `;
 
 export const Subtitle = styled.div`
-  color: ${({ theme }) => theme.fn.themeColor("text-light")};
+  color: var(--mb-color-text-light);
   font-weight: normal;
   margin-left: 1rem;
 `;
@@ -35,7 +34,7 @@ export const TokenFilterActionButton = styled(Button)`
   border-radius: 100px;
 
   &:hover {
-    color: ${({ theme }) => theme.fn.themeColor("white")};
+    color: var(--mb-color-text-white);
     background-color: var(--mb-color-brand);
     border-color: var(--mb-color-brand);
   }
@@ -50,7 +49,7 @@ export const TokenActionButton = styled(Button)`
   border-radius: 100px;
 
   &:hover {
-    color: ${({ theme }) => theme.fn.themeColor("white")};
+    color: var(--mb-color-text-white);
     background-color: var(--mb-color-brand);
     border-color: var(--mb-color-brand);
   }
@@ -60,14 +59,12 @@ export const SortControl = styled(Button)`
   color: var(--mb-color-brand);
   border: 1px solid ${({ theme }) => alpha(theme.fn.themeColor("brand"), 0.35)};
   line-height: 1;
-
   font-size: 0.75rem;
-
   padding: 0.1875rem 0.875rem 0.0625rem;
   border-radius: 100px;
 
   &:hover {
-    color: ${({ theme }) => theme.fn.themeColor("white")};
+    color: var(--mb-color-text-white);
     background-color: var(--mb-color-brand);
     border-color: var(--mb-color-brand);
   }
@@ -77,7 +74,6 @@ export const FormattingControl = styled(Button)`
   color: ${({ theme }) => alpha(theme.fn.themeColor("text-light"), 0.65)};
   margin-left: auto;
   line-height: 1;
-
   border: none;
   padding: 0.125rem 0.25rem;
 
@@ -88,7 +84,7 @@ export const FormattingControl = styled(Button)`
 `;
 
 export const InfoControl = styled.div`
-  color: ${({ theme }) => theme.fn.themeColor("text-dark")};
+  color: var(--mb-color-text-dark);
   font-weight: bold;
   line-height: 1.5rem;
   max-width: 10.75rem;

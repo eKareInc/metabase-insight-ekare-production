@@ -8,15 +8,14 @@ import Databases from "metabase/entities/databases";
 import SidebarContent from "metabase/query_builder/components/SidebarContent";
 
 import {
+  NodeListItemIcon,
   NodeListItemLink,
   NodeListItemName,
-  NodeListItemIcon,
-} from "./NodeList.styled";
-import { PaneContent } from "./Pane.styled";
+} from "./NodeList";
 
-const MainPane = ({ databases, onClose, onItemClick }) => (
-  <SidebarContent title={t`Data Reference`} onClose={onClose}>
-    <PaneContent>
+const MainPane = ({ databases, onClose, onItemClick, onBack }) => (
+  <SidebarContent title={t`Data Reference`} onClose={onClose} onBack={onBack}>
+    <SidebarContent.Pane>
       <p className={cx(CS.mt2, CS.mb3, CS.textSpaced)}>
         {t`Browse the contents of your databases, tables, and columns. Pick a database to get started.`}
       </p>
@@ -33,13 +32,14 @@ const MainPane = ({ databases, onClose, onItemClick }) => (
             </li>
           ))}
       </ul>
-    </PaneContent>
+    </SidebarContent.Pane>
   </SidebarContent>
 );
 
 MainPane.propTypes = {
   databases: PropTypes.array,
-  onClose: PropTypes.func.isRequired,
+  onClose: PropTypes.func,
+  onBack: PropTypes.func,
   onItemClick: PropTypes.func.isRequired,
 };
 

@@ -1,9 +1,15 @@
-import { popover, queryBuilderMain } from "e2e/support/helpers";
+import {
+  popover,
+  queryBuilderMain,
+  selectDropdown,
+  tableHeaderColumn,
+} from "e2e/support/helpers";
 
 /**
  * Initiate Summarize action
  *
- * @param {(undefined|"notebook")} mode
+ * @param {Object} options
+ * @param {("notebook"|undefined)} options.mode
  */
 export function summarize({ mode } = {}) {
   initiateAction("Summarize", mode);
@@ -64,16 +70,17 @@ export function filterFieldPopover(
   { value, placeholder, order } = {},
 ) {
   getFilterField(fieldName, order).within(() => {
-    cy.get("input").last().click();
+    cy.findByRole("combobox").click();
   });
 
   if (value) {
-    changeValue(popover(), value, placeholder);
+    changeValue(selectDropdown(), value, placeholder);
   }
-  return popover();
+  return selectDropdown();
 }
 
 function getFilterField(fieldName, order = 0) {
+  // eslint-disable-next-line no-unsafe-element-filtering
   return cy.findAllByTestId(`filter-column-${fieldName}`).eq(order);
 }
 
@@ -158,7 +165,7 @@ export function assertJoinValid({
 
   // Ensure the results have columns from both tables
   queryBuilderMain().within(() => {
-    cy.findByText(lhsSampleColumn).should("be.visible");
-    cy.findByText(rhsSampleColumn).should("be.visible");
+    tableHeaderColumn(lhsSampleColumn).should("be.visible");
+    tableHeaderColumn(rhsSampleColumn).should("be.visible");
   });
 }

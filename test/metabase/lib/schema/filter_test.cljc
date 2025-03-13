@@ -2,10 +2,10 @@
   (:require
    [clojure.test :refer [are deftest is testing]]
    [clojure.walk :as walk]
-   [malli.core :as mc]
    [malli.error :as me]
    [metabase.lib.schema]
-   [metabase.lib.schema.expression :as expression]))
+   [metabase.lib.schema.expression :as expression]
+   [metabase.util.malli.registry :as mr]))
 
 (comment metabase.lib.schema/keep-me)
 
@@ -71,40 +71,43 @@
            [:time-interval field :last :hour]
            [:time-interval field 4 :hour]
            [:time-interval {:include-current true} field :next :day]
+           [:relative-time-interval field 10 :day 10 :day]
            [:segment 1]]]
       (doseq [op (filter-ops filter-expr)]
-          (is (not (identical? (get-method expression/type-of-method op)
-        (testing (str op " is a registered MBQL clause (a type-of-method method is registered for it)")
+        (is (not (identical? (get-method expression/type-of-method op)
+                             (testing (str op " is a registered MBQL clause (a type-of-method method is registered for it)")
                                (get-method expression/type-of-method :default))))))
       ;; test all the subclauses of `filter-expr` above individually. If something gets broken this is easier to debug
       (doseq [filter-clause (rest filter-expr)
               :let          [filter-clause (ensure-uuids filter-clause)]]
         (testing (pr-str filter-clause)
-          (is (= (expression/type-of filter-clause) :type/Boolean))
-          (is (not (me/humanize (mc/explain ::expression/boolean filter-clause))))))
+          (is (= :type/Boolean
+                 (expression/type-of filter-clause)))
+          (is (not (me/humanize (mr/explain ::expression/boolean filter-clause))))))
       ;; now test the entire thing
-      (is (mc/validate ::expression/boolean (ensure-uuids filter-expr))))))
+      (is (mr/validate ::expression/boolean (ensure-uuids filter-expr))))))
 
 (deftest ^:parallel invalid-filter-test
-  (testing "invalid filters"
-    (are [clause] (mc/explain
-                   ::expression/boolean
-                   (ensure-uuids clause))
-      ;; xor doesn't exist
-      [:xor 13 [:field 1 {:lib/uuid (str (random-uuid))}]]
-      ;; 1 is not a valid <string> arg
-      [:contains "abc" 1])))
+  (binding [expression/*suppress-expression-type-check?* false]
+    (testing "invalid filters"
+      (are [clause] (mr/explain
+                     ::expression/boolean
+                     (ensure-uuids clause))
+        ;; xor doesn't exist
+        [:xor 13 [:field 1 {:lib/uuid (str (random-uuid))}]]
+        ;; 1 is not a valid <string> arg
+        [:contains "abc" 1]))))
 
 (deftest ^:parallel mongo-types-test
   (testing ":type/MongoBSONID"
     (let [bson-field [:field {:base-type :type/MongoBSONID :effective-type :type/MongoBSONID} 1]]
       (testing "is comparable"
-        (is (mc/validate ::expression/boolean (ensure-uuids [:= {} bson-field "abc"]))))
+        (is (mr/validate ::expression/boolean (ensure-uuids [:= {} bson-field "abc"]))))
       (testing "is empty"
-        (is (mc/validate ::expression/boolean (ensure-uuids [:is-empty {} bson-field]))))
+        (is (mr/validate ::expression/boolean (ensure-uuids [:is-empty {} bson-field]))))
       (testing "not empty"
-        (is (mc/validate ::expression/boolean (ensure-uuids [:not-empty {} bson-field]))))))
+        (is (mr/validate ::expression/boolean (ensure-uuids [:not-empty {} bson-field]))))))
   (testing ":type/Array"
     (let [bson-field [:field {:base-type :type/Array :effective-type :type/Array} 1]]
       (testing "is comparable"
-        (is (mc/validate ::expression/boolean (ensure-uuids [:= {} bson-field "abc"])))))))
+        (is (mr/validate ::expression/boolean (ensure-uuids [:= {} bson-field "abc"])))))))

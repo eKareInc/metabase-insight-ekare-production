@@ -2,16 +2,14 @@ import { useMemo } from "react";
 import { Link } from "react-router";
 import { t } from "ttag";
 
+import { useDocsUrl } from "metabase/common/hooks";
 import CS from "metabase/css/core/index.css";
-import MetabaseSettings from "metabase/lib/settings";
 import { Select } from "metabase/ui";
 import type { TemplateTag } from "metabase-types/api";
 
-import {
-  ContainerLabel,
-  ErrorSpan,
-  InputContainer,
-} from "./TagEditorParam.styled";
+import type { WidgetOption } from "../types";
+
+import { ContainerLabel, ErrorSpan, InputContainer } from "./TagEditorParam";
 
 export function FilterWidgetTypeSelect({
   tag,
@@ -22,7 +20,7 @@ export function FilterWidgetTypeSelect({
   tag: TemplateTag;
   value: string;
   onChange: (widgetType: string) => void;
-  options: { name?: string; type: string }[];
+  options: WidgetOption[];
 }) {
   const hasOptions = options.length > 0;
   const hasNoWidgetType = tag["widget-type"] === "none" || !tag["widget-type"];
@@ -31,11 +29,17 @@ export function FilterWidgetTypeSelect({
     () =>
       (hasOptions ? options : [{ name: t`None`, type: "none" }]).map(
         option => ({
-          label: option.name,
+          label: option.menuName ?? option.name ?? option.type,
           value: option.type,
         }),
       ),
     [hasOptions, options],
+  );
+
+  // eslint-disable-next-line no-unconditional-metabase-links-render -- It's hard to tell if this is still used in the app. Please see https://metaboat.slack.com/archives/C505ZNNH4/p1703243785315819
+  const { url: docsUrl } = useDocsUrl(
+    "questions/native-editor/sql-parameters",
+    { anchor: "the-field-filter-variable-type" },
   );
 
   return (
@@ -59,15 +63,7 @@ export function FilterWidgetTypeSelect({
       {!hasOptions && (
         <p>
           {t`There aren't any filter widgets for this type of field yet.`}{" "}
-          <Link
-            // eslint-disable-next-line no-unconditional-metabase-links-render -- It's hard to tell if this is still used in the app. Please see https://metaboat.slack.com/archives/C505ZNNH4/p1703243785315819
-            to={MetabaseSettings.docsUrl(
-              "questions/native-editor/sql-parameters",
-              "the-field-filter-variable-type",
-            )}
-            target="_blank"
-            className={CS.link}
-          >
+          <Link to={docsUrl} target="_blank" className={CS.link}>
             {t`Learn more`}
           </Link>
         </p>

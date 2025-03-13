@@ -1,12 +1,12 @@
 (ns metabase.lib.temporal-bucket-test
   (:require
+   #?@(:cljs ([metabase.test-runner.assert-exprs.approximately-equal]))
    [clojure.test :refer [are deftest is testing]]
    [medley.core :as m]
    [metabase.lib.core :as lib]
    [metabase.lib.temporal-bucket :as lib.temporal-bucket]
    [metabase.lib.test-metadata :as meta]
-   [metabase.lib.test-util :as lib.tu]
-   #?@(:cljs ([metabase.test-runner.assert-exprs.approximately-equal]))))
+   [metabase.lib.test-util :as lib.tu]))
 
 #?(:cljs (comment metabase.test-runner.assert-exprs.approximately-equal/keep-me))
 
@@ -15,46 +15,46 @@
     (testing unit
       (are [n expected] (= expected
                            (lib.temporal-bucket/describe-temporal-interval n unit))
-        -2 "Previous 2 Days"
+        -2 "Previous 2 days"
         -1 "Yesterday"
         0  "Today"
         1  "Tomorrow"
-        2  "Next 2 Days")))
+        2  "Next 2 days")))
   (testing :month
     (are [n expected] (= expected
                          (lib.temporal-bucket/describe-temporal-interval n :month))
-      -2 "Previous 2 Months"
-      -1 "Previous Month"
-      0  "This Month"
-      1  "Next Month"
-      2  "Next 2 Months"))
+      -2 "Previous 2 months"
+      -1 "Previous month"
+      0  "This month"
+      1  "Next month"
+      2  "Next 2 months"))
   (testing "unknown unit"
     (are [n expected] (= expected
                          (lib.temporal-bucket/describe-temporal-interval n :century))
-      -2 "Previous 2 Century"
-      -1 "Previous Century"
-      0  "This Century"
-      1  "Next Century"
-      2  "Next 2 Century")))
+      -2 "Previous 2 unknown units"
+      -1 "Previous unknown unit"
+      0  "This unknown unit"
+      1  "Next unknown unit"
+      2  "Next 2 unknown units")))
 
 (deftest ^:parallel describe-relative-datetime-test
   (doseq [unit [:day nil]]
     (testing unit
       (are [n expected] (= expected
                            (lib.temporal-bucket/describe-relative-datetime n unit))
-        -2 "2 days ago"
-        -1 "1 day ago"
-        0  "Now"
-        1  "1 day from now"
-        2  "2 days from now")))
+        -2 "starting 2 days ago"
+        -1 "starting 1 day ago"
+        0  "starting now"
+        1  "starting 1 day from now"
+        2  "starting 2 days from now")))
   (testing "unknown unit"
     (are [n expected] (= expected
                          (lib.temporal-bucket/describe-relative-datetime n :century))
-      -2 "2 century ago"
-      -1 "1 century ago"
-      0  "Now"
-      1  "1 century from now"
-      2  "2 century from now")))
+      -2 "starting 2 unknown units ago"
+      -1 "starting 1 unknown unit ago"
+      0  "starting now"
+      1  "starting 1 unknown unit from now"
+      2  "starting 2 unknown units from now")))
 
 (deftest ^:parallel describe-temporal-unit-test
   (is (= ""
@@ -110,21 +110,21 @@
                          :minute-of-hour :hour-of-day
                          :day-of-week :day-of-month :day-of-year
                          :week-of-year :month-of-year :quarter-of-year}
-        expected-defaults [{:lib/type :option/temporal-bucketing, :unit :day, :default true}]]
+        expected-defaults [{:lib/type :option/temporal-bucketing, :unit :month, :default true}]]
     (testing "missing fingerprint"
       (let [column (dissoc column :fingerprint)
             options (lib.temporal-bucket/available-temporal-buckets-method nil -1 column)]
-          (is (= expected-units
-                 (into #{} (map :unit) options)))
-          (is (= expected-defaults
-                 (filter :default options)))))
+        (is (= expected-units
+               (into #{} (map :unit) options)))
+        (is (= expected-defaults
+               (filter :default options)))))
     (testing "existing fingerprint"
       (doseq [[latest unit] {"2019-04-15T13:34:19.931Z" :month
                              "2017-04-15T13:34:19.931Z" :week
                              "2016-05-15T13:34:19.931Z" :day
                              "2016-04-27T13:34:19.931Z" :minute
-                             nil                        :day
-                             "garbage"                  :day}]
+                             nil                        :month
+                             "garbage"                  :month}]
         (testing latest
           (let [bounds {:earliest "2016-04-26T19:29:55.147Z"
                         :latest latest}
@@ -133,7 +133,13 @@
             (is (= expected-units
                    (into #{} (map :unit) options)))
             (is (= (assoc-in expected-defaults [0 :unit] unit)
-                   (filter :default options)))))))))
+                   (filter :default options)))))))
+    (testing "inherited-temporal-unit other than default disables a default bucket"
+      (is (not-any? :default (lib.temporal-bucket/available-temporal-buckets-method
+                              nil -1 (assoc column :inherited-temporal-unit :day)))))
+    (testing "default inherited-temporal-unit does not disable a default bucket"
+      (is (some :default (lib.temporal-bucket/available-temporal-buckets-method
+                          nil -1 (assoc column :inherited-temporal-unit :default)))))))
 
 (deftest ^:parallel temporal-bucketing-options-test
   (let [query (-> (lib/query meta/metadata-provider (meta/table-metadata :products))
@@ -158,24 +164,61 @@
                 (lib/available-temporal-buckets query)
                 (mapv #(select-keys % [:unit :default])))))))
 
+(def ^:private query-with-temporal-expression
+  (-> (lib/query meta/metadata-provider (meta/table-metadata :orders))
+      (lib/expression "NY created at"
+                      (lib/convert-timezone (meta/field-metadata :orders :created-at)
+                                            "America/New_York" "UTC"))))
+
 (deftest ^:parallel temporal-bucketing-options-expressions-test
-  (testing "There should be no bucketing options for expressions as they are not supported (#31367)"
-    (let [query (-> lib.tu/venues-query
-                    (lib/expression "myadd" (lib/+ 1 (meta/field-metadata :venues :category-id))))]
-      (is (empty? (->> (lib/returned-columns query)
-                       (m/find-first (comp #{"myadd"} :name))
-                       (lib/available-temporal-buckets query)))))))
+  (testing "Temporal bucketing should be available for Date and DateTime-valued expressions"
+    (is (=? [{:unit :minute}
+             {:unit :hour}
+             {:unit :day}
+             {:unit :week}
+             {:unit :month, :default true}
+             {:unit :quarter}
+             {:unit :year}
+             {:unit :minute-of-hour}
+             {:unit :hour-of-day}
+             {:unit :day-of-week}
+             {:unit :day-of-month}
+             {:unit :day-of-year}
+             {:unit :week-of-year}
+             {:unit :month-of-year}
+             {:unit :quarter-of-year}]
+            (->> (lib/returned-columns query-with-temporal-expression)
+                 (m/find-first (comp #{"NY created at"} :name))
+                 (lib/available-temporal-buckets query-with-temporal-expression))))))
+
+(deftest ^:parallel temporal-bucketing-get-and-set-expressions-test
+  (let [expr           (m/find-first (comp #{"NY created at"} :name)
+                                     (lib/returned-columns query-with-temporal-expression))
+        query          (-> query-with-temporal-expression
+                           (lib/aggregate (lib/count))
+                           (lib/breakout (lib/with-temporal-bucket expr :week)))
+        [breakout-ref] (lib/breakouts query)
+        [breakout-col] (lib/returned-columns query)]
+    (testing `lib/temporal-bucket
+      (testing "on `:expression` refs"
+        (is (=? {:lib/type :option/temporal-bucketing
+                 :unit     :week}
+                (lib/temporal-bucket breakout-ref))))
+      (testing "on columns"
+        (is (=? {:lib/type :option/temporal-bucketing
+                 :unit     :week}
+                (lib/temporal-bucket breakout-col)))))))
 
 (deftest ^:parallel option-raw-temporal-bucket-test
   (let [option (m/find-first #(= (:unit %) :month)
-                             (lib.temporal-bucket/available-temporal-buckets lib.tu/venues-query (meta/field-metadata :checkins :date)))]
+                             (lib.temporal-bucket/available-temporal-buckets (lib.tu/venues-query) (meta/field-metadata :checkins :date)))]
     (is (=? {:lib/type :option/temporal-bucketing}
             option))
     (is (= :month
            (lib.temporal-bucket/raw-temporal-bucket option)))))
 
 (deftest ^:parallel short-name-display-info-test
-  (let [query lib.tu/venues-query]
+  (let [query (lib.tu/venues-query)]
     (is (= {"minute"          false
             "hour"            false
             "day"             false

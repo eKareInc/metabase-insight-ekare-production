@@ -1,5 +1,8 @@
-import { isEE } from "e2e/support/helpers";
+import _ from "underscore";
 
+import { updateSetting } from "e2e/support/helpers";
+
+const { IS_ENTERPRISE } = Cypress.env();
 const HAS_SNOWPLOW = Cypress.env("HAS_SNOWPLOW_MICRO");
 const SNOWPLOW_URL = Cypress.env("SNOWPLOW_MICRO_URL");
 const SNOWPLOW_INTERVAL = 100;
@@ -7,10 +10,10 @@ const SNOWPLOW_TIMEOUT = 1000;
 
 export const describeWithSnowplow = HAS_SNOWPLOW ? describe : describe.skip;
 export const describeWithSnowplowEE =
-  HAS_SNOWPLOW && isEE ? describe : describe.skip;
+  HAS_SNOWPLOW && IS_ENTERPRISE ? describe : describe.skip;
 
 export const enableTracking = () => {
-  cy.request("PUT", "/api/setting/anon-tracking-enabled", { value: true });
+  updateSetting("anon-tracking-enabled", true);
 };
 
 export const resetSnowplow = () => {
@@ -24,19 +27,30 @@ export const blockSnowplow = () => {
 /**
  * Check for the existence of specific snowplow events.
  *
- * @param {object} eventData - object of key / value pairs you expect to see in the event
+ * @param {Object|Function} eventData - object of key / value pairs you expect to see in the event or a function that will be passed in the real event for you to do your own comparison with
  * @param {number} count - number of matching events you expect to find. defaults to 1
  */
 export const expectGoodSnowplowEvent = (eventData, count = 1) => {
+  let lastReceivedEvent = null;
+  let lastFoundEventCount = 0;
   retrySnowplowRequest(
     "micro/good",
-    ({ body }) =>
-      body.filter(snowplowEvent =>
+    ({ body }) => {
+      lastReceivedEvent = body?.[0].event?.unstruct_event?.data?.data;
+      lastFoundEventCount = body.filter(snowplowEvent =>
         isDeepMatch(
           snowplowEvent?.event?.unstruct_event?.data?.data,
           eventData,
         ),
-      ).length === count,
+      ).length;
+      return lastFoundEventCount === count;
+    },
+    () =>
+      `Expected ${count} good Snowplow events to match: ${
+        _.isFunction(eventData)
+          ? eventData.toString()
+          : JSON.stringify(eventData, null, 2)
+      }\n\nLast event found was ${JSON.stringify(lastReceivedEvent, null, 2)}\n\nLast matching event count was ${lastFoundEventCount}`,
   ).should("be.ok");
 };
 
@@ -104,15 +118,29 @@ const sendSnowplowRequest = url => {
   });
 };
 
-const retrySnowplowRequest = (url, condition, timeout = SNOWPLOW_TIMEOUT) => {
+const retrySnowplowRequest = (
+  url,
+  condition,
+  messageOrMessageFn = null,
+  timeout = SNOWPLOW_TIMEOUT,
+) => {
   return sendSnowplowRequest(url).then(response => {
     if (condition(response)) {
       return cy.wrap(response);
     } else if (timeout > 0) {
       cy.wait(SNOWPLOW_INTERVAL);
-      return retrySnowplowRequest(url, condition, timeout - SNOWPLOW_INTERVAL);
+      return retrySnowplowRequest(
+        url,
+        condition,
+        messageOrMessageFn,
+        timeout - SNOWPLOW_INTERVAL,
+      );
     } else {
-      throw new Error("Snowplow retry timeout");
+      const message =
+        typeof messageOrMessageFn === "function"
+          ? messageOrMessageFn()
+          : messageOrMessageFn;
+      throw new Error("Snowplow retry timeout " + message);
     }
   });
 };

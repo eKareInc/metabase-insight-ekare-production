@@ -1,5 +1,3 @@
-import { waitFor } from "@testing-library/react";
-
 import { setupEnterpriseTest } from "__support__/enterprise";
 import {
   setupCollectionByIdEndpoint,
@@ -10,6 +8,7 @@ import {
   queryIcon,
   renderWithProviders,
   screen,
+  waitFor,
 } from "__support__/ui";
 import { SearchResult } from "metabase/search/components/SearchResult";
 import type { WrappedResult } from "metabase/search/types";
@@ -65,7 +64,7 @@ describe("SearchResult > Collections", () => {
       });
       expect(screen.getByText("Regular Collection")).toBeInTheDocument();
       expect(getIcon("folder")).toBeInTheDocument();
-      expect(queryIcon("badge")).not.toBeInTheDocument();
+      expect(queryIcon("official_collection")).not.toBeInTheDocument();
     });
 
     it("renders official collections as regular", async () => {
@@ -80,7 +79,7 @@ describe("SearchResult > Collections", () => {
       });
       expect(screen.getByText("Official Collection")).toBeInTheDocument();
       expect(getIcon("folder")).toBeInTheDocument();
-      expect(queryIcon("badge")).not.toBeInTheDocument();
+      expect(queryIcon("official_collection")).not.toBeInTheDocument();
     });
   });
 
@@ -108,7 +107,7 @@ describe("SearchResult > Collections", () => {
 
       expect(screen.getByText("Regular Collection")).toBeInTheDocument();
       expect(getIcon("folder")).toBeInTheDocument();
-      expect(queryIcon("badge")).not.toBeInTheDocument();
+      expect(queryIcon("official_collection")).not.toBeInTheDocument();
     });
 
     it("renders official collections correctly", async () => {
@@ -124,7 +123,7 @@ describe("SearchResult > Collections", () => {
       });
 
       expect(screen.getByText("Official Collection")).toBeInTheDocument();
-      expect(getIcon("badge")).toBeInTheDocument();
+      expect(getIcon("official_collection")).toBeInTheDocument();
       expect(queryIcon("folder")).not.toBeInTheDocument();
     });
   });

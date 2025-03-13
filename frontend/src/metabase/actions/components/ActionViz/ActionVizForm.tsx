@@ -12,8 +12,8 @@ import { getDashboardType } from "metabase/dashboard/utils";
 import { ActionsApi, PublicApi } from "metabase/services";
 import type {
   ActionDashboardCard,
-  OnSubmitActionForm,
   Dashboard,
+  OnSubmitActionForm,
   ParametersForActionExecution,
   VisualizationSettings,
   WritebackAction,
@@ -138,7 +138,6 @@ function ActionVizForm({
             action={action}
             mappedParameters={mappedParameters}
             initialValues={initialValues}
-            prefetchesInitialValues={shouldPrefetch}
             title={title}
             showEmptyState={shouldPrefetch && !hasPrefetchedValues}
             showConfirmMessage={showConfirmMessage}
@@ -178,7 +177,6 @@ function ActionVizForm({
         action={action}
         mappedParameters={mappedParameters}
         initialValues={initialValues}
-        prefetchesInitialValues={shouldPrefetch}
         onSubmit={onSubmit}
         onSubmitSuccess={handleSubmitSuccess}
       />

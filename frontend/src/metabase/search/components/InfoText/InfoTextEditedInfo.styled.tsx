@@ -1,14 +1,15 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import LastEditInfoLabel from "metabase/components/LastEditInfoLabel";
-import { color } from "metabase/lib/colors";
 import { breakpointMaxSmall } from "metabase/styled-components/theme";
 
 export const LastEditedInfoText = styled(LastEditInfoLabel)`
   ${({ theme }) => {
     return css`
-      color: ${theme.fn.themeColor("text-medium")};
+      color: var(--mb-color-text-medium);
       font-size: ${theme.fontSizes.sm};
       font-weight: 500;
 
@@ -23,11 +24,10 @@ export const LastEditedInfoText = styled(LastEditInfoLabel)`
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
-
     max-width: 50%;
   }
 `;
 
 export const LastEditedInfoTooltip = styled(LastEditInfoLabel)`
-  color: ${color("white")};
+  color: var(--mb-color-text-white);
 `;

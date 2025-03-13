@@ -1,14 +1,12 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import { color, alpha, adjustBrightness } from "metabase/lib/colors";
+import { adjustBrightness, alpha, color } from "metabase/lib/colors";
 import type { MantineTheme } from "metabase/ui";
 
-import {
-  CELL_HEIGHT,
-  PIVOT_TABLE_FONT_SIZE,
-  RESIZE_HANDLE_WIDTH,
-} from "./constants";
+import { CELL_HEIGHT, RESIZE_HANDLE_WIDTH } from "./constants";
 
 export const RowToggleIconRoot = styled.div`
   display: flex;
@@ -73,7 +71,7 @@ const getCellBackgroundColor = ({
     return alpha("bg-black", 0.1);
   }
 
-  return color(backgroundColor ?? "white");
+  return color(backgroundColor ?? "bg-white");
 };
 
 const getCellHoverBackground = (
@@ -82,7 +80,7 @@ const getCellHoverBackground = (
   const { cell: cellTheme } = props.theme.other.table;
 
   if (!cellTheme.backgroundColor) {
-    return color("border");
+    return "var(--mb-color-border)";
   }
 
   const backgroundColor = getCellBackgroundColor(props);
@@ -95,14 +93,10 @@ const getColor = ({
   isNightMode,
 }: PivotTableCellProps & { theme: MantineTheme }) => {
   if (isNightMode) {
-    return color("white");
+    return color("text-white");
   }
 
   return color(theme.other.table.cell.textColor);
-};
-
-const getBorderColor = ({ isNightMode }: PivotTableCellProps) => {
-  return isNightMode ? alpha("bg-black", 0.8) : color("border");
 };
 
 export const PivotTableCell = styled.div<PivotTableCellProps>`
@@ -115,19 +109,19 @@ export const PivotTableCell = styled.div<PivotTableCellProps>`
   font-weight: ${props => (props.isBold ? "bold" : "normal")};
   cursor: ${props => (props.onClick ? "pointer" : "default")};
   color: ${getColor};
-  box-shadow: -1px 0 0 0 ${getBorderColor} inset;
+  box-shadow: -1px 0 0 0 var(--mb-color-border) inset;
   border-bottom: 1px solid
     ${props =>
       props.isBorderedHeader
         ? "var(--mb-color-bg-dark)"
-        : getBorderColor(props)};
+        : "var(--mb-color-border)"};
   background-color: ${getCellBackgroundColor};
   ${props =>
     props.hasTopBorder &&
     css`
-      // compensate the top border
+      /* compensate the top border */
       line-height: ${CELL_HEIGHT - 1}px;
-      border-top: 1px solid ${getBorderColor(props)};
+      border-top: 1px solid var(--mb-color-border) (props);
     `}
 
   &:hover {
@@ -142,7 +136,7 @@ interface PivotTableTopLeftCellsContainerProps {
 export const PivotTableTopLeftCellsContainer = styled.div<PivotTableTopLeftCellsContainerProps>`
   display: flex;
   align-items: flex-end;
-  box-shadow: -1px 0 0 0 ${getBorderColor} inset;
+  box-shadow: -1px 0 0 0 var(--mb-color-border) inset;
   background-color: ${props =>
     getCellBackgroundColor({
       isEmphasized: true,
@@ -154,23 +148,47 @@ export const PivotTableTopLeftCellsContainer = styled.div<PivotTableTopLeftCells
 interface PivotTableRootProps {
   isDashboard?: boolean;
   isNightMode?: boolean;
+  shouldOverflow?: boolean;
+  shouldHideScrollbars?: boolean;
 }
 
 export const PivotTableRoot = styled.div<PivotTableRootProps>`
   height: 100%;
-  font-size: ${PIVOT_TABLE_FONT_SIZE};
+  overflow-y: hidden;
+  overflow-x: ${props => (props.shouldOverflow ? "auto" : "hidden")};
+  font-size: ${({ theme }) => theme.other.pivotTable.cell.fontSize};
 
   ${props =>
     props.isDashboard
       ? css`
-          border-top: 1px solid ${getBorderColor(props)};
+          border-top: 1px solid var(--mb-color-border) (props);
+        `
+      : null}
+
+  ${props =>
+    props.shouldHideScrollbars
+      ? css`
+          & {
+            user-select: none;
+          }
+
+          &::-webkit-scrollbar,
+          & *::-webkit-scrollbar {
+            display: none;
+          }
+
+          &,
+          & * {
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE and Edge */
+          }
         `
       : null}
 `;
 
 export const PivotTableSettingLabel = styled.span`
   font-weight: 700;
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-dark);
 `;
 
 export const ResizeHandle = styled.div`
@@ -180,7 +198,6 @@ export const ResizeHandle = styled.div`
   bottom: 0;
   left: -${RESIZE_HANDLE_WIDTH - 1}px;
   width: ${RESIZE_HANDLE_WIDTH}px;
-
   cursor: ew-resize;
 
   &:active {

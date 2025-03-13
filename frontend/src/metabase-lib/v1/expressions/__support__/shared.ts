@@ -1,17 +1,21 @@
 import { createMockMetadata } from "__support__/metadata";
 import { checkNotNull } from "metabase/lib/types";
+import { createQuery, createQueryWithClauses } from "metabase-lib/test-helpers";
+import type { Expression } from "metabase-types/api";
 import { createMockSegment } from "metabase-types/api/mocks";
 import {
+  ORDERS,
+  ORDERS_ID,
+  PEOPLE,
+  PRODUCTS,
   createOrdersTable,
   createPeopleTable,
   createProductsTable,
   createReviewsTable,
   createSampleDatabase,
-  ORDERS,
-  ORDERS_ID,
-  PEOPLE,
-  PRODUCTS,
 } from "metabase-types/api/mocks/presets";
+
+import type { FormatOptions } from "../formatter";
 
 const SEGMENT_ID = 1;
 
@@ -55,9 +59,17 @@ const userName = checkNotNull(metadata.field(ORDERS.USER_ID))
 
 const segment = checkNotNull(metadata.segment(SEGMENT_ID)).filterClause();
 
-const legacyQuery = checkNotNull(metadata.table(ORDERS_ID)).legacyQuery({
-  foo: 42,
+export const query = createQueryWithClauses({
+  query: createQuery({ metadata }),
+  expressions: [
+    {
+      name: "foo",
+      operator: "+",
+      args: [1, 2],
+    },
+  ],
 });
+const stageIndex = -1;
 
 // shared test cases used in compile, formatter, and syntax tests:
 //
@@ -65,7 +77,7 @@ const legacyQuery = checkNotNull(metadata.table(ORDERS_ID)).legacyQuery({
 //
 // (if mbql is `null` then expression should NOT compile)
 //
-const expression = [
+const expression: TestCase[] = [
   ["1", 1, "number literal"],
   ["1 + -1", ["+", 1, -1], "negative number literal"],
   ["1 * 2 + 3", ["+", ["*", 1, 2], 3], "operators ordered by precedence"],
@@ -115,6 +127,18 @@ const expression = [
       { default: "OK" },
     ],
     "case statement with default",
+  ],
+  [
+    'if([Total] > 10, "GOOD", [Total] < 5, "BAD", "OK")',
+    [
+      "if",
+      [
+        [[">", total, 10], "GOOD"],
+        [["<", total, 5], "BAD"],
+      ],
+      { default: "OK" },
+    ],
+    "if statement with default",
   ],
   // should not compile:
   // ["\"Hell\" + 1", null, "adding a string to a number"],
@@ -186,9 +210,111 @@ const expression = [
     ],
     "should handle priority for addition and subtraction with parenthesis",
   ],
+
+  [
+    'contains([Product → Ean], "A", "B")',
+    [
+      "contains",
+      {},
+      ["field", PRODUCTS.EAN, { "source-field": ORDERS.PRODUCT_ID }],
+      "A",
+      "B",
+    ],
+    "should handle contains with multiple arguments and empty options",
+  ],
+
+  [
+    'contains([Product → Ean], "A", "B", "case-insensitive")',
+    [
+      "contains",
+      { "case-sensitive": false },
+      ["field", PRODUCTS.EAN, { "source-field": ORDERS.PRODUCT_ID }],
+      "A",
+      "B",
+    ],
+    "should handle contains with multiple arguments and non-empty options",
+  ],
+
+  [
+    'doesNotContain([User → Name], "A", "B", "C")',
+    [
+      "does-not-contain",
+      {},
+      ["field", PEOPLE.NAME, { "source-field": ORDERS.USER_ID }],
+      "A",
+      "B",
+      "C",
+    ],
+    "should handle doesNotContain with multiple arguments and empty options",
+  ],
+
+  [
+    'doesNotContain([User → Name], "A", "B", "C", "case-insensitive")',
+    [
+      "does-not-contain",
+      { "case-sensitive": false },
+      ["field", PEOPLE.NAME, { "source-field": ORDERS.USER_ID }],
+      "A",
+      "B",
+      "C",
+    ],
+    "should handle doesNotContain with multiple arguments and empty options",
+  ],
+
+  [
+    'startsWith([Product → Category], "A", "B")',
+    [
+      "starts-with",
+      {},
+      ["field", PRODUCTS.CATEGORY, { "source-field": ORDERS.PRODUCT_ID }],
+      "A",
+      "B",
+    ],
+    "should handle startsWith with multiple arguments and empty options",
+  ],
+
+  [
+    'startsWith([Product → Category], "A", "B", "case-insensitive")',
+    [
+      "starts-with",
+      { "case-sensitive": false },
+      ["field", PRODUCTS.CATEGORY, { "source-field": ORDERS.PRODUCT_ID }],
+      "A",
+      "B",
+    ],
+    "should handle startsWith with multiple arguments and non-empty options",
+  ],
+
+  [
+    'endsWith([User → Email], "A", "B", "C", "D")',
+    [
+      "ends-with",
+      {},
+      ["field", PEOPLE.EMAIL, { "source-field": ORDERS.USER_ID }],
+      "A",
+      "B",
+      "C",
+      "D",
+    ],
+    "should handle endsWith with multiple arguments and empty options",
+  ],
+
+  [
+    'endsWith([User → Email], "A", "B", "C", "D", "case-insensitive")',
+    [
+      "ends-with",
+      { "case-sensitive": false },
+      ["field", PEOPLE.EMAIL, { "source-field": ORDERS.USER_ID }],
+      "A",
+      "B",
+      "C",
+      "D",
+    ],
+    "should handle endsWith with multiple arguments and non-empty options",
+  ],
 ];
 
-const aggregation = [
+const aggregation: TestCase[] = [
   ["Count", ["count"], "aggregation with no arguments"],
   ["Sum([Total])", ["sum", total], "aggregation with one argument"],
   ["1 - Count", ["-", 1, ["count"]], "aggregation with math outside"],
@@ -234,7 +360,7 @@ const aggregation = [
   ["Count + Share((", undefined, "invalid share"],
 ];
 
-const filter = [
+const filter: TestCase[] = [
   ["[Total] < 10", ["<", total, 10], "filter operator"],
   [
     "floor([Total]) < 10",
@@ -258,6 +384,11 @@ const filter = [
     ["time-interval", created, -1, "month"],
     "time interval filter",
   ],
+  [
+    'intervalStartingFrom([Created At], -1, "month", -2, "years")',
+    ["relative-time-interval", created, -1, "month", -2, "years"],
+    "relative time interval filter",
+  ],
   ["[Expensive Things]", segment, "segment"],
   ["NOT [Expensive Things]", ["not", segment], "not segment"],
   [
@@ -277,13 +408,22 @@ const filter = [
   ],
   ["notnull([Tax])", ["not-null", tax], "not null"],
   ["notempty([Total])", ["not-empty", total], "not empty"],
+  ["NOT isnull([Tax])", ["not", ["is-null", tax]], "not is null"],
+  ["NOT isempty([Tax])", ["not", ["is-empty", tax]], "not is empty"],
+  [
+    'NOT doesNotContain([Tax], "John")',
+    ["not", ["does-not-contain", tax, "John"]],
+    "not does not contain",
+  ],
 ];
 
-export const dataForFormatting = [
-  ["expression", expression, { startRule: "expression", legacyQuery }],
-  ["aggregation", aggregation, { startRule: "aggregation", legacyQuery }],
-  ["filter", filter, { startRule: "boolean", legacyQuery }],
-];
+type TestCase = [string, Expression | undefined, string];
+
+export const dataForFormatting: [string, TestCase[], FormatOptions][] = [
+  ["expression", expression, { query, stageIndex }],
+  ["aggregation", aggregation, { query, stageIndex }],
+  ["filter", filter, { query, stageIndex }],
+] as const;
 
 /**
  * @type {import("metabase-lib/v1/metadata/Table").default}

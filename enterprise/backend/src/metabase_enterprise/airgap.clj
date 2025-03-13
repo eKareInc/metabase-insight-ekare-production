@@ -1,28 +1,31 @@
 (ns metabase-enterprise.airgap
-  (:require [buddy.core.keys :as keys]
-            [buddy.sign.jwt :as jwt]
-            [clojure.java.io :as io]
-            [clojure.string :as str]
-            [java-time.api :as t]
-            [metabase.public-settings.premium-features :as premium-features :refer [defenterprise]]
-            [metabase.util.i18n :refer [tru]]
-            [metabase.util.malli :as mu]
-            [metabase.util.malli.schema :as ms])
+  (:require
+   [buddy.core.keys :as keys]
+   [buddy.sign.jwt :as jwt]
+   [clojure.java.io :as io]
+   [clojure.string :as str]
+   [java-time.api :as t]
+   [metabase.premium-features.core :as premium-features :refer [defenterprise]]
+   [metabase.util.i18n :refer [tru]]
+   [metabase.util.malli :as mu]
+   [metabase.util.malli.schema :as ms])
   (:import [java.io Reader]))
 
 (set! *warn-on-reflection* true)
 
-(mu/defn ^:private valid-now? [token :- premium-features/TokenStatus] :- :boolean
+(mu/defn- valid-now? :- :boolean
+  [token :- premium-features/TokenStatus]
   (t/before? (t/instant) (t/instant (:valid-thru token))))
 
 (defn- token? [token]
   (and token (str/starts-with? token "airgap_")))
 
-(mu/defn ^:private pubkey-reader ^Reader [] :- [:maybe (ms/InstanceOfClass Reader)]
+(mu/defn- pubkey-reader :- [:maybe (ms/InstanceOfClass Reader)]
+  ^Reader []
   (when-let [pubkey-resource (io/resource "airgap/pubkey.pem")]
     (io/reader pubkey-resource)))
 
-(mu/defn ^:private decode-token :- :map
+(mu/defn- decode-token :- :map
   "Given an encrypted airgap token, decrypts it and returns a TokenStatus"
   [token]
   (when-not (token? token)

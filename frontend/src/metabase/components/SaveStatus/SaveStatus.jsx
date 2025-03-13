@@ -1,9 +1,9 @@
 /* eslint-disable react/prop-types */
 import { Component } from "react";
-import { connect } from "react-redux";
 import { t } from "ttag";
 import _ from "underscore";
 
+import { connect } from "metabase/lib/redux";
 import { addUndo, dismissUndo } from "metabase/redux/undo";
 
 class SaveStatus extends Component {
@@ -55,7 +55,7 @@ class SaveStatus extends Component {
 
 const mapDispatchToProps = dispatch => ({
   notify: undo => dispatch(addUndo(undo)),
-  unnotify: undoId => dispatch(dismissUndo(undoId)),
+  unnotify: undoId => dispatch(dismissUndo({ undoId })),
 });
 
 export default _.compose(

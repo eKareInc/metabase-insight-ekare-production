@@ -5,7 +5,6 @@ import { parseNumberValue } from "metabase/lib/number";
 import { CHART_STYLE } from "metabase/visualizations/echarts/cartesian/constants/style";
 import type {
   BaseCartesianChartModel,
-  DataKey,
   Extent,
   NumericAxisScaleTransforms,
   NumericXAxisModel,
@@ -34,8 +33,20 @@ const getCustomAxisRange = (
   axisExtent: Extent,
   customMin: number | null,
   customMax: number | null,
+  isNormalized: boolean | undefined,
 ) => {
   const [extentMin, extentMax] = axisExtent;
+
+  // If this is a normalized range, respect custom min & max
+  // This also accomodates non-normalized custom min & max values
+  // Allows users to supply e.g. 10 for 10% min as opposed to 0.1
+  if (isNormalized) {
+    return {
+      min: customMin != null ? customMin / 100 : undefined,
+      max: customMax != null ? customMax / 100 : undefined,
+    };
+  }
+
   // if min/max are not specified or within series extents return `undefined`
   // so that ECharts compute a rounded range automatically
   const finalMin =
@@ -61,7 +72,12 @@ export const getYAxisRange = (
     yAxisScaleTransforms,
   );
 
-  return getCustomAxisRange(axisModel.extent, customMin, customMax);
+  return getCustomAxisRange(
+    axisModel.extent,
+    customMin,
+    customMax,
+    axisModel.isNormalized,
+  );
 };
 
 export const getAxisNameDefaultOption = (
@@ -362,23 +378,15 @@ export const buildMetricAxis = (
   settings: ComputedVisualizationSettings,
   position: "left" | "right",
   hasSplitLine: boolean,
-  hoveredSeriesDataKey: DataKey | null,
   renderingContext: RenderingContext,
 ): YAXisOption => {
   const shouldFlipAxisName = position === "right";
   const nameGap = getAxisNameGap(ticksWidth);
 
   const range = getYAxisRange(axisModel, yAxisScaleTransforms, settings);
-  let isFocused = false;
-  let isBlurred = false;
-
-  if (hoveredSeriesDataKey != null) {
-    isFocused = axisModel.seriesKeys.includes(hoveredSeriesDataKey);
-    isBlurred = !isFocused;
-  }
 
   return {
-    show: !isBlurred,
+    show: true,
     scale: !!settings["graph.y_axis.unpin_from_zero"],
     type: "value",
     ...range,
@@ -389,7 +397,7 @@ export const buildMetricAxis = (
       shouldFlipAxisName ? -90 : undefined,
     ),
     splitLine:
-      (hasSplitLine || isFocused) && !!settings["graph.y_axis.axis_enabled"]
+      hasSplitLine && !!settings["graph.y_axis.axis_enabled"]
         ? {
             lineStyle: {
               type: 5,
@@ -421,7 +429,6 @@ const buildMetricsAxes = (
   chartModel: BaseCartesianChartModel,
   chartMeasurements: ChartMeasurements,
   settings: ComputedVisualizationSettings,
-  hoveredSeriesDataKey: DataKey | null,
   renderingContext: RenderingContext,
 ): YAXisOption[] => {
   const axes: YAXisOption[] = [];
@@ -436,7 +443,6 @@ const buildMetricsAxes = (
         settings,
         "left",
         true,
-        hoveredSeriesDataKey,
         renderingContext,
       ),
     );
@@ -452,7 +458,6 @@ const buildMetricsAxes = (
         settings,
         "right",
         isOnlyAxis,
-        hoveredSeriesDataKey,
         renderingContext,
       ),
     );
@@ -467,7 +472,6 @@ export const buildAxes = (
   chartMeasurements: ChartMeasurements,
   settings: ComputedVisualizationSettings,
   hasTimelineEvents: boolean,
-  hoveredSeriesDataKey: DataKey | null,
   renderingContext: RenderingContext,
 ) => {
   return {
@@ -483,7 +487,6 @@ export const buildAxes = (
       chartModel,
       chartMeasurements,
       settings,
-      hoveredSeriesDataKey,
       renderingContext,
     ),
   };

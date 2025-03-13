@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import IconButtonWrapper from "metabase/components/IconButtonWrapper";
@@ -12,8 +13,8 @@ function getForeground(model: string, disabled: boolean) {
   return disabled
     ? darken(color("border"), 0.38)
     : model === "dataset"
-    ? color("accent2")
-    : color("brand");
+      ? color("accent2")
+      : color("brand");
 }
 
 const getItemPadding = (variant?: string) => {
@@ -27,14 +28,15 @@ const getItemPadding = (variant?: string) => {
   }
 };
 
-export const EntityIconWrapper = styled(IconButtonWrapper)<{
+export const EntityIconWrapper = styled(IconButtonWrapper, {
+  shouldForwardProp: prop => prop !== "isPinned",
+})<{
   isPinned?: boolean;
   disabled?: boolean;
 }>`
   background-color: transparent;
   padding: 12px;
   cursor: ${props => (props.disabled ? "default" : "pointer")};
-
   color: ${props =>
     props.isPinned
       ? getPinnedForeground(!!props.disabled)
@@ -66,7 +68,7 @@ export const EntityItemSpinner = styled(LoadingSpinner)`
 export const EntityMenuContainer = styled.div`
   display: flex;
   align-items: center;
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
 `;
 
 export const EntityItemActions = styled.div`

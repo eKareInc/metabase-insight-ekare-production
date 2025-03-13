@@ -1,11 +1,12 @@
 import cx from "classnames";
 import PropTypes from "prop-types";
-import { Children, cloneElement, Component } from "react";
+import { Children, Component, cloneElement } from "react";
 import ReactDOM from "react-dom";
 import Tether from "tether";
 
 import OnClickOutsideWrapper from "metabase/components/OnClickOutsideWrapper";
 import CS from "metabase/css/core/index.css";
+import ZIndex from "metabase/css/core/z-index.module.css";
 import { isCypressActive } from "metabase/env";
 
 import PopoverS from "./Popover.module.css";
@@ -99,6 +100,7 @@ export default class Popover extends Component {
       this._popoverElement = document.createElement("span");
       this._popoverElement.className = cx(
         PopoverS.PopoverContainer,
+        ZIndex.Overlay,
         this.props.containerClassName,
       );
       this._popoverElement.dataset.testid = "popover";
@@ -251,10 +253,10 @@ export default class Popover extends Component {
         {typeof this.props.children === "function"
           ? this.props.children(childProps)
           : Children.count(this.props.children) === 1 &&
-            // NOTE: workaround for https://github.com/facebook/react/issues/12136
-            !Array.isArray(this.props.children)
-          ? cloneElement(Children.only(this.props.children), childProps)
-          : this.props.children}
+              // NOTE: workaround for https://github.com/facebook/react/issues/12136
+              !Array.isArray(this.props.children)
+            ? cloneElement(Children.only(this.props.children), childProps)
+            : this.props.children}
       </div>
     );
     if (this.props.noOnClickOutsideWrapper) {
@@ -305,8 +307,8 @@ export default class Popover extends Component {
       attachmentY === "top"
         ? window.innerHeight - bottom - this.props.targetOffsetY - PAGE_PADDING
         : attachmentY === "bottom"
-        ? top - this.props.targetOffsetY - PAGE_PADDING
-        : 0,
+          ? top - this.props.targetOffsetY - PAGE_PADDING
+          : 0,
     );
 
     // get the largest available height, then subtract .PopoverBody's border and padding

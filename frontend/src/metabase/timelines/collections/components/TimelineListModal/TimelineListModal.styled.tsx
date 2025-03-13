@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 export const ModalRoot = styled.div`
@@ -7,7 +8,7 @@ export const ModalRoot = styled.div`
   max-height: 90vh;
 `;
 
-export interface ModalBodyProps {
+interface ModalBodyProps {
   isTopAligned?: boolean;
 }
 

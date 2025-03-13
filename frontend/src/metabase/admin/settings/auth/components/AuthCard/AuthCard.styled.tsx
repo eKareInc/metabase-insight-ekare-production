@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import EntityMenu from "metabase/components/EntityMenu";
@@ -18,13 +19,13 @@ export const CardHeader = styled.div`
 `;
 
 export const CardTitle = styled.div`
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-dark);
   font-size: 1.5rem;
   font-weight: bold;
 `;
 
 export const CardDescription = styled.div`
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-dark);
   font-size: 0.875rem;
   line-height: 1.5rem;
   margin-bottom: 1rem;

@@ -7,11 +7,11 @@ import Select, { Option } from "metabase/core/components/Select";
 import CS from "metabase/css/core/index.css";
 import { ParameterWidget as StaticParameterWidget } from "metabase/parameters/components/ParameterWidget";
 import type {
-  EmbeddingParameters,
-  EmbeddingParametersValues,
-  EmbeddingParameterVisibility,
   EmbedResourceParameter,
   EmbedResourceType,
+  EmbeddingParameterVisibility,
+  EmbeddingParameters,
+  EmbeddingParametersValues,
 } from "metabase/public/lib/types";
 import type { IconName } from "metabase/ui";
 import { Box, Divider, Icon, Stack, Text } from "metabase/ui";
@@ -60,7 +60,7 @@ export const ParametersSettings = ({
       <StaticEmbedSetupPaneSettingsContentSection
         title={t`Configuring parameters`}
       >
-        <Stack spacing="1rem">
+        <Stack gap="1rem">
           <Text>{t`Parameters are disabled by default, which also makes them hidden from end-users. Make them editable so that end-users can see and modify them. Make them locked so that they are hidden from end-users but you can set their values from your app.`}</Text>
 
           {resourceParameters.map(parameter => (
@@ -69,7 +69,7 @@ export const ParametersSettings = ({
               <h3>
                 {parameter.name}
                 {parameter.required && (
-                  <Text color="error" span>
+                  <Text color="error" component="span">
                     &nbsp;*
                   </Text>
                 )}
@@ -114,7 +114,7 @@ export const ParametersSettings = ({
           <StaticEmbedSetupPaneSettingsContentSection
             title={t`Previewing locked parameters`}
           >
-            <Stack spacing="1rem">
+            <Stack gap="1rem">
               <Text>{t`Try passing some sample values to your locked parameters here. Your server will have to provide the actual values in the signed token when doing this for real.`}</Text>
 
               {valuePopulatedLockedParameters.map(parameter => (

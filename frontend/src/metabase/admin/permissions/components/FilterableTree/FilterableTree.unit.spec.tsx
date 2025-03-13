@@ -1,5 +1,4 @@
-import { render, fireEvent, act, screen } from "@testing-library/react";
-
+import { act, fireEvent, render, screen } from "__support__/ui";
 import { SEARCH_DEBOUNCE_DURATION } from "metabase/lib/constants";
 
 import { FilterableTree } from "./FilterableTree";

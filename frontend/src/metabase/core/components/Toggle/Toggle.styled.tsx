@@ -1,9 +1,10 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { focusOutlineStyle } from "metabase/core/style/input";
 import { color } from "metabase/lib/colors";
 
-export interface ToggleRootProps {
+interface ToggleRootProps {
   checked?: boolean;
   small?: boolean;
   currentColor?: string;
@@ -40,7 +41,6 @@ export const ToggleRoot = styled.input<ToggleRootProps>`
   height: ${props => (props.small ? "17px" : "24px")};
   border-radius: 99px;
   border: 1px solid var(--mb-color-border);
-  background-color: var(--mb-color-bg-medium);
   background-color: ${getBackgroundColor};
   transition: background-color 0.3s;
   flex-shrink: 0;
@@ -59,7 +59,7 @@ export const ToggleRoot = styled.input<ToggleRootProps>`
     position: absolute;
     top: 1px;
     transform: translateX(${getTranslateX});
-    background-color: ${color("white")};
+    background-color: var(--mb-color-bg-white);
     transition: transform 0.3s;
     box-shadow: 2px 2px 6px var(--mb-color-shadow);
   }

@@ -82,14 +82,14 @@
         ;; and ignore that Exception if one is thrown.
         (try
           ;; Use `simple-insert!` because we do *not* want to trigger pre-insert behavior, such as encrypting `:value`
-          (t2/insert! (t2/table-name (t2/resolve-model 'Setting)) :key settings-last-updated-key, :value current-timestamp-as-string-honeysql)
+          (t2/insert! (t2/table-name (t2/resolve-model :model/Setting)) :key settings-last-updated-key, :value current-timestamp-as-string-honeysql)
           (catch java.sql.SQLException e
             ;; go ahead and log the Exception anyway on the off chance that it *wasn't* just a race condition issue
             (log/errorf "Error updating Settings last updated value: %s"
                         (with-out-str (jdbc/print-sql-exception-chain e)))))))
   ;; Now that we updated the value in the DB, go ahead and update our cached value as well, because we know about the
   ;; changes
-  (swap! (cache*) assoc settings-last-updated-key (t2/select-one-fn :value 'Setting :key settings-last-updated-key)))
+  (swap! (cache*) assoc settings-last-updated-key (t2/select-one-fn :value :model/Setting :key settings-last-updated-key)))
 
 (defn- cache-out-of-date?
   "Check whether our Settings cache is out of date. We know the cache is out of date if either of the following
@@ -103,21 +103,21 @@
   (log/debug "Checking whether settings cache is out of date (requires DB call)...")
   (let [current-cache (cache)]
     (boolean
-      (or
+     (or
         ;; is the cache empty?
-        (not current-cache)
+      (not current-cache)
         ;; if not, get the cached value of `settings-last-updated`, and if it exists...
-        (when-let [last-known-update (core/get current-cache settings-last-updated-key)]
+      (when-let [last-known-update (core/get current-cache settings-last-updated-key)]
           ;; compare it to the value in the DB. This is done be seeing whether a row exists
           ;; WHERE value > <local-value>
-          (u/prog1 (t2/select-one-fn :value 'Setting
-                     {:where [:and
-                              [:= :key settings-last-updated-key]
-                              [:> :value last-known-update]]})
-            (log/trace "last known Settings update: " (pr-str last-known-update))
-            (log/trace "actual last Settings update:" (pr-str <>))
-            (when <>
-              (log/info (u/format-color :red "Settings have been changed on another instance, and will be reloaded here.")))))))))
+        (u/prog1 (t2/select-one-fn :value :model/Setting
+                                   {:where [:and
+                                            [:= :key settings-last-updated-key]
+                                            [:> :value last-known-update]]})
+          (log/trace "last known Settings update: " (pr-str last-known-update))
+          (log/trace "actual last Settings update:" (pr-str <>))
+          (when <>
+            (log/info (u/format-color :red "Settings have been changed on another instance, and will be reloaded here.")))))))))
 
 (def ^:const cache-update-check-interval-ms
   "How often we should check whether the Settings cache is out of date (which requires a DB call)?"
@@ -135,7 +135,7 @@
   "Populate cache with the latest hotness from the db"
   []
   (log/debug "Refreshing Settings cache...")
-  (reset! (cache*) (t2/select-fn->fn :key :value 'Setting)))
+  (reset! (cache*) (t2/select-fn->fn :key :value :model/Setting)))
 
 (defonce ^:private ^ReentrantLock restore-cache-lock (ReentrantLock.))
 

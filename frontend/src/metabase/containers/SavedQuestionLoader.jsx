@@ -1,10 +1,10 @@
 /* eslint-disable react/prop-types */
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import { useAsync } from "react-use";
 import _ from "underscore";
 
 import Questions from "metabase/entities/questions";
-import { useSelector, useDispatch } from "metabase/lib/redux";
+import { useDispatch, useSelector } from "metabase/lib/redux";
 import { loadMetadataForCard } from "metabase/questions/actions";
 import { getMetadata } from "metabase/selectors/metadata";
 import Question from "metabase-lib/v1/Question";
@@ -44,7 +44,6 @@ const SavedQuestionLoader = ({
 }) => {
   const metadata = useSelector(getMetadata);
   const dispatch = useDispatch();
-  const [question, setQuestion] = useState(null);
 
   const cardMetadataState = useAsync(async () => {
     if (loadedQuestion?.id() == null) {
@@ -54,23 +53,16 @@ const SavedQuestionLoader = ({
     await dispatch(loadMetadataForCard(loadedQuestion.card()));
   }, [loadedQuestion?.id()]);
 
-  useEffect(() => {
-    if (loadedQuestion?.id() == null) {
-      return;
-    }
-
+  const question = useMemo(() => {
     const hasCardMetadataLoaded =
       !cardMetadataState.loading && cardMetadataState.error == null;
 
-    if (!hasCardMetadataLoaded) {
-      setQuestion(null);
-      return;
+    if (!loadedQuestion || !hasCardMetadataLoaded) {
+      return null;
     }
 
-    if (!question) {
-      setQuestion(new Question(loadedQuestion.card(), metadata));
-    }
-  }, [loadedQuestion, metadata, cardMetadataState, question]);
+    return new Question(loadedQuestion.card(), metadata);
+  }, [cardMetadataState, loadedQuestion, metadata]);
 
   return (
     children?.({

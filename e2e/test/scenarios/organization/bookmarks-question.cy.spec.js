@@ -1,82 +1,68 @@
+const { H } = cy;
 import { ORDERS_QUESTION_ID } from "e2e/support/cypress_sample_instance_data";
-import {
-  restore,
-  navigationSidebar,
-  openQuestionActions,
-  openNavigationSidebar,
-  visitQuestion,
-} from "e2e/support/helpers";
-import { getSidebarSectionTitle as getSectionTitle } from "e2e/support/helpers/e2e-collection-helpers";
+
+import { toggleQuestionBookmarkStatus } from "./helpers/bookmark-helpers";
 
 describe("scenarios > question > bookmarks", () => {
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.intercept("/api/bookmark/card/*").as("toggleBookmark");
     cy.signInAsAdmin();
   });
 
-  it(
-    "should add, update bookmark name when question name is updated, then remove bookmark from question page",
-    { tags: "@flaky" },
-    () => {
-      visitQuestion(ORDERS_QUESTION_ID);
-      toggleBookmark();
+  it("should add, update bookmark name when question name is updated, then remove bookmark from question page", () => {
+    H.visitQuestion(ORDERS_QUESTION_ID);
+    toggleQuestionBookmarkStatus();
 
-      openNavigationSidebar();
-      navigationSidebar().within(() => {
-        getSectionTitle(/Bookmarks/);
-        cy.findByText("Orders");
-      });
+    H.openNavigationSidebar();
+    H.navigationSidebar().within(() => {
+      H.getSidebarSectionTitle(/Bookmarks/);
+      cy.findByText("Orders");
+    });
 
-      // Rename bookmarked question
-      cy.findByTestId("saved-question-header-title").click().type(" 2").blur();
+    // Rename bookmarked question
+    cy.findByTestId("saved-question-header-title").click().type(" 2").blur();
 
-      navigationSidebar().within(() => {
-        cy.findByText("Orders 2");
-      });
+    H.navigationSidebar().within(() => {
+      cy.findByText("Orders 2");
+    });
 
-      cy.log("Turn the question into a model");
-      openQuestionActions();
-      cy.findByRole("dialog").contains("Turn into a model").click();
-      cy.findByRole("dialog").contains("Turn this into a model").click();
-      cy.findByRole("status").contains("This is a model now.").should("exist");
+    cy.log("Turn the question into a model");
+    H.openQuestionActions();
+    cy.findByRole("menu").contains("Turn into a model").click();
+    cy.findByRole("dialog").contains("Turn this into a model").click();
 
-      navigationSidebar().within(() => {
-        cy.findByLabelText(/Bookmarks/)
-          .icon("model")
-          .should("exist");
-      });
+    H.undoToastList().findByText("This is a model now.");
+    // Close this toast as soon we confim it exists!
+    // It lingers in the UI far too long which is causing flakiness later on
+    // when we assert on the next toast (when we turn the model back to the question).
+    H.undoToastList().icon("close").click();
 
-      cy.log("Turn the model back into a question");
-      openQuestionActions();
-      cy.findByRole("dialog").contains("Turn back to saved question").click();
-      cy.findByRole("status")
-        .contains("This is a question now.")
+    H.navigationSidebar().within(() => {
+      cy.findByLabelText(/Bookmarks/)
+        .icon("model")
         .should("exist");
+    });
 
-      openNavigationSidebar();
-      cy.log("Should not find bookmark");
-      navigationSidebar().within(() => {
-        cy.findByLabelText(/Bookmarks/)
-          .icon("model")
-          .should("not.exist");
-      });
+    cy.log("Turn the model back into a question");
+    H.openQuestionActions();
+    cy.findByRole("menu").contains("Turn back to saved question").click();
+    H.undoToastList().should("contain", "This is a question now.");
 
-      // Remove bookmark
-      toggleBookmark({ wasSelected: true });
+    H.openNavigationSidebar();
+    cy.log("Should not find bookmark");
+    H.navigationSidebar().within(() => {
+      cy.findByLabelText(/Bookmarks/)
+        .icon("model")
+        .should("not.exist");
+    });
 
-      navigationSidebar().within(() => {
-        getSectionTitle(/Bookmarks/).should("not.exist");
-        cy.findByText("Orders 2").should("not.exist");
-      });
-    },
-  );
-});
+    // Remove bookmark
+    toggleQuestionBookmarkStatus({ wasSelected: true });
 
-function toggleBookmark({ wasSelected = false } = {}) {
-  const iconName = wasSelected ? "bookmark_filled" : "bookmark";
-  cy.findByTestId("qb-header-action-panel").within(() => {
-    cy.icon(iconName).click();
+    H.navigationSidebar().within(() => {
+      H.getSidebarSectionTitle(/Bookmarks/).should("not.exist");
+      cy.findByText("Orders 2").should("not.exist");
+    });
   });
-  cy.wait("@toggleBookmark");
-}
+});

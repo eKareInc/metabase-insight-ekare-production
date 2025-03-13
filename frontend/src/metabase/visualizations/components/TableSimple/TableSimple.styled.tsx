@@ -1,7 +1,11 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
+import { forwardRef } from "react";
 
 import { alpha, color } from "metabase/lib/colors";
+import type { IconProps } from "metabase/ui";
 import { Icon } from "metabase/ui";
 import { TableRoot } from "metabase/visualizations/components/TableRoot";
 
@@ -22,7 +26,6 @@ export const TableContainer = styled.div`
   bottom: 0;
   right: 0;
   left: 0;
-
   overflow-x: auto;
   overflow-y: hidden;
 `;
@@ -30,9 +33,7 @@ export const TableContainer = styled.div`
 const standardTableStyleReset = css`
   border-collapse: collapse;
   border-spacing: 0;
-
   width: 100%;
-
   font-size: 12px;
   line-height: 12px;
   text-align: left;
@@ -58,13 +59,13 @@ export const Table = styled.table`
   }
 `;
 
-export const SortIcon = styled(Icon)`
+export const SortIcon = styled(
+  forwardRef<SVGSVGElement, IconProps>(function SortIcon(props, ref) {
+    return <Icon {...props} size={props.size ?? 8} ref={ref} />;
+  }),
+)`
   margin: 4px;
 `;
-
-SortIcon.defaultProps = {
-  size: 8,
-};
 
 export const TableHeaderCellContent = styled.button<{
   isSorted: boolean;
@@ -75,7 +76,10 @@ export const TableHeaderCellContent = styled.button<{
   justify-content: flex-start;
   width: 100%;
   flex-direction: ${props => (props.isRightAligned ? "row-reverse" : "row")};
-  color: ${props => (props.isSorted ? color("brand") : color("text-medium"))};
+  color: ${props =>
+    props.isSorted
+      ? "var(--mb-color-brand)"
+      : "var(--mb-color-text-secondary)"};
   font-weight: 700;
   cursor: pointer;
 
@@ -91,7 +95,6 @@ export const TableHeaderCellContent = styled.button<{
 export const TableFooterRoot = styled.div`
   display: flex;
   flex-shrink: 0;
-
   padding: 0.5rem;
   margin-left: auto;
 `;
@@ -106,7 +109,6 @@ export const PaginationButton = styled.button<{
   padding-left: ${props =>
     props.direction === "previous" ? "0.5rem" : "unset"};
   padding-right: 0.5rem;
-
   cursor: pointer;
 
   &:hover {

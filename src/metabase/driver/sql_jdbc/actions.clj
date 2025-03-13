@@ -44,7 +44,7 @@
   Or return `nil` if the parser doesn't match."
   {:changelog-test/ignore true, :arglists '([driver error-type database action-type error-message]), :added "0.48.0"}
   (fn [driver error-type _database _action-type _error-message]
-   [(driver/dispatch-on-initialized-driver driver) error-type])
+    [(driver/dispatch-on-initialized-driver driver) error-type])
   :hierarchy #'driver/hierarchy)
 
 (defmethod maybe-parse-sql-error :default
@@ -58,26 +58,26 @@
                                      (partial method driver error-type)))
                                  (dissoc (methods maybe-parse-sql-error) :default))]
     (try
-     (some #(% database action-type (ex-message e)) parsers-for-driver)
+      (some #(% database action-type (ex-message e)) parsers-for-driver)
      ;; Catch errors in parse-sql-error and log them so more errors in the future don't break the entire action.
      ;; We'll still get the original unparsed error message.
-     (catch Throwable new-e
-       (log/errorf new-e "Error parsing SQL error message %s: %s" (pr-str (ex-message e)) (ex-message new-e))
-       nil))))
+      (catch Throwable new-e
+        (log/errorf new-e "Error parsing SQL error message %s: %s" (pr-str (ex-message e)) (ex-message new-e))
+        nil))))
 
 (defn- do-with-auto-parse-sql-error
   [driver database action thunk]
   (try
-   (thunk)
-   (catch SQLException e
-     (throw (ex-info (or (ex-message e) "Error executing action.")
-                     (merge (or (some-> (parse-sql-error driver database action e)
+    (thunk)
+    (catch SQLException e
+      (throw (ex-info (or (ex-message e) "Error executing action.")
+                      (merge (or (some-> (parse-sql-error driver database action e)
                                         ;; the columns in error message should match with columns
                                         ;; in the parameter. It's usually got from calling
                                         ;; GET /api/action/:id/execute, and in there all column names are slugified
-                                        (m/update-existing :errors update-keys u/slugify))
-                                (assoc (ex-data e) :message (ex-message e)))
-                            {:status-code 400}))))))
+                                         (m/update-existing :errors update-keys u/slugify))
+                                 (assoc (ex-data e) :message (ex-message e)))
+                             {:status-code 400}))))))
 
 (defmacro ^:private with-auto-parse-sql-exception
   "Execute body and if there is an exception, try to parse the error message to search for known sql errors then throw a regular (and easier to understand/process) exception."
@@ -87,14 +87,11 @@
 (defn- mbql-query->raw-hsql
   [driver {database-id :database, :as query}]
   (qp.store/with-metadata-provider database-id
-    ;; catch errors in the query
-    (qp.preprocess/preprocess query)
-    (sql.qp/mbql->honeysql driver query)))
+    (sql.qp/mbql->honeysql driver (qp.preprocess/preprocess query))))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                               Action Execution                                                 |
 ;;; +----------------------------------------------------------------------------------------------------------------+
-
 
 (defmulti base-type->sql-type-map
   "Return a map of [[metabase.types]] type to SQL string type name. Used for casting. Looks like we're just copypasting
@@ -104,7 +101,7 @@
   driver/dispatch-on-initialized-driver
   :hierarchy #'driver/hierarchy)
 
-(mu/defn ^:private cast-values :- ::lib.schema.actions/row
+(mu/defn- cast-values :- ::lib.schema.actions/row
   "Certain value types need to have their honeysql form updated to work properly during update/creation. This function
   uses honeysql casting to wrap values in the map that need to be cast with their column's type, and passes through
   types that do not need casting like integer or string."
@@ -210,7 +207,7 @@
   [driver action database {database-id :database, :as query}]
   (let [raw-hsql    (mbql-query->raw-hsql driver query)
         delete-hsql (-> raw-hsql
-                        (dissoc :select)
+                        (dissoc :select :limit)
                         (assoc :delete [])
                         (prepare-query driver action))
         sql-args    (sql.qp/format-honeysql driver delete-hsql)]
@@ -286,7 +283,7 @@
         create-hsql (-> raw-hsql
                         (assoc :insert-into (first (:from raw-hsql)))
                         (assoc :values [(cast-values driver create-row database-id (get-in query [:query :source-table]))])
-                        (dissoc :select :from)
+                        (dissoc :select :from :limit)
                         (prepare-query driver action))
         sql-args    (sql.qp/format-honeysql driver create-hsql)]
     (log/tracef ":row/create HoneySQL:\n\n%s" (u/pprint-to-str create-hsql))
@@ -384,7 +381,7 @@
 
 ;;;; Shared stuff for both `:bulk/delete` and `:bulk/update`
 
-(mu/defn ^:private table-id->pk-field-name->id :- [:map-of ::lib.schema.common/non-blank-string ::lib.schema.id/field]
+(mu/defn- table-id->pk-field-name->id :- [:map-of ::lib.schema.common/non-blank-string ::lib.schema.id/field]
   "Given a `table-id` return a map of string Field name -> Field ID for the primary key columns for that Table."
   [database-id :- ::lib.schema.id/database
    table-id    :- ::lib.schema.id/table]
@@ -489,7 +486,7 @@
 
 ;;;; `bulk/update`
 
-(mu/defn ^:private check-row-has-all-pk-columns
+(mu/defn- check-row-has-all-pk-columns
   "Return a 400 if `row` doesn't have all the required PK columns."
   [row      :- ::lib.schema.actions/row
    pk-names :- [:set :string]]
@@ -500,7 +497,7 @@
                          (pr-str (set (keys row))))
                     {:row row, :pk-names pk-names, :status-code 400}))))
 
-(mu/defn ^:private check-row-has-some-non-pk-columns
+(mu/defn- check-row-has-some-non-pk-columns
   "Return a 400 if `row` doesn't have any non-PK columns to update."
   [row      :- ::lib.schema.actions/row
    pk-names :- [:set :string]]

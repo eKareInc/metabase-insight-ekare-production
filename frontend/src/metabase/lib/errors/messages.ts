@@ -1,7 +1,11 @@
 import type { GenericErrorResponse } from "./types";
 
 export function getResponseErrorMessage(error: unknown): string | undefined {
-  const response = error as GenericErrorResponse;
+  const response = error as GenericErrorResponse | undefined;
+
+  if (!response) {
+    return undefined;
+  }
 
   if (typeof response.data === "object") {
     if (typeof response.data?.message === "string") {
@@ -21,4 +25,8 @@ export function getResponseErrorMessage(error: unknown): string | undefined {
   }
 
   return undefined;
+}
+
+export function isResourceNotFoundError(error: any) {
+  return error?.status === 404;
 }

@@ -1,6 +1,5 @@
 /* eslint-disable react/prop-types */
 import { Component } from "react";
-import { connect } from "react-redux";
 import { push } from "react-router-redux";
 import _ from "underscore";
 
@@ -8,12 +7,13 @@ import * as dashboardActions from "metabase/dashboard/actions";
 import {
   getDashboardComplete,
   getDashcardDataMap,
-  getSlowCards,
-  getParameters,
-  getParameterValues,
   getIsNavigatingBackToDashboard,
+  getParameterValues,
+  getParameters,
   getSelectedTabId,
+  getSlowCards,
 } from "metabase/dashboard/selectors";
+import { connect } from "metabase/lib/redux";
 import { setErrorPage } from "metabase/redux/app";
 
 const mapStateToProps = (state, props) => {

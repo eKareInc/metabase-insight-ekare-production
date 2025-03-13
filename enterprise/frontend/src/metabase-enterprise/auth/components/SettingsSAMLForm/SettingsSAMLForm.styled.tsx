@@ -1,8 +1,6 @@
 import styled from "@emotion/styled";
 
-import { color } from "metabase/lib/colors";
-
-export interface SAMLFormSectionProps {
+interface SAMLFormSectionProps {
   isSSLSection?: boolean;
   wide?: boolean;
 }
@@ -12,17 +10,17 @@ export const SAMLFormSection = styled.div<SAMLFormSectionProps>`
   margin-bottom: 1rem;
   border: 1px solid var(--mb-color-border);
   border-radius: 0.5rem;
-  // The section containing the GroupMappingsWidget needs to be wider
+  /* The section containing the GroupMappingsWidget needs to be wider */
   width: ${props => (props.wide ? "780px" : "520px")};
 
-  // Even in a wide section, the input is better if same width as elsewhere
+  /* Even in a wide section, the input is better if same width as elsewhere */
   input {
     max-width: 460px;
   }
 `;
 
 export const SAMLFormCaption = styled.div`
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
   margin-bottom: 2rem;
 `;
 

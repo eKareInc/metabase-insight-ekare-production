@@ -4,20 +4,20 @@
    [clojurewerkz.quartzite.schedule.cron :as cron]
    [clojurewerkz.quartzite.triggers :as triggers]
    [java-time.api :as t]
-   [metabase.analytics.snowplow :as snowplow]
+   [metabase.analytics.core :as analytics]
+   [metabase.channel.email :as email]
+   [metabase.channel.email.messages :as messages]
    [metabase.config :as config]
    [metabase.db :as mdb]
    [metabase.driver.sql.query-processor :as sql.qp]
-   [metabase.email :as email]
-   [metabase.email.messages :as messages]
+   [metabase.premium-features.core :as premium-features]
    [metabase.public-settings :as public-settings]
-   [metabase.public-settings.premium-features :as premium-features]
    [metabase.task :as task]
    [metabase.util.log :as log]
    [toucan2.core :as t2])
   (:import
-   (java.util Locale)
-   (java.time.temporal WeekFields)))
+   (java.time.temporal WeekFields)
+   (java.util Locale)))
 
 (set! *warn-on-reflection* true)
 
@@ -62,7 +62,7 @@
     :else                "unknown"))
 
 (defn- fetch-instance-data []
-  {:created_at     (snowplow/instance-creation)
+  {:created_at     (analytics/instance-creation)
    :plan           (fetch-plan-info)
    :version        (config/mb-version-info :tag)
    :num_users      (t2/count :model/User :is_active true, :type "personal")
@@ -118,5 +118,5 @@
                  (triggers/start-now)
                  (triggers/with-schedule
                    ;; Fire at 2am every saturday
-                   (cron/cron-schedule "0 0 2 ? * 7")))]
+                  (cron/cron-schedule "0 0 2 ? * 7")))]
     (task/schedule-task! job trigger)))

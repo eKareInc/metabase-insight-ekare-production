@@ -1,8 +1,7 @@
-import { within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import fetchMock from "fetch-mock";
 
-import { screen } from "__support__/ui";
+import { screen, within } from "__support__/ui";
 
 import { defaultPermissionsGraph, setup } from "./setup";
 
@@ -99,7 +98,6 @@ describe("Admin > CollectionPermissionsPage", () => {
       expect(lastRequest).toEqual({
         ...defaultPermissionsGraph,
         groups: {
-          ...defaultPermissionsGraph.groups,
           3: {
             ...defaultPermissionsGraph.groups[3],
             3: "read",
@@ -155,7 +153,6 @@ describe("Admin > CollectionPermissionsPage", () => {
       expect(lastRequest).toEqual({
         ...defaultPermissionsGraph,
         groups: {
-          ...defaultPermissionsGraph.groups,
           3: {
             ...defaultPermissionsGraph.groups[3],
             1: "write",

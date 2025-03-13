@@ -23,15 +23,16 @@
    [metabase.lib.types.isa :as lib.types.isa]
    [metabase.lib.util :as lib.util]
    [metabase.lib.util.match :as lib.util.match]
-   [metabase.shared.util.i18n :as i18n]
-   [metabase.shared.util.time :as shared.ut]
    [metabase.util :as u]
-   [metabase.util.malli :as mu]))
+   [metabase.util.i18n :as i18n]
+   [metabase.util.malli :as mu]
+   [metabase.util.number :as u.number]
+   [metabase.util.time :as u.time]))
 
 (doseq [tag [:and :or]]
   (lib.hierarchy/derive tag ::compound))
 
-(doseq [tag [:= :!= :starts-with :ends-with :contains :does-not-contain]]
+(doseq [tag [:= :!= :in :not-in :starts-with :ends-with :contains :does-not-contain]]
   (lib.hierarchy/derive tag ::varargs))
 
 (doseq [tag [:< :<= :> :>=]]
@@ -45,9 +46,9 @@
   (when-let [filters (clojure.core/not-empty (:filters (lib.util/query-stage query stage-number)))]
     (i18n/tru "Filtered by {0}"
               (lib.util/join-strings-with-conjunction
-                (i18n/tru "and")
-                (for [filter filters]
-                  (lib.metadata.calculation/display-name query stage-number filter :long))))))
+               (i18n/tru "and")
+               (for [filter filters]
+                 (lib.metadata.calculation/display-name query stage-number filter :long))))))
 
 ;;; Display names for filter clauses are only really used in generating descriptions for `:case` aggregations or for
 ;;; generating the suggested name for a query.
@@ -61,23 +62,28 @@
    (for [clause subclauses]
      (lib.metadata.calculation/display-name query stage-number clause style))))
 
+(defn- ->maybe-bigint
+  [x]
+  (clojure.core/or (when (string? x) (u.number/parse-bigint x)) x))
+
 (defmethod lib.metadata.calculation/display-name-method ::varargs
   [query stage-number expr style]
   (let [->display-name #(lib.metadata.calculation/display-name query stage-number % style)
         ->temporal-name lib.temporal-bucket/describe-temporal-pair
         numeric? #(clojure.core/and (lib.util/original-isa? % :type/Number)
-                    (lib.util/clause? %)
-                    (-> (lib.metadata.calculation/metadata query stage-number %)
-                        lib.types.isa/id?
-                        clojure.core/not))
+                                    (lib.util/clause? %)
+                                    (-> (lib.metadata.calculation/metadata query stage-number %)
+                                        lib.types.isa/id?
+                                        clojure.core/not))
         temporal? #(lib.util/original-isa? % :type/Temporal)
         unit-is (fn [unit-or-units]
                   (let [units (set (u/one-or-many unit-or-units))]
                     (fn [a]
                       (clojure.core/and
-                        (temporal? a)
-                        (lib.util/clause? a)
-                        (clojure.core/contains? units (:temporal-unit (second a)))))))
+                       (temporal? a)
+                       (lib.util/clause? a)
+                       (clojure.core/contains? units (:temporal-unit (second a)))))))
+        ->number-display-name #(-> % ->maybe-bigint ->display-name)
         ->unbucketed-display-name #(-> %
                                        (update 1 dissoc :temporal-unit)
                                        ->display-name)
@@ -85,63 +91,113 @@
                            second
                            :temporal-unit
                            lib.temporal-bucket/describe-temporal-unit
-                           u/lower-case-en)]
+                           u/lower-case-en)
+        ->unit {:get-hour :hour-of-day
+                :get-month :month-of-year
+                :get-quarter :quarter-of-year}]
     (lib.util.match/match-one expr
-      [:= _ (a :guard numeric?) b]
-      (i18n/tru "{0} is equal to {1}" (->display-name a) (->display-name b))
+      [(_ :guard #{:= :in}) _ [:get-hour _ (a :guard temporal?)] (b :guard int?)]
+      (i18n/tru "{0} is at {1}" (->unbucketed-display-name a) (u.time/format-unit b :hour-of-day))
 
-      [:= _ (a :guard (unit-is lib.schema.temporal-bucketing/datetime-truncation-units)) (b :guard string?)]
-      (i18n/tru "{0} is {1}" (->unbucketed-display-name a) (shared.ut/format-relative-date-range b 0 (:temporal-unit (second a)) nil nil {:include-current true}))
+      [(_ :guard #{:!= :not-in}) _ [:get-hour _ (a :guard temporal?)] (b :guard int?)]
+      (i18n/tru "{0} excludes the hour of {1}" (->unbucketed-display-name a) (u.time/format-unit b :hour-of-day))
 
-      [:= _ (a :guard (unit-is :day-of-week)) (b :guard (some-fn int? string?))]
+      [(_ :guard #{:= :in}) _ [:get-day-of-week _ (a :guard temporal?) :iso] (b :guard int?)]
+      (i18n/tru "{0} is on {1}" (->display-name a) (u.time/format-unit b :day-of-week-iso))
+
+      [(_ :guard #{:!= :not-in}) _ [:get-day-of-week _ (a :guard temporal?) :iso] (b :guard int?)]
+      (i18n/tru "{0} excludes {1}"
+                (->unbucketed-display-name a)
+                (inflections/plural (u.time/format-unit b :day-of-week-iso)))
+
+      [(_ :guard #{:= :in}) _ [:get-day-of-week _ (a :guard temporal?) :iso] & (args :guard #(every? int? %))]
+      (i18n/tru "{0} is one of {1} {2} selections"
+                (->display-name a)
+                (count args)
+                (-> :day-of-week lib.temporal-bucket/describe-temporal-unit u/lower-case-en))
+
+      [(_ :guard #{:!= :not-in}) _ [:get-day-of-week _ (a :guard temporal?) :iso] & (args :guard #(every? int? %))]
+      (i18n/tru "{0} excludes {1} {2} selections"
+                (->unbucketed-display-name a)
+                (count args)
+                (-> :day-of-week lib.temporal-bucket/describe-temporal-unit u/lower-case-en))
+
+      [(_ :guard #{:= :in}) _ [(f :guard #{:get-month :get-quarter}) _ (a :guard temporal?)] (b :guard int?)]
+      (i18n/tru "{0} is in {1}" (->unbucketed-display-name a) (u.time/format-unit b (->unit f)))
+
+      [(_ :guard #{:!= :not-in}) _ [:get-month _ (a :guard temporal?)] (b :guard int?)]
+      (i18n/tru "{0} excludes each {1}" (->unbucketed-display-name a) (u.time/format-unit b :month-of-year))
+
+      [(_ :guard #{:!= :not-in}) _ [:get-quarter _ (a :guard temporal?)] (b :guard int?)]
+      (i18n/tru "{0} excludes {1} each year" (->unbucketed-display-name a) (u.time/format-unit b :quarter-of-year))
+
+      [(_ :guard #{:= :in}) _ [(f :guard #{:get-hour :get-month :get-quarter}) _ (a :guard temporal?)] & (args :guard #(every? int? %))]
+      (i18n/tru "{0} is one of {1} {2} selections"
+                (->unbucketed-display-name a)
+                (count args)
+                (-> f ->unit lib.temporal-bucket/describe-temporal-unit u/lower-case-en))
+
+      [(_ :guard #{:!= :not-in}) _ [(f :guard #{:get-hour :get-month :get-quarter}) _ (a :guard temporal?)] & (args :guard #(every? int? %))]
+      (i18n/tru "{0} excludes {1} {2} selections"
+                (->unbucketed-display-name a)
+                (count args)
+                (-> f ->unit lib.temporal-bucket/describe-temporal-unit u/lower-case-en))
+
+      [(_ :guard #{:= :in}) _ (a :guard numeric?) b]
+      (i18n/tru "{0} is equal to {1}" (->display-name a) (->number-display-name b))
+
+      [(_ :guard #{:= :in}) _ (a :guard (unit-is lib.schema.temporal-bucketing/datetime-truncation-units)) (b :guard string?)]
+      (i18n/tru "{0} is {1}" (->unbucketed-display-name a) (u.time/format-relative-date-range b 0 (:temporal-unit (second a)) nil nil {:include-current true}))
+
+      [(_ :guard #{:= :in}) _ (a :guard (unit-is :day-of-week)) (b :guard (some-fn int? string?))]
       (i18n/tru "{0} is {1}" (->display-name a) (->temporal-name a b))
 
-      [:= _ (a :guard temporal?) (b :guard (some-fn int? string?))]
+      [(_ :guard #{:= :in}) _ (a :guard temporal?) (b :guard (some-fn int? string?))]
       (i18n/tru "{0} is on {1}" (->display-name a) (->temporal-name a b))
 
-      [:!= _ (a :guard numeric?) b]
-      (i18n/tru "{0} is not equal to {1}" (->display-name a) (->display-name b))
+      [(_ :guard #{:!= :not-in}) _ (a :guard numeric?) b]
+      (i18n/tru "{0} is not equal to {1}" (->display-name a) (->number-display-name b))
 
-      [:!= _ (a :guard (unit-is :day-of-week)) (b :guard (some-fn int? string?))]
+      [(_ :guard #{:!= :not-in}) _ (a :guard (unit-is :day-of-week)) (b :guard (some-fn int? string?))]
       (i18n/tru "{0} excludes {1}" (->unbucketed-display-name a) (inflections/plural (->temporal-name a b)))
 
-      [:!= _ (a :guard (unit-is :month-of-year)) (b :guard (some-fn int? string?))]
+      [(_ :guard #{:!= :not-in}) _ (a :guard (unit-is :month-of-year)) (b :guard (some-fn int? string?))]
       (i18n/tru "{0} excludes each {1}" (->unbucketed-display-name a) (->temporal-name a b))
 
-      [:!= _ (a :guard (unit-is :quarter-of-year)) (b :guard (some-fn int? string?))]
+      [(_ :guard #{:!= :not-in}) _ (a :guard (unit-is :quarter-of-year)) (b :guard (some-fn int? string?))]
       (i18n/tru "{0} excludes {1} each year" (->unbucketed-display-name a) (->temporal-name a b))
 
-      [:!= _ (a :guard (unit-is :hour-of-day)) (b :guard (some-fn int? string?))]
+      [(_ :guard #{:!= :not-in}) _ (a :guard (unit-is :hour-of-day)) (b :guard (some-fn int? string?))]
       (i18n/tru "{0} excludes the hour of {1}" (->unbucketed-display-name a) (->temporal-name a b))
 
-      [:!= _ (a :guard temporal?) (b :guard (some-fn int? string?))]
+      [(_ :guard #{:!= :not-in}) _ (a :guard temporal?) (b :guard (some-fn int? string?))]
       (i18n/tru "{0} excludes {1}" (->display-name a) (->temporal-name a b))
 
-      [:= _ a (b :guard string?)]
+      [(_ :guard #{:= :in}) _ a (b :guard string?)]
       (i18n/tru "{0} is {1}" (->display-name a) b)
 
-      [:= _ a b]
+      [(_ :guard #{:= :in}) _ a b]
       (i18n/tru "{0} is {1}" (->display-name a) (->display-name b))
 
-      [:!= _ a (b :guard string?)]
+      [(_ :guard #{:!= :not-in}) _ a (b :guard string?)]
       (i18n/tru "{0} is not {1}" (->display-name a) b)
 
-      [:!= _ a b]
+      [(_ :guard #{:!= :not-in}) _ a b]
       (i18n/tru "{0} is not {1}" (->display-name a) (->display-name b))
 
-      [:= _ (a :guard numeric?) & args]
+      [(_ :guard #{:= :in}) _ (a :guard numeric?) & args]
       (i18n/tru "{0} is equal to {1} selections" (->display-name a) (count args))
 
-      [:!= _ (a :guard numeric?) & args]
+      [(_ :guard #{:!= :not-in}) _ (a :guard numeric?) & args]
       (i18n/tru "{0} is not equal to {1} selections" (->display-name a) (count args))
 
-      [:!= _ (a :guard temporal?) & args]
+      [(_ :guard #{:!= :not-in}) _ (a :guard temporal?) & args]
       (i18n/tru "{0} excludes {1} {2} selections" (->unbucketed-display-name a) (count args) (->bucket-name a))
 
-      [:= _ a & args]
+      [(_ :guard #{:= :in}) _ a & args]
       (i18n/tru "{0} is {1} selections" (->display-name a) (count args))
 
-      [:!= _ a & args]
+      [(_ :guard #{:!= :not-in}) _ a & args]
       (i18n/tru "{0} is not {1} selections" (->display-name a) (count args))
 
       [:starts-with _ x (y :guard string?)]
@@ -183,30 +239,32 @@
 (defmethod lib.metadata.calculation/display-name-method ::binary
   [query stage-number expr style]
   (let [->display-name #(lib.metadata.calculation/display-name query stage-number % style)
-        ->temporal-name #(shared.ut/format-unit % nil)
+        ->number-display-name #(-> % ->maybe-bigint ->display-name)
+        ->temporal-name #(u.time/format-unit % nil)
         temporal? #(lib.util/original-isa? % :type/Temporal)]
     (lib.util.match/match-one expr
       [:< _ (x :guard temporal?) (y :guard string?)]
       (i18n/tru "{0} is before {1}"                   (->display-name x) (->temporal-name y))
 
       [:< _ x y]
-      (i18n/tru "{0} is less than {1}"                (->display-name x) (->display-name y))
+      (i18n/tru "{0} is less than {1}"                (->number-display-name x) (->number-display-name y))
 
       [:<= _ x y]
-      (i18n/tru "{0} is less than or equal to {1}"    (->display-name x) (->display-name y))
+      (i18n/tru "{0} is less than or equal to {1}"    (->number-display-name x) (->number-display-name y))
 
       [:> _ (x :guard temporal?) (y :guard string?)]
       (i18n/tru "{0} is after {1}"                    (->display-name x) (->temporal-name y))
 
       [:> _ x y]
-      (i18n/tru "{0} is greater than {1}"             (->display-name x) (->display-name y))
+      (i18n/tru "{0} is greater than {1}"             (->number-display-name x) (->number-display-name y))
 
       [:>= _ x y]
-      (i18n/tru "{0} is greater than or equal to {1}" (->display-name x) (->display-name y)))))
+      (i18n/tru "{0} is greater than or equal to {1}" (->number-display-name x) (->number-display-name y)))))
 
 (defmethod lib.metadata.calculation/display-name-method :between
   [query stage-number expr style]
   (let [->display-name #(lib.metadata.calculation/display-name query stage-number % style)
+        ->number-display-name #(-> % ->maybe-bigint ->display-name)
         ->unbucketed-display-name #(-> %
                                        (update 1 dissoc :temporal-unit)
                                        ->display-name)]
@@ -214,31 +272,38 @@
       [:between _ x (y :guard string?) (z :guard string?)]
       (i18n/tru "{0} is {1}"
                 (->unbucketed-display-name x)
-                (shared.ut/format-diff y z))
+                (u.time/format-diff y z))
 
       [:between _
        [:+ _ x [:interval _ n unit]]
        [:relative-datetime _ n2 unit2]
        [:relative-datetime _ 0 _]]
-      (i18n/tru "{0} is in the {1}, starting {2} ago"
+      (i18n/tru "{0} is in the {1}, {2}"
                 (->display-name x)
                 (u/lower-case-en (lib.temporal-bucket/describe-temporal-interval n2 unit2))
-                (inflections/pluralize n (name unit)))
+                (lib.temporal-bucket/describe-relative-datetime (- n) unit))
 
       [:between _
        [:+ _ x [:interval _ n unit]]
        [:relative-datetime _ 0 _]
        [:relative-datetime _ n2 unit2]]
-      (i18n/tru "{0} is in the {1}, starting {2} from now"
+      (i18n/tru "{0} is in the {1}, {2}"
                 (->display-name x)
                 (u/lower-case-en (lib.temporal-bucket/describe-temporal-interval n2 unit2))
-                (inflections/pluralize (abs n) (name unit)))
+                (lib.temporal-bucket/describe-relative-datetime (- n) unit))
 
       [:between _ x y z]
       (i18n/tru "{0} is between {1} and {2}"
-                (->display-name x)
-                (->display-name y)
-                (->display-name z)))))
+                (->number-display-name x)
+                (->number-display-name y)
+                (->number-display-name z)))))
+
+(defmethod lib.metadata.calculation/display-name-method :during
+  [query stage-number [_tag _opts expr value unit] style]
+  (let [->display-name #(lib.metadata.calculation/display-name query stage-number % style)]
+    (i18n/tru "{0} is {1}"
+              (->display-name expr)
+              (u.time/format-relative-date-range value 1 unit -1 unit {}))))
 
 (defmethod lib.metadata.calculation/display-name-method :inside
   [query stage-number [_tag opts lat-expr lon-expr lat-max lon-min lat-min lon-max] style]
@@ -264,16 +329,29 @@
 (defmethod lib.metadata.calculation/display-name-method :time-interval
   [query stage-number [_tag _opts expr n unit] style]
   (if (clojure.core/or
-        (clojure.core/= n :current)
-        (clojure.core/and
-          (clojure.core/= (abs n) 1)
-          (clojure.core/= unit :day)))
+       (clojure.core/= n :current)
+       (clojure.core/= n 0)
+       (clojure.core/and
+        (clojure.core/= (abs n) 1)
+        (clojure.core/= unit :day)))
     (i18n/tru "{0} is {1}"
               (lib.metadata.calculation/display-name query stage-number expr style)
               (u/lower-case-en (lib.temporal-bucket/describe-temporal-interval n unit)))
     (i18n/tru "{0} is in the {1}"
               (lib.metadata.calculation/display-name query stage-number expr style)
               (u/lower-case-en (lib.temporal-bucket/describe-temporal-interval n unit)))))
+
+(defmethod lib.metadata.calculation/display-name-method :relative-time-interval
+  [query stage-number [_tag _opts column value bucket offset-value offset-bucket] style]
+  (if (neg? offset-value)
+    (i18n/tru "{0} is in the {1}, {2}"
+              (lib.metadata.calculation/display-name query stage-number column style)
+              (u/lower-case-en (lib.temporal-bucket/describe-temporal-interval value bucket))
+              (lib.temporal-bucket/describe-relative-datetime offset-value offset-bucket))
+    (i18n/tru "{0} is in the {1}, {2}"
+              (lib.metadata.calculation/display-name query stage-number column style)
+              (u/lower-case-en (lib.temporal-bucket/describe-temporal-interval value bucket))
+              (lib.temporal-bucket/describe-relative-datetime offset-value offset-bucket))))
 
 (defmethod lib.metadata.calculation/display-name-method :relative-datetime
   [_query _stage-number [_tag _opts n unit] _style]
@@ -288,6 +366,8 @@
 (lib.common/defop not [x])
 (lib.common/defop = [x y & more])
 (lib.common/defop != [x y & more])
+(lib.common/defop in [x y & more])
+(lib.common/defop not-in [x y & more])
 (lib.common/defop < [x y])
 (lib.common/defop <= [x y])
 (lib.common/defop > [x y])
@@ -298,14 +378,16 @@
 (lib.common/defop not-null [x])
 (lib.common/defop is-empty [x])
 (lib.common/defop not-empty [x])
-(lib.common/defop starts-with [whole part])
-(lib.common/defop ends-with [whole part])
-(lib.common/defop contains [whole part])
-(lib.common/defop does-not-contain [whole part])
+(lib.common/defop starts-with [whole & parts])
+(lib.common/defop ends-with [whole & parts])
+(lib.common/defop contains [whole & parts])
+(lib.common/defop does-not-contain [whole & parts])
+(lib.common/defop relative-time-interval [x value bucket offset-value offset-bucket])
 (lib.common/defop time-interval [x amount unit])
+(lib.common/defop during [t v unit])
 (lib.common/defop segment [segment-id])
 
-(mu/defn ^:private add-filter-to-stage
+(mu/defn- add-filter-to-stage
   "Add a new filter clause to a `stage`, ignoring it if it is a duplicate clause (ignoring :lib/uuid)."
   [stage      :- ::lib.schema/stage
    new-filter :- [:maybe ::lib.schema.expression/boolean]]
@@ -405,7 +487,7 @@
     (when (lib.util/ref-clause? leading-arg)
       leading-arg)))
 
-(mu/defn filterable-columns :- [:sequential ColumnWithOperators]
+(mu/defn filterable-columns :- [:maybe [:sequential ColumnWithOperators]]
   "Get column metadata for all the columns that can be filtered in
   the stage number `stage-number` of the query `query`
   If `stage-number` is omitted, the last stage is used.
@@ -478,7 +560,6 @@
      (clojure.core/or (m/find-first #(clojure.core/= (:short %) op)
                                     (lib.filter.operator/filter-operators col))
                       (lib.filter.operator/operator-def op)))))
-
 
 (mu/defn find-filter-for-legacy-filter :- [:maybe ::lib.schema.expression/boolean]
   "Return the filter clause in `query` at stage `stage-number` matching the legacy

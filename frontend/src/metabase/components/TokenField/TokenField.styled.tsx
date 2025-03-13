@@ -1,6 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import { color } from "metabase/lib/colors";
 import { space } from "metabase/styled-components/theme";
 
 export const TokenFieldContainer = styled.ul`
@@ -10,10 +10,7 @@ export const TokenFieldContainer = styled.ul`
   gap: ${space(0)};
   font-weight: bold;
   cursor: pointer;
-
   max-height: 130px;
-
-  background-color: ${color("white")};
   overflow-x: auto;
   overflow-y: auto;
   border-radius: ${space(1)};
@@ -26,10 +23,16 @@ export const TokenInputItem = styled.li`
   align-items: center;
   margin-right: 0.5rem;
   height: 46px;
+  background: none;
+`;
+
+export const TokenInputControl = styled.input`
+  background: none;
+  color: var(--mb-color-text-primary);
 `;
 
 export const PrefixContainer = styled.div`
   display: flex;
   align-items: center;
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
 `;

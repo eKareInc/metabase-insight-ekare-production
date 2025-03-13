@@ -15,11 +15,13 @@ import {
   setupSearchEndpoints,
   setupTableEndpoints,
 } from "__support__/server-mocks";
+import { setupNotificationChannelsEndpoints } from "__support__/server-mocks/pulse";
 import { createMockEntitiesState } from "__support__/store";
 import {
   act,
-  screen,
+  mockScrollIntoView,
   renderWithProviders,
+  screen,
   waitForLoaderToBeRemoved,
 } from "__support__/ui";
 import { DashboardAppConnected } from "metabase/dashboard/containers/DashboardApp/DashboardApp";
@@ -58,12 +60,13 @@ interface Options {
   dashboard?: Partial<Dashboard>;
 }
 
+mockScrollIntoView();
+
 async function setup({ dashboard }: Options = {}) {
   const mockDashboard = createMockDashboard(dashboard);
   const dashboardId = mockDashboard.id;
 
-  const channelData = { channels: {} };
-  fetchMock.get("path:/api/pulse/form_input", channelData);
+  setupNotificationChannelsEndpoints({});
 
   setupDatabasesEndpoints([TEST_DATABASE_WITH_ACTIONS]);
   setupDashboardEndpoints(mockDashboard);
@@ -85,7 +88,6 @@ async function setup({ dashboard }: Options = {}) {
   setupBookmarksEndpoints([]);
   setupActionsEndpoints([]);
 
-  window.HTMLElement.prototype.scrollIntoView = () => null;
   const mockEventListener = jest.spyOn(window, "addEventListener");
 
   const DashboardAppContainer = (props: any) => {
@@ -194,7 +196,9 @@ describe("DashboardApp", () => {
         history.goBack();
       });
 
-      expect(screen.getByTestId("leave-confirmation")).toBeInTheDocument();
+      expect(
+        await screen.findByTestId("leave-confirmation"),
+      ).toBeInTheDocument();
     });
 
     it("does not show custom warning modal when leaving with no changes via Cancel button", async () => {
@@ -227,15 +231,45 @@ describe("DashboardApp", () => {
     it("should prompt the user to add a question if they have write access", async () => {
       await setup();
 
-      expect(screen.getByText(/add a saved question/i)).toBeInTheDocument();
+      expect(screen.getByText(/add a chart/i)).toBeInTheDocument();
     });
 
-    it("should should show an empty state without the 'add a question' prompt if the user lacks write access", async () => {
+    it("should show an empty state without the 'add a question' prompt if the user lacks write access", async () => {
       await setup({ dashboard: { can_write: false } });
 
+      expect(screen.getByText("This dashboard is empty")).toBeInTheDocument();
       expect(
-        screen.getByText(/there's nothing here, yet./i),
-      ).toBeInTheDocument();
+        screen.queryByRole("button", { name: "Add a chart" }),
+      ).not.toBeInTheDocument();
     });
+  });
+
+  /**
+   * passing the same uuid in the URL is required to enable metadata cache
+   * sharing on BE
+   */
+  it("should pass dashboard_load_id to dashboard and query_metadata endpoints", async () => {
+    const { dashboardId } = await setup();
+
+    const dashboardURL = fetchMock.lastUrl(
+      `path:/api/dashboard/${dashboardId}`,
+    );
+    const queryMetadataURL = fetchMock.lastUrl(
+      `path:/api/dashboard/${dashboardId}/query_metadata`,
+    );
+
+    const dashboardSearchParams = new URLSearchParams(
+      dashboardURL?.split("?")[1],
+    );
+    const queryMetadataSearchParams = new URLSearchParams(
+      queryMetadataURL?.split("?")[1],
+    );
+
+    expect(dashboardSearchParams.get("dashboard_load_id")).toHaveLength(36); // uuid length
+    expect(queryMetadataSearchParams.get("dashboard_load_id")).toHaveLength(36); // uuid length
+
+    expect(queryMetadataSearchParams.get("dashboard_load_id")).toEqual(
+      dashboardSearchParams.get("dashboard_load_id"),
+    );
   });
 });

@@ -8,7 +8,7 @@ import { useListApiKeysQuery } from "metabase/api";
 import AdminContentTable from "metabase/components/AdminContentTable";
 import { AdminPaneLayout } from "metabase/components/AdminPaneLayout";
 import Alert from "metabase/components/Alert";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import ModalContent from "metabase/components/ModalContent";
 import ModalWithTrigger from "metabase/components/ModalWithTrigger";
 import PopoverWithTrigger from "metabase/components/PopoverWithTrigger";
@@ -18,15 +18,14 @@ import Link from "metabase/core/components/Link";
 import AdminS from "metabase/css/admin.module.css";
 import ButtonsS from "metabase/css/components/buttons.module.css";
 import CS from "metabase/css/core/index.css";
-import * as MetabaseAnalytics from "metabase/lib/analytics";
 import { color } from "metabase/lib/colors";
 import {
-  isDefaultGroup,
-  isAdminGroup,
   getGroupNameLocalized,
+  isAdminGroup,
+  isDefaultGroup,
 } from "metabase/lib/groups";
 import { KEYCODE_ENTER } from "metabase/lib/keyboard";
-import { Stack, Text, Group, Button, Icon } from "metabase/ui";
+import { Button, Group, Icon, Stack, Text } from "metabase/ui";
 
 import { AddRow } from "./AddRow";
 import { DeleteModalTrigger, EditGroupButton } from "./GroupsListing.styled";
@@ -71,23 +70,24 @@ function DeleteGroupModal({
     apiKeysCount === 0
       ? t`Remove this group?`
       : apiKeysCount === 1
-      ? t`Are you sure you want remove this group and its API key?`
-      : t`Are you sure you want remove this group and its API keys?`;
+        ? t`Are you sure you want remove this group and its API key?`
+        : t`Are you sure you want remove this group and its API keys?`;
 
   const confirmButtonText =
     apiKeysCount === 0
       ? t`Remove group`
       : apiKeysCount === 1
-      ? t`Remove group and API key`
-      : t`Remove group and API keys`;
+        ? t`Remove group and API key`
+        : t`Remove group and API keys`;
 
   return (
     <ModalContent title={modalTitle} onClose={onClose}>
-      <Stack spacing="xl">
+      <Stack gap="xl">
         <Text>
           {hasApiKeys
             ? jt`All members of this group will lose any permissions settings they have based on this group, and its related API keys will be deleted. You can ${(
                 <Link
+                  key="link"
                   to="/admin/settings/authentication/api-keys"
                   variant="brand"
                 >{t`move the API keys to another group`}</Link>
@@ -95,7 +95,7 @@ function DeleteGroupModal({
             : t`Are you sure? All members of this group will lose any permissions settings they have based on this group.
                 This can't be undone.`}
         </Text>
-        <Group spacing="md" position="right">
+        <Group gap="md" justify="flex-end">
           <Button onClick={onClose}>{t`Cancel`}</Button>
           <Button
             variant="filled"
@@ -300,8 +300,9 @@ function GroupsTable({
             index={index}
             apiKeys={
               isDefaultGroup(group)
-                ? apiKeys ?? []
-                : apiKeys?.filter(apiKey => apiKey.group.id === group.id) ?? []
+                ? (apiKeys ?? [])
+                : (apiKeys?.filter(apiKey => apiKey.group.id === group.id) ??
+                  [])
             }
             groupBeingEdited={groupBeingEdited}
             onEditGroupClicked={onEditGroupClicked}
@@ -340,8 +341,6 @@ export default class GroupsListing extends Component {
 
   // TODO: move this to Redux
   async onAddGroupCreateButtonClicked() {
-    MetabaseAnalytics.trackStructEvent("People Groups", "Group Added");
-
     try {
       await this.props.create({ name: this.state.text.trim() });
       this.setState({
@@ -401,7 +400,6 @@ export default class GroupsListing extends Component {
       this.setState({ groupBeingEdited: null });
     } else {
       // ok, fire off API call to change the group
-      MetabaseAnalytics.trackStructEvent("People Groups", "Group Updated");
       try {
         await this.props.update({ id: group.id, name: group.name.trim() });
         this.setState({ groupBeingEdited: null });
@@ -416,7 +414,6 @@ export default class GroupsListing extends Component {
 
   // TODO: move this to Redux
   async onDeleteGroupClicked(group) {
-    MetabaseAnalytics.trackStructEvent("People Groups", "Group Deleted");
     try {
       await this.props.delete(group);
     } catch (error) {

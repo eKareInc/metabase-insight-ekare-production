@@ -2,25 +2,25 @@ import cx from "classnames";
 import { getIn } from "icepick";
 import PropTypes from "prop-types";
 import { Component } from "react";
-import { connect } from "react-redux";
 import { t } from "ttag";
 
 import Revision from "metabase/admin/datamodel/components/revisions/Revision";
 import EmptyState from "metabase/components/EmptyState";
 import S from "metabase/components/List/List.module.css";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import CS from "metabase/css/core/index.css";
 import { assignUserColors } from "metabase/lib/formatting";
+import { connect } from "metabase/lib/redux";
 import * as metadataActions from "metabase/redux/metadata";
 
 import ReferenceHeader from "../components/ReferenceHeader";
 import {
-  getSegmentRevisions,
+  getError,
+  getLoading,
   getSegment,
+  getSegmentRevisions,
   getTables,
   getUser,
-  getLoading,
-  getError,
 } from "../selectors";
 
 const emptyStateData = {
@@ -70,7 +70,7 @@ class SegmentRevisions extends Component {
         : {};
 
     return (
-      <div style={style} className={CS.full}>
+      <div style={style} className={CS.full} data-testid="segment-revisions">
         <ReferenceHeader
           name={t`Revision history for ${this.props.segment.name}`}
           headerIcon="segment"
@@ -98,7 +98,7 @@ class SegmentRevisions extends Component {
                           <Revision
                             key={revision.id}
                             revision={revision || {}}
-                            tableMetadata={tables[entity.table_id] || {}}
+                            tableId={entity.table_id}
                             objectName={entity.name}
                             currentUser={user || {}}
                             userColor={

@@ -1,11 +1,8 @@
 import { useMemo } from "react";
 
-import {
-  useListRecentItemsQuery,
-  useListPopularItemsQuery,
-} from "metabase/api";
+import { useListPopularItemsQuery, useListRecentsQuery } from "metabase/api";
 import { useDatabaseListQuery, useSetting } from "metabase/common/hooks";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import { useSelector } from "metabase/lib/redux";
 import { isSyncCompleted } from "metabase/lib/syncing";
 import { getUser } from "metabase/selectors/user";
@@ -24,8 +21,10 @@ export const HomeContent = (): JSX.Element | null => {
   const embeddingHomepage = useSetting("embedding-homepage");
   const isXrayEnabled = useSelector(getIsXrayEnabled);
   const { data: databases, error: databasesError } = useDatabaseListQuery();
-  const { data: recentItemsRaw, error: recentItemsError } =
-    useListRecentItemsQuery(undefined, { refetchOnMountOrArgChange: true });
+  const { data: recentItemsRaw, error: recentItemsError } = useListRecentsQuery(
+    undefined,
+    { refetchOnMountOrArgChange: true },
+  );
   const { data: popularItems, error: popularItemsError } =
     useListPopularItemsQuery(undefined, { refetchOnMountOrArgChange: true });
   const error = databasesError || recentItemsError || popularItemsError;

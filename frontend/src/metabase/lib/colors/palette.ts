@@ -6,12 +6,12 @@ import type { ColorPalette } from "./types";
 
 export const ACCENT_COUNT = 8;
 
+/* eslint-disable no-color-literals */
 // NOTE: DO NOT ADD COLORS WITHOUT EXTREMELY GOOD REASON AND DESIGN REVIEW
 // NOTE: KEEP SYNCRONIZED WITH:
 // frontend/src/metabase/css/core/colors.module.css
 // frontend/src/metabase/styled-components/containers/GlobalStyles/GlobalStyles.tsx
-// enterprise/frontend/src/embedding-sdk/components/private/SdkContentWrapper.tsx
-// .storybook/preview-head.html
+// frontend/src/metabase/styled-components/theme/css-variables.ts
 export const colors = {
   brand: "#509EE3",
   summarize: "#88BF4D",
@@ -24,11 +24,15 @@ export const colors = {
   accent5: "#F2A86F",
   accent6: "#98D9D9",
   accent7: "#7172AD",
+  "accent-gray": "#F3F3F4", // Orion 10 (--mb-base-color-orion-10)
+  "accent-gray-light": "#FAFAFB", // Orion 5 (--mb-base-color-orion-5)
+  "accent-gray-dark": "#DCDFE0", // Orion 20 (--mb-base-color-orion-20)
   "admin-navbar": "#7172AD",
   white: "#FFFFFF",
   success: "#84BB4C",
-  danger: "#ED6E6E",
-  error: "#ED6E6E",
+  // --mb-base-color-lobster-50
+  danger: "hsla(358, 71%, 62%, 1)",
+  error: "hsla(358, 71%, 62%, 1)",
   warning: "#F9CF48",
   "text-dark": "#4C5773",
   "text-medium": "#696E7B",
@@ -41,7 +45,8 @@ export const colors = {
   "bg-white": "#FFFFFF",
   "bg-yellow": "#FFFCF2",
   "bg-night": "#42484E",
-  "bg-error": "#ED6E6E55",
+  // --mb-base-color-lobster-10
+  "bg-error": "hsla(0, 76%, 97%, 1)",
   shadow: "rgba(0,0,0,0.08)",
   border: "#EEECEC",
 
@@ -56,14 +61,18 @@ export const colors = {
 
 export const originalColors = { ...colors };
 
-const aliases: Record<string, (palette: ColorPalette) => string> = {
+export const aliases: Record<string, (palette: ColorPalette) => string> = {
   dashboard: palette => color("brand", palette),
   nav: palette => color("bg-white", palette),
   content: palette => color("bg-light", palette),
   database: palette => color("accent2", palette),
   pulse: palette => color("accent4", palette),
-
-  "brand-light": palette => lighten(color("brand", palette), 0.532), // #F9FBFC
+  "text-primary": palette => color("text-dark", palette),
+  "text-secondary": palette => color("text-medium", palette),
+  "text-tertiary": palette => color("text-light", palette),
+  background: palette => color("white", palette),
+  "background-disbaled": palette => color("accent-gray", palette),
+  "brand-light": palette => lighten(color("brand", palette), 0.532), // #DDECFA
   "brand-lighter": palette => lighten(color("brand", palette), 0.598), // #EEF6FC for brand
   focus: palette => getFocusColor("brand", palette),
 
@@ -86,6 +95,13 @@ const aliases: Record<string, (palette: ColorPalette) => string> = {
   "accent7-dark": palette => shade(color(`accent7`, palette)),
 };
 
+/**
+ * @deprecated use CSS variables instead where possible,
+ * i.e. `var(--mb-color-text-light)`.
+ *
+ * When the hex values are needed, use the themeColor function
+ * from Mantine's theme, i.e. `theme.fn.themeColor("text-light")`
+ */
 export function color(
   colorName: keyof ColorPalette,
   palette?: ColorPalette,
@@ -108,14 +124,35 @@ export function color(color: any, palette: ColorPalette = colors) {
   return color;
 }
 
+/**
+ * @deprecated use the color-mix method with CSS variables instead
+ * where possible, i.e. `color-mix(in srgb, var(--mb-color-bg-light), transparent 10%)`
+ *
+ * When the hex values are needed, use the themeColor function
+ * from Mantine's theme, i.e. `alpha(theme.fn.themeColor("text-light"), 0.1)`
+ */
 export const alpha = (c: string, a: number) => {
   return Color(color(c)).alpha(a).string();
 };
 
+/**
+ * @deprecated use the color-mix method with CSS variables instead
+ * where possible, i.e. `color-mix(in srgb, var(--mb-color-text-light), white 10%)`
+ *
+ * When the hex values are needed, use the themeColor function
+ * from Mantine's theme, i.e. `lighten(theme.fn.themeColor("text-light"), 0.1)`
+ */
 export const lighten = (c: string, f: number = 0.5) => {
   return Color(color(c)).lighten(f).string();
 };
 
+/**
+ * @deprecated use the color-mix method with CSS variables instead
+ * where possible, i.e. `color-mix(in srgb, var(--mb-color-text-light), black 10%)`
+ *
+ * When the hex values are needed, use the themeColor function
+ * from Mantine's theme, i.e. `darken(theme.fn.themeColor("text-light"), 0.1)`
+ */
 export const darken = (c: string, f: number = 0.25) => {
   return Color(color(c)).darken(f).string();
 };
@@ -168,13 +205,13 @@ export const getTextColorForBackground = (
   getColor: ColorGetter = color,
 ) => {
   const whiteTextContrast =
-    Color(getColor(backgroundColor)).contrast(Color(getColor("white"))) *
+    Color(getColor(backgroundColor)).contrast(Color(getColor("text-white"))) *
     whiteTextColorPriorityFactor;
   const darkTextContrast = Color(getColor(backgroundColor)).contrast(
     Color(getColor("text-dark")),
   );
 
   return whiteTextContrast > darkTextContrast
-    ? getColor("white")
+    ? getColor("text-white")
     : getColor("text-dark");
 };

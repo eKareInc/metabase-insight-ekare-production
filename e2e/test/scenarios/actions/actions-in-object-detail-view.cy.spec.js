@@ -1,17 +1,7 @@
 import moment from "moment-timezone"; // eslint-disable-line no-restricted-imports -- deprecated usage
 
+const { H } = cy;
 import { USER_GROUPS, WRITABLE_DB_ID } from "e2e/support/cypress_data";
-import {
-  popover,
-  resetTestTable,
-  restore,
-  resyncDatabase,
-  visitDashboard,
-  visitModel,
-  createModelFromTableName,
-  createImplicitActions,
-  undoToastList,
-} from "e2e/support/helpers";
 
 const WRITABLE_TEST_TABLE = "scoreboard_actions";
 const FIRST_SCORE_ROW_ID = 11;
@@ -37,8 +27,8 @@ describe(
         "prefetchValues",
       );
 
-      resetTestTable({ type: "postgres", table: WRITABLE_TEST_TABLE });
-      restore("postgres-writable");
+      H.restore("postgres-writable");
+      H.resetTestTable({ type: "postgres", table: WRITABLE_TEST_TABLE });
       asAdmin(() => {
         cy.updatePermissionsGraph({
           [ALL_USERS_GROUP]: {
@@ -49,12 +39,12 @@ describe(
           },
         });
 
-        resyncDatabase({
+        H.resyncDatabase({
           dbId: WRITABLE_DB_ID,
           tableName: WRITABLE_TEST_TABLE,
         });
 
-        createModelFromTableName({
+        H.createModelFromTableName({
           tableName: WRITABLE_TEST_TABLE,
           idAlias: "modelId",
         });
@@ -65,9 +55,9 @@ describe(
       beforeEach(() => {
         asAdmin(() => {
           cy.get("@modelId").then(modelId => {
-            createImplicitActions({ modelId });
+            H.createImplicitActions({ modelId });
 
-            cy.createQuestionAndDashboard({
+            H.createQuestionAndDashboard({
               questionDetails: {
                 name: "Score detail",
                 display: "object",
@@ -86,7 +76,7 @@ describe(
 
       it("does not show model actions in model visualization on a dashboard", () => {
         asAdmin(() => {
-          visitDashboard("@dashboardId");
+          H.visitDashboard("@dashboardId");
 
           cy.findByTestId("dashcard").within(() => {
             assertActionsDropdownNotExists();
@@ -125,7 +115,7 @@ describe(
               });
 
               asAdmin(() => {
-                createImplicitActions({ modelId });
+                H.createImplicitActions({ modelId });
               });
 
               permissionFn(() => {
@@ -202,7 +192,7 @@ describe(
       cy.signInAsAdmin();
 
       cy.get("@modelId").then(modelId => {
-        createImplicitActions({ modelId });
+        H.createImplicitActions({ modelId });
         visitObjectDetail(modelId, FIRST_SCORE_ROW_ID);
         openUpdateObjectModal();
       });
@@ -241,23 +231,23 @@ function asNormalUser(callback) {
 }
 
 function visitObjectDetail(modelId, objectId) {
-  visitModel(modelId);
+  H.visitModel(modelId);
   cy.get("main").findByText("Loading...").should("not.exist");
-  cy.findByTestId("TableInteractive-root").findByText(objectId).click();
+  H.tableInteractive().findByText(objectId).click();
 }
 
 function openObjectDetailModal(objectId) {
-  cy.findByTestId("TableInteractive-root").findByText(objectId).click();
+  H.tableInteractive().findByText(objectId).click();
 }
 
 function openUpdateObjectModal() {
   cy.findByTestId("actions-menu").click();
-  popover().findByText("Update").should("be.visible").click();
+  H.popover().findByText("Update").should("be.visible").click();
 }
 
 function openDeleteObjectModal() {
   cy.findByTestId("actions-menu").click();
-  popover().findByText("Delete").should("be.visible").click();
+  H.popover().findByText("Delete").should("be.visible").click();
 }
 
 function assertActionsDropdownExists() {
@@ -297,21 +287,18 @@ function assertDateInputValue(labelText, value) {
 
 function assertUpdatedScoreInTable() {
   cy.log("updated quantity should be present in the table");
-  cy.findByTestId("TableInteractive-root")
-    .findByText(UPDATED_SCORE_FORMATTED)
-    .should("exist");
+  H.tableInteractive().findByText(UPDATED_SCORE_FORMATTED).should("exist");
 }
 
 function assertUpdatedScoreNotInTable() {
   cy.log("updated quantity should not be present in the table");
-  cy.findByTestId("TableInteractive-root")
-    .findByText(UPDATED_SCORE_FORMATTED)
-    .should("not.exist");
+  H.tableInteractive().findByText(UPDATED_SCORE_FORMATTED).should("not.exist");
 }
 
 function assertSuccessfullUpdateToast() {
   cy.log("it shows a toast informing the update was successful");
-  undoToastList()
+  // eslint-disable-next-line no-unsafe-element-filtering
+  H.undoToastList()
     .last()
     .should("be.visible")
     .should("have.attr", "color", "success")
@@ -320,7 +307,8 @@ function assertSuccessfullUpdateToast() {
 
 function assertSuccessfullDeleteToast() {
   cy.log("it shows a toast informing the delete was successful");
-  undoToastList()
+  // eslint-disable-next-line no-unsafe-element-filtering
+  H.undoToastList()
     .last()
     .should("be.visible")
     .should("have.attr", "color", "success")

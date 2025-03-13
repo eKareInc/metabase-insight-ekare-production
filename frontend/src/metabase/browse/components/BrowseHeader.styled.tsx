@@ -1,6 +1,5 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
-
-import { color } from "metabase/lib/colors";
 
 export const BrowseHeaderContent = styled.div`
   display: flex;
@@ -11,7 +10,7 @@ export const BrowseHeaderContent = styled.div`
 export const BrowseHeaderIconContainer = styled.div`
   display: flex;
   align-items: center;
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
 
   &:hover {
     color: var(--mb-color-brand);

@@ -1,17 +1,16 @@
 (ns metabase.models.table
   (:require
    [metabase.api.common :as api]
-   [metabase.config :as config]
+   [metabase.audit :as audit]
    [metabase.db.query :as mdb.query]
    [metabase.driver :as driver]
    [metabase.models.audit-log :as audit-log]
-   [metabase.models.data-permissions :as data-perms]
    [metabase.models.humanization :as humanization]
    [metabase.models.interface :as mi]
-   [metabase.models.permissions-group :as perms-group]
    [metabase.models.serialization :as serdes]
-   [metabase.public-settings.premium-features
-    :refer [defenterprise]]
+   [metabase.permissions.core :as perms]
+   [metabase.premium-features.core :refer [defenterprise]]
+   [metabase.search.core :as search]
    [metabase.util :as u]
    [methodical.core :as methodical]
    [toucan2.core :as t2]))
@@ -34,18 +33,17 @@
 
 ;;; --------------------------------------------------- Lifecycle ----------------------------------------------------
 
-(def Table
-  "Used to be the toucan1 model name defined using [[toucan.models/defmodel]], not it's a reference to the toucan2 model name.
-  We'll keep this till we replace all the Table symbol in our codebase."
-  :model/Table)
-
 (methodical/defmethod t2/table-name :model/Table [_model] :metabase_table)
 
 (doto :model/Table
   (derive :metabase/model)
   (derive ::mi/read-policy.full-perms-for-perms-set)
   (derive ::mi/write-policy.full-perms-for-perms-set)
-  (derive :hook/timestamped?))
+  (derive :hook/timestamped?)
+  ;; Deliberately **not** deriving from `:hook/entity-id` because we should not be randomizing the `entity_id`s on
+  ;; databases, tables or fields. Since the sync process can create them in multiple instances, randomizing them would
+  ;; cause duplication rather than good matching if the two instances are later linked by serdes.
+  #_(derive :hook/entity-id))
 
 (t2/deftransforms :model/Table
   {:entity_type     mi/transform-keyword
@@ -62,43 +60,49 @@
                   :field_order  (driver/default-field-order (t2/select-one-fn :engine :model/Database :id (:db_id table)))}]
     (merge defaults table)))
 
+(t2/define-before-delete :model/Table
+  [table]
+  ;; We need to use toucan to delete the fields instead of cascading deletes because MySQL doesn't support columns with cascade delete
+  ;; foreign key constraints in generated columns. #44866
+  (t2/delete! :model/Field :table_id (:id table)))
+
 (defn- set-new-table-permissions!
   [table]
   (t2/with-transaction [_conn]
-    (let [all-users-group  (perms-group/all-users)
-          non-magic-groups (perms-group/non-magic-groups)
+    (let [all-users-group  (perms/all-users-group)
+          non-magic-groups (perms/non-magic-groups)
           non-admin-groups (conj non-magic-groups all-users-group)]
       ;; Data access permissions
-      (if (= (:db_id table) config/audit-db-id)
+      (if (= (:db_id table) audit/audit-db-id)
         (do
          ;; Tables in audit DB should start out with no query access in all groups
-         (data-perms/set-new-table-permissions! non-admin-groups table :perms/view-data :unrestricted)
-         (data-perms/set-new-table-permissions! non-admin-groups table :perms/create-queries :no))
+          (perms/set-new-table-permissions! non-admin-groups table :perms/view-data :unrestricted)
+          (perms/set-new-table-permissions! non-admin-groups table :perms/create-queries :no))
         (do
           ;; Normal tables start out with unrestricted data access in all groups, but query access only in All Users
-          (data-perms/set-new-table-permissions! (conj non-magic-groups all-users-group) table :perms/view-data :unrestricted)
-          (data-perms/set-new-table-permissions! [all-users-group] table :perms/create-queries :query-builder)
-          (data-perms/set-new-table-permissions! non-magic-groups table :perms/create-queries :no)))
+          (perms/set-new-table-permissions! non-admin-groups table :perms/view-data :unrestricted)
+          (perms/set-new-table-permissions! [all-users-group] table :perms/create-queries :query-builder)
+          (perms/set-new-table-permissions! non-magic-groups table :perms/create-queries :no)))
       ;; Download permissions
-      (data-perms/set-new-table-permissions! [all-users-group] table :perms/download-results :one-million-rows)
-      (data-perms/set-new-table-permissions! non-magic-groups table :perms/download-results :no)
+      (perms/set-new-table-permissions! [all-users-group] table :perms/download-results :one-million-rows)
+      (perms/set-new-table-permissions! non-magic-groups table :perms/download-results :no)
       ;; Table metadata management
-      (data-perms/set-new-table-permissions! non-admin-groups table :perms/manage-table-metadata :no))))
+      (perms/set-new-table-permissions! non-admin-groups table :perms/manage-table-metadata :no))))
 
 (t2/define-after-insert :model/Table
   [table]
   (u/prog1 table
-   (set-new-table-permissions! table)))
+    (set-new-table-permissions! table)))
 
 (defmethod mi/can-read? :model/Table
   ([instance]
-   (and (data-perms/user-has-permission-for-table?
+   (and (perms/user-has-permission-for-table?
          api/*current-user-id*
          :perms/view-data
          :unrestricted
          (:db_id instance)
          (:id instance))
-        (data-perms/user-has-permission-for-table?
+        (perms/user-has-permission-for-table?
          api/*current-user-id*
          :perms/create-queries
          :query-builder
@@ -119,11 +123,9 @@
   ([_ pk]
    (mi/can-write? (t2/select-one :model/Table pk))))
 
-
 (defmethod serdes/hash-fields :model/Table
   [_table]
-  [:schema :name (serdes/hydrated-hash :db)])
-
+  [:schema :name (serdes/hydrated-hash :db :db_id)])
 
 ;;; ------------------------------------------------ Field ordering -------------------------------------------------
 
@@ -156,21 +158,21 @@
   "Field ordering is valid if all the fields from a given table are present and only from that table."
   [table field-ordering]
   (= (t2/select-pks-set :model/Field
-       :table_id (u/the-id table)
-       :active   true)
+                        :table_id (u/the-id table)
+                        :active   true)
      (set field-ordering)))
 
 (defn custom-order-fields!
   "Set field order to `field-order`."
   [table field-order]
   {:pre [(valid-field-order? table field-order)]}
-  (t2/update! Table (u/the-id table) {:field_order :custom})
-  (doall
-    (map-indexed (fn [position field-id]
-                   (t2/update! :model/Field field-id {:position        position
-                                                      :custom_position position}))
-                 field-order)))
-
+  (t2/with-transaction [_]
+    (t2/update! :model/Table (u/the-id table) {:field_order :custom})
+    (dorun
+     (map-indexed (fn [position field-id]
+                    (t2/update! :model/Field field-id {:position        position
+                                                       :custom_position position}))
+                  field-order))))
 
 ;;; --------------------------------------------------- Hydration ----------------------------------------------------
 
@@ -221,11 +223,12 @@
   [tables]
   (with-objects :metrics
     (fn [table-ids]
-      (t2/select :model/Card
-                 :table_id [:in table-ids],
-                 :archived false,
-                 :type :metric,
-                 {:order-by [[:name :asc]]}))
+      (->> (t2/select :model/Card
+                      :table_id [:in table-ids],
+                      :archived false,
+                      :type :metric,
+                      {:order-by [[:name :asc]]})
+           (filter mi/can-read?)))
     tables))
 
 (defn with-fields
@@ -234,10 +237,10 @@
   (with-objects :fields
     (fn [table-ids]
       (t2/select :model/Field
-        :active          true
-        :table_id        [:in table-ids]
-        :visibility_type [:not= "retired"]
-        {:order-by       field-order-rule}))
+                 :active          true
+                 :table_id        [:in table-ids]
+                 :visibility_type [:not= "retired"]
+                 {:order-by       field-order-rule}))
     tables))
 
 (mi/define-batched-hydration-method fields
@@ -274,25 +277,48 @@
                       (-> path second :id))
         table-name  (-> path last :id)
         db-id       (t2/select-one-pk :model/Database :name db-name)]
-    (t2/select-one Table :name table-name :db_id db-id :schema schema-name)))
+    (t2/select-one :model/Table :name table-name :db_id db-id :schema schema-name)))
 
-(defmethod serdes/extract-one "Table"
-  [_model-name _opts {:keys [db_id] :as table}]
-  (-> (serdes/extract-one-basics "Table" table)
-      (dissoc :view_count :estimated_row_count)
-      (assoc :db_id (t2/select-one-fn :name :model/Database :id db_id))))
-
-(defmethod serdes/load-xform "Table"
-  [{:keys [db_id] :as table}]
-  (-> (serdes/load-xform-basics table)
-      (assoc :db_id (t2/select-one-fn :id :model/Database :name db_id))))
+(defmethod serdes/make-spec "Table" [_model-name _opts]
+  {:copy      [:name :description :entity_type :active :display_name :visibility_type :schema
+               :points_of_interest :caveats :show_in_getting_started :field_order :initial_sync_status :is_upload
+               :database_require_filter :entity_id]
+   :skip      [:estimated_row_count :view_count]
+   :transform {:created_at (serdes/date)
+               :db_id      (serdes/fk :model/Database :name)}})
 
 (defmethod serdes/storage-path "Table" [table _ctx]
-  (concat (serdes/storage-table-path-prefix (serdes/path table))
+  (concat (serdes/storage-path-prefixes (serdes/path table))
           [(:name table)]))
 
 ;;; -------------------------------------------------- Audit Log Table -------------------------------------------------
 
-(defmethod audit-log/model-details Table
+(defmethod audit-log/model-details :model/Table
   [table _event-type]
   (select-keys table [:id :name :db_id]))
+
+;;;; ------------------------------------------------- Search ----------------------------------------------------------
+
+(search/define-spec "table"
+  {:model        :model/Table
+   :attrs        {;; legacy search uses :active for this, but then has a rule to only ever show active tables
+                  ;; so we moved that to the where clause
+                  :archived      false
+                  :collection-id false
+                  :creator-id    false
+                  :database-id   :db_id
+                  :view-count    true
+                  :created-at    true
+                  :updated-at    true}
+   :search-terms [:name :display_name :description]
+   :render-terms {:initial-sync-status true
+                  :table-id            :id
+                  :table-description   :description
+                  :table-name          :name
+                  :table-schema        :schema
+                  :database-name       :db.name}
+   :where        [:and
+                  :active
+                  [:= :visibility_type nil]
+                  [:not= :db_id [:inline audit/audit-db-id]]]
+   :joins        {:db [:model/Database [:= :db.id :this.db_id]]}})

@@ -1,15 +1,15 @@
 /* eslint-disable react/prop-types */
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-use";
 import scrollIntoView from "scroll-into-view-if-needed";
 import { jt } from "ttag";
 
 import ExternalLink from "metabase/core/components/ExternalLink";
 import { alpha } from "metabase/lib/colors";
+import { Box } from "metabase/ui";
 
-import { settingToFormFieldId, getEnvVarDocsUrl } from "../utils";
+import { settingToFormFieldId, useGetEnvVarDocsUrl } from "../utils";
 
-import SettingHeader from "./SettingHeader";
+import { SettingHeader } from "./SettingHeader";
 import {
   SettingContent,
   SettingEnvVarMessage,
@@ -22,7 +22,7 @@ import SettingNumber from "./widgets/SettingNumber";
 import SettingPassword from "./widgets/SettingPassword";
 import SettingRadio from "./widgets/SettingRadio";
 import SettingText from "./widgets/SettingText";
-import SettingToggle from "./widgets/SettingToggle";
+import { SettingToggle } from "./widgets/SettingToggle";
 import SettingSelect from "./widgets/deprecated/SettingSelect";
 
 const SETTING_WIDGET_MAP = {
@@ -37,21 +37,21 @@ const SETTING_WIDGET_MAP = {
 };
 
 export const SettingsSetting = props => {
-  const { hash } = useLocation();
   const [fancyStyle, setFancyStyle] = useState({});
   const thisRef = useRef();
+
+  // we don't want to pass down autoScrollIntoView to the widget
+  const { autoScrollIntoView, ...propsToPassDown } = props;
 
   const { setting, settingValues, errorMessage } = props;
 
   useEffect(() => {
-    if (hash === `#${setting.key}` && thisRef.current) {
+    if (autoScrollIntoView && thisRef.current) {
       scrollIntoView(thisRef.current, {
         behavior: "smooth",
         block: "center",
         scrollMode: "if-needed",
       });
-
-      thisRef.current.focus();
 
       setFancyStyle({
         background: alpha("brand", 0.1),
@@ -62,7 +62,7 @@ export const SettingsSetting = props => {
         setFancyStyle({});
       }, 1500);
     }
-  }, [hash, setting.key]);
+  }, [autoScrollIntoView]);
 
   const settingId = settingToFormFieldId(setting);
 
@@ -79,7 +79,7 @@ export const SettingsSetting = props => {
   const widgetProps = {
     ...setting.getProps?.(setting, settingValues),
     ...setting.props,
-    ...props,
+    ...propsToPassDown,
   };
 
   return (
@@ -92,16 +92,16 @@ export const SettingsSetting = props => {
         ...fancyStyle,
       }}
     >
-      {!setting.noHeader && <SettingHeader id={settingId} setting={setting} />}
+      {!setting.noHeader && (
+        <SettingHeader
+          id={settingId}
+          title={setting.display_name}
+          description={setting.description}
+        />
+      )}
       <SettingContent>
         {setting.is_env_setting && !setting.forceRenderWidget ? (
-          <SettingEnvVarMessage>
-            {jt`This has been set by the ${(
-              <ExternalLink href={getEnvVarDocsUrl(setting.env_name)}>
-                {setting.env_name}
-              </ExternalLink>
-            )} environment variable.`}
-          </SettingEnvVarMessage>
+          <SetByEnvVar setting={setting} />
         ) : (
           <Widget id={settingId} {...widgetProps} />
         )}
@@ -114,4 +114,34 @@ export const SettingsSetting = props => {
       )}
     </SettingRoot>
   );
+};
+
+export const SetByEnvVar = ({ setting }) => {
+  const { url: docsUrl } = useGetEnvVarDocsUrl(setting.env_name);
+
+  return (
+    <SettingEnvVarMessage data-testid="setting-env-var-message">
+      {jt`This has been set by the ${(
+        <ExternalLink key={docsUrl} href={docsUrl}>
+          {setting.env_name}
+        </ExternalLink>
+      )} environment variable.`}
+    </SettingEnvVarMessage>
+  );
+};
+
+export const SetByEnvVarWrapper = ({ setting, children }) => {
+  if (setting.is_env_setting) {
+    return (
+      <Box mb="lg">
+        <SettingHeader
+          id={setting.key}
+          title={setting.display_name}
+          description={setting.description}
+        />
+        <SetByEnvVar setting={setting} />
+      </Box>
+    );
+  }
+  return children;
 };

@@ -1,19 +1,39 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
+import cx from "classnames";
+import {
+  type HTMLAttributes,
+  type TableHTMLAttributes,
+  forwardRef,
+} from "react";
 
 import EntityItem from "metabase/components/EntityItem";
 import IconButtonWrapper from "metabase/components/IconButtonWrapper";
 import Link from "metabase/core/components/Link";
 import AdminS from "metabase/css/admin.module.css";
-import { color } from "metabase/lib/colors";
-import BaseModelDetailLink from "metabase/models/components/ModelDetailLink";
-import { FixedSizeIcon } from "metabase/ui";
+import type { IconProps, TextProps } from "metabase/ui";
+import { FixedSizeIcon, Text } from "metabase/ui";
+
+import { RawMaybeLink } from "../Badge/Badge.styled";
 
 import type { ResponsiveProps } from "./utils";
 import { getContainerQuery } from "./utils";
 
-export const Table = styled.table<{ isInDragLayer?: boolean }>`
-  background-color: ${color("white")};
+type TableProps = TableHTMLAttributes<HTMLTableElement> & {
+  isInDragLayer?: boolean;
+};
+
+export const Table = styled(
+  (props: TableProps) => (
+    <table {...props} className={cx(props.className, AdminS.ContentTable)} />
+  ),
+  {
+    shouldForwardProp: prop => prop !== "isInDragLayer",
+  },
+)`
+  background-color: var(--mb-color-bg-white);
   table-layout: fixed;
   border-collapse: unset;
   border-radius: 0.5rem;
@@ -38,25 +58,23 @@ export const Table = styled.table<{ isInDragLayer?: boolean }>`
   ${props => (props.isInDragLayer ? `width: 50vw;` : "")}
 `;
 
-Table.defaultProps = { className: AdminS.ContentTable };
-
 export const hideResponsively = ({
   hideAtContainerBreakpoint,
   containerName,
-}: ResponsiveProps) =>
-  css`
-    ${getContainerQuery({
-      hideAtContainerBreakpoint,
-      containerName,
-    })}
-  `;
+}: ResponsiveProps) => css`
+  ${getContainerQuery({
+    hideAtContainerBreakpoint,
+    containerName,
+  })}
+`;
 
 export const ColumnHeader = styled.th<ResponsiveProps>`
   th& {
     padding: 0.75em 1em 0.75em;
   }
+
   font-weight: bold;
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
   ${hideResponsively}
 `;
 
@@ -79,7 +97,7 @@ export const EntityIconCheckBox = styled(EntityItem.IconCheckBox)`
   height: 3em;
 `;
 
-export const ItemLink = styled(Link)`
+const itemLinkStyle = css`
   display: flex;
   grid-gap: 0.5rem;
   align-items: center;
@@ -89,15 +107,23 @@ export const ItemLink = styled(Link)`
   }
 `;
 
+export const ItemButton = styled(Text)<
+  TextProps & HTMLAttributes<HTMLDivElement>
+>(itemLinkStyle);
+
+export const ItemLink = styled(Link)(itemLinkStyle);
+
+export const MaybeItemLink = styled(RawMaybeLink)(itemLinkStyle);
+
 export const ItemNameCell = styled.td`
   padding: 0 !important;
 
-  ${ItemLink} {
+  ${ItemLink}, ${MaybeItemLink}, ${ItemButton} {
     padding: 1em;
   }
 
   &:hover {
-    ${ItemLink} {
+    ${ItemLink}, ${MaybeItemLink}, ${ItemButton} {
       color: var(--mb-color-brand);
     }
 
@@ -105,21 +131,16 @@ export const ItemNameCell = styled.td`
   }
 `;
 
-export const SortingIcon = styled(FixedSizeIcon)`
+export const SortingIcon = styled(
+  forwardRef<SVGSVGElement, IconProps>(function SortingIcon(props, ref) {
+    return <FixedSizeIcon {...props} size={props.size ?? 8} ref={ref} />;
+  }),
+)`
   margin-inline-start: 4px;
 `;
 
 export const DescriptionIcon = styled(FixedSizeIcon)`
-  color: ${color("text-medium")};
-`;
-
-SortingIcon.defaultProps = {
-  size: 8,
-};
-
-export const ModelDetailLink = styled(BaseModelDetailLink)`
-  color: ${color("text-medium")};
-  visibility: hidden;
+  color: var(--mb-color-text-medium);
 `;
 
 export const SortingControlContainer = styled.div<{
@@ -128,42 +149,39 @@ export const SortingControlContainer = styled.div<{
 }>`
   display: flex;
   align-items: center;
-  color: ${props => (props.isActive ? color("text-dark") : "")};
-  ${props => (props.isSortable ? `cursor: pointer; user-select: none;` : "")}
+  color: ${({ isActive }) => isActive && "var(--mb-color-text-dark)"};
+
+  ${({ isSortable = true }) =>
+    isSortable ? `cursor: pointer; user-select: none;` : ""}
 
   .Icon {
     visibility: ${props => (props.isActive ? "visible" : "hidden")};
   }
 
   &:hover {
-    color: ${color("text-dark")};
+    color: var(--mb-color-text-dark);
 
     .Icon {
       visibility: visible;
     }
   }
 `;
-SortingControlContainer.defaultProps = { isSortable: true };
 
 export const RowActionsContainer = styled.div`
   display: flex;
   gap: 0.5rem;
+  justify-content: flex-end;
+
   span {
     display: flex;
     align-items: center;
   }
 `;
 
-export const TableItemSecondaryField = styled.span`
-  font-size: 0.95em;
-  color: ${color("text-medium")};
-`;
-
 export const TBody = styled.tbody`
   td {
     border: none;
     background-color: transparent;
-
     border-top: 1px solid var(--mb-color-border);
 
     &:first-of-type {
@@ -190,12 +208,6 @@ export const TBody = styled.tbody`
       &:first-of-type {
         border-end-start-radius: 8px;
       }
-    }
-  }
-
-  tr:hover {
-    ${ModelDetailLink} {
-      visibility: visible;
     }
   }
 `;

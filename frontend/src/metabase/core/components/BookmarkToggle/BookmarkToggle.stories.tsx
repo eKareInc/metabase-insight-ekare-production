@@ -1,14 +1,14 @@
-import { useArgs } from "@storybook/addons";
-import type { ComponentStory } from "@storybook/react";
+import { useArgs } from "@storybook/preview-api";
+import type { StoryFn } from "@storybook/react";
 
 import BookmarkToggle from "./BookmarkToggle";
 
 export default {
-  title: "Core/BookmarkToggle",
+  title: "Components/BookmarkToggle",
   component: BookmarkToggle,
 };
 
-const Template: ComponentStory<typeof BookmarkToggle> = args => {
+const Template: StoryFn<typeof BookmarkToggle> = args => {
   const [{ isBookmarked }, updateArgs] = useArgs();
   const handleCreateBookmark = () => updateArgs({ isBookmarked: true });
   const handleDeleteBookmark = () => updateArgs({ isBookmarked: false });
@@ -23,7 +23,10 @@ const Template: ComponentStory<typeof BookmarkToggle> = args => {
   );
 };
 
-export const Default = Template.bind({});
-Default.args = {
-  isBookmarked: false,
+export const Default = {
+  render: Template,
+
+  args: {
+    isBookmarked: false,
+  },
 };

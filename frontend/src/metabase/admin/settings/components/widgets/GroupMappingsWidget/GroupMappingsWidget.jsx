@@ -5,23 +5,22 @@ import { t } from "ttag";
 import _ from "underscore";
 
 import AdminContentTable from "metabase/components/AdminContentTable";
-import Tooltip from "metabase/core/components/Tooltip";
 import CS from "metabase/css/core/index.css";
 import { FormSwitch } from "metabase/forms";
 import { isDefaultGroup } from "metabase/lib/groups";
-import { Icon } from "metabase/ui";
+import { Icon, Tooltip } from "metabase/ui";
 
-import SettingToggle from "../SettingToggle";
+import { SettingToggle } from "../SettingToggle";
 
 import AddMappingRow from "./AddMappingRow";
 import {
-  GroupMappingsWidgetAndErrorRoot as WidgetAndErrorRoot,
-  GroupMappingsWidgetRoot as Root,
-  GroupMappingsWidgetHeader as Header,
-  GroupMappingsWidgetToggleRoot as ToggleRoot,
   GroupMappingsWidgetAbout as About,
   GroupMappingsWidgetAboutContentRoot as AboutContentRoot,
   AddMappingButton,
+  GroupMappingsWidgetHeader as Header,
+  GroupMappingsWidgetRoot as Root,
+  GroupMappingsWidgetToggleRoot as ToggleRoot,
+  GroupMappingsWidgetAndErrorRoot as WidgetAndErrorRoot,
 } from "./GroupMappingsWidget.styled";
 import MappingRow from "./MappingRow";
 
@@ -120,8 +119,8 @@ function GroupMappingsWidget({
           </ToggleRoot>
           <About>
             <Tooltip
-              tooltip={t`Mappings allow Metabase to automatically add and remove users from groups based on the membership information provided by the directory server. If a group isn‘t mapped, its membership won‘t be synced.`}
-              placement="top"
+              label={t`Mappings allow Metabase to automatically add and remove users from groups based on the membership information provided by the directory server. If a group isn‘t mapped, its membership won‘t be synced.`}
+              position="top"
             >
               <AboutContentRoot>
                 <Icon name="info" />

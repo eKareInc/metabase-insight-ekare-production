@@ -1,8 +1,8 @@
 import {
-  useCallback,
-  useState,
   type HTMLAttributes,
   type KeyboardEvent,
+  useCallback,
+  useState,
 } from "react";
 
 import { Header, HeaderContainer, ToggleIcon } from "./CollapseSection.styled";
@@ -60,7 +60,7 @@ const CollapseSection = ({
   );
 
   return (
-    <div className={className} role="tab" aria-expanded={isExpanded} {...props}>
+    <div className={className} role="tab" aria-selected={isExpanded} {...props}>
       <HeaderContainer
         className={headerClass}
         onClick={toggle}

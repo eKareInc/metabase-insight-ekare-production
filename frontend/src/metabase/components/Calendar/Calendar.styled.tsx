@@ -1,4 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { alpha, color } from "metabase/lib/colors";
@@ -35,7 +37,7 @@ export const CalendarDay = styled.div<CalendarDayProps>`
   ${({ primaryColor, isSelectedStart, isSelectedEnd }) =>
     (isSelectedStart || isSelectedEnd) &&
     css`
-      color: ${color("white")} !important;
+      color: var(--mb-color-text-white) !important;
       background-color: ${primaryColor};
       z-index: 1;
     `}

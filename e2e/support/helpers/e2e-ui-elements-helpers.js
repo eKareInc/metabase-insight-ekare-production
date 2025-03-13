@@ -1,13 +1,15 @@
-// various Metabase-specific "scoping" functions like inside popover/modal/navbar/main/sidebar content area
+// Functions that get key elements in the app
+
 export const POPOVER_ELEMENT =
   ".popover[data-state~='visible'],[data-element-id=mantine-popover]";
 
-export function popover() {
-  cy.get(POPOVER_ELEMENT).should("be.visible");
-  return cy.get(POPOVER_ELEMENT);
+export function popover(testid) {
+  const selector = `${POPOVER_ELEMENT}${testid ? `[data-testid=${testid}]` : ""}`;
+  return cy.get(selector).filter(":visible").should("be.visible");
 }
 
-const HOVERCARD_ELEMENT = ".emotion-HoverCard-dropdown[role='dialog']:visible";
+const HOVERCARD_ELEMENT =
+  ".mb-mantine-HoverCard-dropdown[role='dialog']:visible";
 
 export function hovercard() {
   cy.get(HOVERCARD_ELEMENT, { timeout: 6000 }).should("be.visible");
@@ -23,9 +25,17 @@ export function menu() {
 }
 
 export function modal() {
-  const MODAL_SELECTOR = ".emotion-Modal-content[role='dialog']";
+  const MODAL_SELECTOR = ".mb-mantine-Modal-content[role='dialog']";
   const LEGACY_MODAL_SELECTOR = "[data-testid=modal]";
   return cy.get([MODAL_SELECTOR, LEGACY_MODAL_SELECTOR].join(","));
+}
+
+export function tooltip() {
+  return cy.get(".mb-mantine-Tooltip-tooltip, [role='tooltip']");
+}
+
+export function selectDropdown() {
+  return popover().findByRole("listbox");
 }
 
 export function entityPickerModal() {
@@ -36,15 +46,28 @@ export function entityPickerModalLevel(level) {
   return cy.findByTestId(`item-picker-level-${level}`);
 }
 
+/**
+ *
+ * @param {number} level
+ * @param {string} name
+ */
 export function entityPickerModalItem(level, name) {
-  return entityPickerModalLevel(level).findByText(name).parents("button");
+  return entityPickerModalLevel(level).findByText(name).parents("a");
 }
 
 export function entityPickerModalTab(name) {
   return cy.findAllByRole("tab").filter(`:contains(${name})`);
 }
 
+// displays at least these tabs:
+export function shouldDisplayTabs(tabs) {
+  tabs.forEach(tab => {
+    entityPickerModalTab(tab).should("exist");
+  });
+}
+
 export function tabsShouldBe(selected, tabs) {
+  cy.log(tabs);
   cy.findAllByRole("tab").should("have.length", tabs.length);
   tabs.forEach(tab => {
     if (tab === selected) {
@@ -59,6 +82,10 @@ export function collectionOnTheGoModal() {
   return cy.findByTestId("create-collection-on-the-go");
 }
 
+export function dashboardOnTheGoModal() {
+  return cy.findByTestId("create-dashboard-on-the-go");
+}
+
 export function sidebar() {
   return cy.get("main aside");
 }
@@ -71,8 +98,25 @@ export function leftSidebar() {
   return cy.findByTestId("sidebar-left");
 }
 
+export function sidesheet() {
+  return cy.findByTestId("sidesheet");
+}
+
 export function navigationSidebar() {
   return cy.findByTestId("main-navbar-root");
+}
+
+export function assertNavigationSidebarItemSelected(name, value = "true") {
+  navigationSidebar()
+    .findByRole("treeitem", { name })
+    .should("have.attr", "aria-selected", value);
+}
+
+export function assertNavigationSidebarBookmarkSelected(name, value = "true") {
+  navigationSidebar()
+    .findByRole("tab", { name: "Bookmarks" })
+    .findByRole("listitem", { name })
+    .should("have.attr", "aria-selected", value);
 }
 
 export function appBar() {
@@ -91,6 +135,10 @@ export function closeNavigationSidebar() {
 
 export function browseDatabases() {
   return navigationSidebar().findByLabelText("Browse databases");
+}
+
+export function notificationList() {
+  return cy.findByRole("list", { name: "undo-list" });
 }
 
 /**
@@ -117,11 +165,13 @@ export function filterWidget() {
 }
 
 export function clearFilterWidget(index = 0) {
+  // eslint-disable-next-line no-unsafe-element-filtering
   return filterWidget().eq(index).icon("close").click();
 }
 
 export function resetFilterWidgetToDefault(index = 0) {
-  return filterWidget().eq(index).icon("time_history").click();
+  // eslint-disable-next-line no-unsafe-element-filtering
+  return filterWidget().eq(index).icon("revert").click();
 }
 
 export function setFilterWidgetValue(
@@ -130,13 +180,15 @@ export function setFilterWidgetValue(
   { buttonLabel = "Update filter" } = {},
 ) {
   filterWidget().eq(0).click();
-  popover().within(() => {
-    cy.icon("close").click();
-    if (value) {
-      cy.findByPlaceholderText(targetPlaceholder).type(value).blur();
-    }
-    cy.button(buttonLabel).click();
-  });
+  popover()
+    .first()
+    .within(() => {
+      removeFieldValuesValue(0);
+      if (value) {
+        cy.findByPlaceholderText(targetPlaceholder).type(value).blur();
+      }
+      cy.button(buttonLabel).click({ force: true });
+    });
 }
 
 export function toggleFilterWidgetValues(
@@ -151,8 +203,12 @@ export function toggleFilterWidgetValues(
   });
 }
 
-export const openQuestionActions = () => {
+export const openQuestionActions = action => {
   cy.findByTestId("qb-header-action-panel").icon("ellipsis").click();
+
+  if (action) {
+    popover().findByText(action).click();
+  }
 };
 
 export const collectionTable = () => {
@@ -163,12 +219,26 @@ export const queryBuilderHeader = () => {
   return cy.findByTestId("qb-header");
 };
 
+export const queryBuilderFiltersPanel = () => {
+  return cy.findByTestId("qb-filters-panel");
+};
+
+export const queryBuilderFooter = () => {
+  return cy.findByTestId("view-footer");
+};
+
 export const closeQuestionActions = () => {
   queryBuilderHeader().click();
 };
 
 export const questionInfoButton = () => {
   return cy.findByTestId("qb-header-info-button");
+};
+
+/** Opens the question info sidesheet */
+export const openQuestionInfoSidesheet = () => {
+  questionInfoButton().click();
+  return sidesheet();
 };
 
 export const undo = () => {
@@ -240,15 +310,80 @@ export function dashboardCards() {
   return cy.get("[data-element-id=dashboard-cards-container]");
 }
 
+export function tableInteractive() {
+  return cy.findByTestId("table-root");
+}
+
+export function tableInteractiveBody() {
+  return cy.findByTestId("table-body");
+}
+
+export function tableInteractiveHeader() {
+  return cy.findByTestId("table-header");
+}
+
+export function openObjectDetail(rowIndex) {
+  cy.get(`[data-index=${rowIndex}]`)
+    .realHover({ scrollBehavior: false })
+    .findByTestId("detail-shortcut")
+    .should("be.visible")
+    .click({ force: true });
+}
+
+export function tableInteractiveScrollContainer() {
+  return cy.findByTestId("table-scroll-container");
+}
+
+export function tableAllFieldsHiddenImage() {
+  return cy.findByTestId("Table-all-fields-hidden-image");
+}
+
+export function tableHeaderColumn(headerString) {
+  // Apply horizontal scroll offset when targeting columns to prevent the sticky 'Object detail' column
+  // from obscuring the target column in the viewport
+  const objectDetailOffset = 50;
+  tableInteractiveHeader()
+    .findByText(headerString)
+    .scrollIntoView({ offset: { left: -objectDetailOffset } });
+  return tableInteractiveHeader().findByText(headerString);
+}
+
 export function tableHeaderClick(headerString) {
-  cy.findByTestId("TableInteractive-root").within(() => {
-    cy.findByTextEnsureVisible(headerString).trigger("mousedown");
+  tableHeaderColumn(headerString).click();
+}
+
+export function clickActionsPopover() {
+  return popover("click-actions-popover");
+}
+
+export function segmentEditorPopover() {
+  return popover("segment-popover");
+}
+
+export function assertTableData({ columns, firstRows = [] }) {
+  tableInteractive()
+    .findAllByTestId("header-cell")
+    .should("have.length", columns.length);
+
+  columns.forEach((column, index) => {
+    // eslint-disable-next-line no-unsafe-element-filtering
+    tableInteractive()
+      .findAllByTestId("header-cell")
+      .eq(index)
+      .should("have.text", column);
   });
 
-  cy.findByTestId("TableInteractive-root").within(() => {
-    cy.findByTextEnsureVisible(headerString).trigger("mouseup");
+  firstRows.forEach((row, rowIndex) => {
+    row.forEach((cell, cellIndex) => {
+      // eslint-disable-next-line no-unsafe-element-filtering
+      tableInteractiveBody()
+        .findAllByTestId("cell-data")
+        .eq(columns.length * rowIndex + cellIndex)
+        .should("have.text", cell);
+    });
   });
 }
+
 /**
  * selects the global new button
  * @param {*} menuItem optional, if provided, will click the New button and return the menu item with the text provided
@@ -261,4 +396,56 @@ export function newButton(menuItem) {
   }
 
   return cy.findByTestId("app-bar").button("New");
+}
+
+export function multiSelectInput(filter = ":eq(0)") {
+  return cy.findByRole("combobox").filter(filter).get("input").first();
+}
+
+export function multiAutocompleteInput(filter = ":eq(0)") {
+  return cy.findAllByRole("combobox").filter(filter).get("input").first();
+}
+
+export function fieldValuesInput(filter = ":eq(0)") {
+  // eslint-disable-next-line no-unsafe-element-filtering
+  return cy.findAllByRole("textbox").filter(filter).get("input").last();
+}
+
+export function fieldValuesValue(index) {
+  // eslint-disable-next-line no-unsafe-element-filtering
+  return cy.findAllByTestId("token-field").eq(index);
+}
+
+export function removeFieldValuesValue(index) {
+  // eslint-disable-next-line no-unsafe-element-filtering
+  return cy.findAllByTestId("token-field").icon("close").eq(index).click();
+}
+
+export function multiAutocompleteValue(index, filter = ":eq(0)") {
+  // eslint-disable-next-line no-unsafe-element-filtering
+  return cy
+    .findAllByRole("combobox")
+    .filter(filter)
+    .siblings("[data-with-remove]")
+    .eq(index);
+}
+
+export function removeMultiAutocompleteValue(index, filter) {
+  return multiAutocompleteValue(index, filter)
+    .findByRole("button", { hidden: true })
+    .click();
+}
+
+export function repeatAssertion(assertFn, timeout = 4000, interval = 400) {
+  if (timeout <= 0) {
+    return;
+  }
+  assertFn();
+
+  cy.wait(interval);
+  repeatAssertion(assertFn, timeout - interval, interval);
+}
+
+export function mapPinIcon() {
+  return cy.get(".leaflet-marker-icon");
 }

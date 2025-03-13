@@ -59,13 +59,11 @@ export const defaultDisplay = (query: Lib.Query): DefaultDisplay => {
       breakouts,
     );
 
-    if (Lib.isDate(column)) {
-      const info = Lib.displayInfo(query, stageIndex, breakout);
-
-      if (info.isTemporalExtraction) {
-        return { display: "bar" };
-      }
-
+    const breakoutInfo = Lib.displayInfo(query, stageIndex, breakout);
+    if (breakoutInfo.isTemporalExtraction) {
+      return { display: "bar" };
+    }
+    if (Lib.isTemporal(column)) {
       return { display: "line" };
     }
 
@@ -76,7 +74,7 @@ export const defaultDisplay = (query: Lib.Query): DefaultDisplay => {
       return { display: "bar" };
     }
 
-    if (Lib.isCategory(column)) {
+    if (Lib.isBoolean(column) || Lib.isCategory(column)) {
       return { display: "bar" };
     }
   }
@@ -88,10 +86,10 @@ export const defaultDisplay = (query: Lib.Query): DefaultDisplay => {
       breakouts,
     );
 
-    const isAnyBreakoutDate = breakoutsWithColumns.some(({ column }) => {
-      return Lib.isDate(column);
+    const isAnyBreakoutTemporal = breakoutsWithColumns.some(({ column }) => {
+      return Lib.isTemporal(column);
     });
-    if (isAnyBreakoutDate) {
+    if (isAnyBreakoutTemporal) {
       return { display: "line" };
     }
 
@@ -99,16 +97,29 @@ export const defaultDisplay = (query: Lib.Query): DefaultDisplay => {
       return Lib.isCoordinate(column);
     });
     if (areBreakoutsCoordinates) {
+      const binningOne = Lib.binning(breakouts[0]);
+      const binningTwo = Lib.binning(breakouts[1]);
+      const areBothBinned = binningOne !== null && binningTwo !== null;
+
+      if (areBothBinned) {
+        return {
+          display: "map",
+          settings: {
+            "map.type": "grid",
+          },
+        };
+      }
+
       return {
         display: "map",
         settings: {
-          "map.type": "grid",
+          "map.type": "pin",
         },
       };
     }
 
     const areBreakoutsCategories = breakoutsWithColumns.every(({ column }) => {
-      return Lib.isCategory(column);
+      return Lib.isBoolean(column) || Lib.isCategory(column);
     });
     if (areBreakoutsCategories) {
       return { display: "bar" };

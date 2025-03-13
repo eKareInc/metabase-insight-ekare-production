@@ -1,6 +1,6 @@
 import userEvent from "@testing-library/user-event";
 
-import { getIcon, screen } from "__support__/ui";
+import { screen } from "__support__/ui";
 import type { CollectionId } from "metabase-types/api";
 
 import { setup } from "./setup";
@@ -232,7 +232,7 @@ describe("CollectionHeader", () => {
       await userEvent.click(screen.getByLabelText("Upload data"));
 
       expect(await screen.findByRole("dialog")).toBeInTheDocument();
-      expect(screen.getByText("Uploads CSVs to Metabase")).toBeInTheDocument();
+      expect(screen.getByText("Upload CSVs to Metabase")).toBeInTheDocument();
     });
 
     it("should show an informational modal with a link to settings for admins", async () => {
@@ -245,7 +245,7 @@ describe("CollectionHeader", () => {
       await userEvent.click(screen.getByLabelText("Upload data"));
 
       expect(await screen.findByRole("dialog")).toBeInTheDocument();
-      expect(screen.getByText("Enable in settings")).toBeInTheDocument();
+      expect(screen.getByText("Go to setup")).toBeInTheDocument();
       expect(screen.getByRole("link")).toBeInTheDocument();
     });
 
@@ -272,7 +272,7 @@ describe("CollectionHeader", () => {
       await userEvent.click(screen.getByLabelText("Upload data"));
 
       expect(await screen.findByRole("dialog")).toBeInTheDocument();
-      await userEvent.click(getIcon("close"));
+      await userEvent.click(screen.getByRole("button", { name: "Close" }));
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 

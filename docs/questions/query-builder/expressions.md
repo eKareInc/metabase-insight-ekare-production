@@ -12,7 +12,7 @@ You can also skip to the [complete list of expressions][expression-list].
 
 ## Custom expressions to create filters, metrics, and custom columns
 
-To use custom expression, create a __Custom Column__ (where the custom expression is used as a Field Formula to calculate values for the new column), or click on __Filter__ or __Summarize__ and select __Custom Expression__.
+To use custom expression, create a **Custom Column** (where the custom expression is used as a Field Formula to calculate values for the new column), or click on **Filter** or **Summarize** and select **Custom Expression**.
 
 When using the query builder, you can use expressions to create new:
 
@@ -48,13 +48,21 @@ To do math on timestamp columns, you can use [Date functions](expressions-list.m
 
 For example, you could create a filter for customers from California or Vermont: `= [State] = "CA" OR [State] = "VT"`.
 
+You can also use conditionals with the `case` function (alias `if`):
+
+```
+case([Size] = "L", "LARGE", [SIZE] = "M", "MEDIUM", "SMALL")
+```
+
+See [`case`](./expressions/case.md).
+
 ## Referencing other columns
 
 You can refer to columns in the current table, or to columns that are linked via a foreign key relationship. Column names should be included inside of square brackets, like this: `[Name of Column]`. Columns in connected tables can be referred to like this: `[ConnectedTableName.Column]`.
 
 ## Referencing Segments and Metrics
 
-You can refer to saved [Segments or Metrics](../../data-modeling/segments-and-metrics.md) that are present in the currently selected table. You write these out the same as with columns, like this: `[Valid User Sessions]`.
+You can refer to saved [metrics](../../data-modeling/metrics.md) and [segments](../../data-modeling/segments.md) that are present in the currently selected table. You write these out the same as with columns, like this: `[Valid User Sessions]`.
 
 ## Filter expressions and conditionals
 
@@ -80,6 +88,6 @@ See a full list of [expressions][expression-list].
 For a tutorial on expressions, see [Custom expressions in the query builder][custom-expressions].
 
 [aggregations]: ./expressions-list.md#aggregations
-[custom-expressions]: https://www.metabase.com/learn/questions/custom-expressions
+[custom-expressions]: https://www.metabase.com/learn/metabase-basics/querying-and-dashboards/questions/custom-expressions
 [expression-list]: ./expressions-list.md
 [functions]: ./expressions-list.md#functions

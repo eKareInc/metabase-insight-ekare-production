@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
+import { render, screen } from "__support__/ui";
 
 import { SettingTextInput } from "./SettingTextInput";
 
@@ -52,6 +53,7 @@ describe("SettingTextInput (metabase/ui)", () => {
 
       return value;
     }
+
     it("should render the input", () => {
       const value = "/";
       setup({ setting, value, type: "text", normalize });

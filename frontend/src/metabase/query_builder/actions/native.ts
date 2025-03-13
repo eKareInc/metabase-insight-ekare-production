@@ -1,17 +1,16 @@
 import { createAction } from "redux-actions";
 
 import Questions from "metabase/entities/questions";
-import * as MetabaseAnalytics from "metabase/lib/analytics";
 import { createThunkAction } from "metabase/lib/redux";
 import { updateUserSetting } from "metabase/redux/settings";
 import { getMetadata } from "metabase/selectors/metadata";
 import type NativeQuery from "metabase-lib/v1/queries/NativeQuery";
 import type {
   CardId,
-  NativeQuerySnippet,
-  Parameter,
-  TemplateTag,
   DatabaseId,
+  NativeQuerySnippet,
+  ParameterValuesConfig,
+  TemplateTag,
 } from "metabase-types/api";
 import type { Dispatch, GetState } from "metabase-types/store";
 
@@ -27,9 +26,7 @@ import { updateQuestion } from "./core";
 import { SET_UI_CONTROLS } from "./ui";
 
 export const TOGGLE_DATA_REFERENCE = "metabase/qb/TOGGLE_DATA_REFERENCE";
-export const toggleDataReference = createAction(TOGGLE_DATA_REFERENCE, () => {
-  MetabaseAnalytics.trackStructEvent("QueryBuilder", "Toggle Data Reference");
-});
+export const toggleDataReference = createAction(TOGGLE_DATA_REFERENCE);
 
 export const SET_DATA_REFERENCE_STACK = "metabase/qb/SET_DATA_REFERENCE_STACK";
 export const setDataReferenceStack = createAction(SET_DATA_REFERENCE_STACK);
@@ -80,12 +77,6 @@ export const TOGGLE_TEMPLATE_TAGS_EDITOR =
   "metabase/qb/TOGGLE_TEMPLATE_TAGS_EDITOR";
 export const toggleTemplateTagsEditor = createAction(
   TOGGLE_TEMPLATE_TAGS_EDITOR,
-  () => {
-    MetabaseAnalytics.trackStructEvent(
-      "QueryBuilder",
-      "Toggle Template Tags Editor",
-    );
-  },
 );
 
 export const SET_IS_SHOWING_TEMPLATE_TAGS_EDITOR =
@@ -98,9 +89,7 @@ export const setIsShowingTemplateTagsEditor = (
 });
 
 export const TOGGLE_SNIPPET_SIDEBAR = "metabase/qb/TOGGLE_SNIPPET_SIDEBAR";
-export const toggleSnippetSidebar = createAction(TOGGLE_SNIPPET_SIDEBAR, () => {
-  MetabaseAnalytics.trackStructEvent("QueryBuilder", "Toggle Snippet Sidebar");
-});
+export const toggleSnippetSidebar = createAction(TOGGLE_SNIPPET_SIDEBAR);
 
 export const SET_IS_SHOWING_SNIPPET_SIDEBAR =
   "metabase/qb/SET_IS_SHOWING_SNIPPET_SIDEBAR";
@@ -113,7 +102,7 @@ export const setIsShowingSnippetSidebar = (
 
 export const setIsNativeEditorOpen = (isNativeEditorOpen: boolean) => ({
   type: SET_UI_CONTROLS,
-  payload: { isNativeEditorOpen },
+  payload: { isNativeEditorOpen, isShowingDataReference: isNativeEditorOpen },
 });
 
 export const SET_NATIVE_EDITOR_SELECTED_RANGE =
@@ -183,7 +172,7 @@ export const setTemplateTag = createThunkAction(
 export const SET_TEMPLATE_TAG_CONFIG = "metabase/qb/SET_TEMPLATE_TAG_CONFIG";
 export const setTemplateTagConfig = createThunkAction(
   SET_TEMPLATE_TAG_CONFIG,
-  (tag: TemplateTag, parameter: Parameter) => {
+  (tag: TemplateTag, parameter: ParameterValuesConfig) => {
     return (dispatch: Dispatch, getState: GetState) => {
       const question = getQuestion(getState());
       if (!question) {

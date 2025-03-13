@@ -5,7 +5,7 @@ import type {
   ColumnMetadata,
   ExpressionArg,
   ExpressionClause,
-  ExpressionOperatorName,
+  ExpressionOperator,
   ExpressionOptions,
   ExpressionParts,
   FilterClause,
@@ -43,9 +43,9 @@ export function expressions(
 export function expressionableColumns(
   query: Query,
   stageIndex?: number,
-  expressionPosition?: number,
+  expressionIndex?: number,
 ): ColumnMetadata[] {
-  return ML.expressionable_columns(query, stageIndex, expressionPosition);
+  return ML.expressionable_columns(query, stageIndex, expressionIndex);
 }
 
 export function expressionParts(
@@ -57,7 +57,7 @@ export function expressionParts(
 }
 
 export function expressionClause(
-  operator: ExpressionOperatorName,
+  operator: ExpressionOperator,
   args: (ExpressionArg | AggregationClause | ExpressionClause | FilterClause)[],
   options: ExpressionOptions | null = null,
 ): ExpressionClause {
@@ -90,13 +90,13 @@ export function diagnoseExpression(
   stageIndex: number,
   expressionMode: ExpressionMode,
   mbql: any,
-  expressionPosition?: number,
+  expressionIndex?: number,
 ): ErrorWithMessage | null {
   return ML.diagnose_expression(
     query,
     stageIndex,
     expressionMode,
     mbql,
-    expressionPosition,
+    expressionIndex,
   );
 }

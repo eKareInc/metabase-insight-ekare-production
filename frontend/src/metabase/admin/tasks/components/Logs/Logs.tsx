@@ -1,9 +1,8 @@
 import cx from "classnames";
-import { useState, useMemo } from "react";
 import * as React from "react";
+import { useMemo, useState } from "react";
 import reactAnsiStyle from "react-ansi-style";
 import { t } from "ttag";
-import _ from "underscore";
 
 import Select, { Option } from "metabase/core/components/Select";
 import CS from "metabase/css/core/index.css";
@@ -19,7 +18,11 @@ interface LogsProps {
   pollingDurationMs?: number;
 }
 
-export const Logs = ({ pollingDurationMs = 1000 }: LogsProps) => {
+export const DEFAULT_POLLING_DURATION_MS = 1000;
+
+export const Logs = ({
+  pollingDurationMs = DEFAULT_POLLING_DURATION_MS,
+}: LogsProps) => {
   const [selectedProcessUUID, setSelectedProcessUUID] = useState("ALL");
   const { loaded, error, logs } = usePollingLogsQuery(pollingDurationMs);
   const processUUIDs = useMemo(() => getAllProcessUUIDs(logs), [logs]);

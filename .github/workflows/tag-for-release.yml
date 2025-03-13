@@ -11,6 +11,10 @@ on:
       commit:
         description: 'A full-length commit SHA-1 hash'
         required: true
+      auto:
+        description: 'auto-patch release DO NOT SET MANUALLY'
+        type: boolean
+        default: false
 
 jobs:
   start-message:
@@ -23,22 +27,23 @@ jobs:
       - name: Prepare build scripts
         run: cd ${{ github.workspace }}/release && yarn && yarn build
       - name: Send build start message
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         env:
           SLACK_RELEASE_CHANNEL: ${{ vars.SLACK_RELEASE_CHANNEL }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         with:
           script: | # js
-            const { sendReleaseMessage } = require('${{ github.workspace }}/release/dist/index.cjs');
+            const { sendPreReleaseMessage } = require('${{ github.workspace }}/release/dist/index.cjs');
 
-            await sendReleaseMessage({
-              stage: 'build-start',
+            await sendPreReleaseMessage({
               github,
               owner: context.repo.owner,
               repo: context.repo.repo,
               version: '${{ inputs.version }}',
               runId: '${{ github.run_id }}',
               releaseSha: '${{ inputs.commit }}',
+              userName: '${{ github.actor }}',
+              channelName: '${{ vars.SLACK_RELEASE_CHANNEL }}',
             }).catch(console.error);
 
   check-version:
@@ -78,21 +83,14 @@ jobs:
             oss: getCanonicalVersion(version, 'oss'),
           };
 
-          const ossReleased = await hasBeenReleased({
+          const released = await hasBeenReleased({
             github,
             owner: context.repo.owner,
             repo: context.repo.repo,
             version: versions.oss,
           });
 
-          const eeReleased = await hasBeenReleased({
-            github,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            version: versions.ee,
-          });
-
-          if (ossReleased || eeReleased) {
+          if (released) {
             throw new Error("This version has already been released!", version);
           }
 
@@ -137,6 +135,9 @@ jobs:
     env:
       INTERACTIVE: false
     steps:
+    - uses: actions/checkout@v4
+      with:
+        sparse-checkout: .github
     - name: Get correct version number
       run: | # bash
         if [ '${{matrix.edition}}' == 'ee' ]; then
@@ -150,57 +151,12 @@ jobs:
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: 17 # 11 throws an error on jar uf
+        java-version: 21
 
     - name: Retrieve test build uberjar artifact for ${{ matrix.edition }}
-      id: find_release_artifact
-      uses: actions/github-script@v7
+      uses: ./.github/actions/fetch-artifact
       with:
-        result-encoding: string
-        script: | # js
-          const fs = require('fs');
-
-          const artifacts = await github.rest.actions.listArtifactsForRepo({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            name: `metabase-${{ matrix.edition }}-${{ inputs.commit }}-uberjar`,
-            per_page: 1,
-          });
-
-          if (!artifacts.data?.artifacts?.[0]?.id) {
-            console.warn(`No existing artifacts found for ${{ inputs.commit }}, need to build jar`);
-
-            if ("${{matrix.edition}}" === 'oss') {
-              // only trigger the build job on OSS, otherwise we'll get double builds
-              github.rest.actions.createWorkflowDispatch({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: 'build-for-release.yml',
-                ref: 'refs/heads/master',
-                inputs: {
-                  commit: '${{ inputs.commit }}',
-                  version: '${{ inputs.version }}',
-                }
-              });
-            }
-
-            throw new Error('aborting in favor of build script');
-          }
-
-          const artifact_id = artifacts.data.artifacts[0].id;
-
-          const download = await github.rest.actions.downloadArtifact({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            artifact_id: artifact_id,
-            archive_format: 'zip',
-          });
-
-          fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/mb.zip`, Buffer.from(download.data));
-    - name: Unzip Metabase artifact containing an uberjar
-      run: |
-        unzip mb.zip
-        mv target/uberjar/metabase.jar metabase.jar
+        name: metabase-${{ matrix.edition }}-${{ inputs.commit }}-uberjar
 
     - name: Update version.properties in jar
       run: | # sh
@@ -228,24 +184,25 @@ jobs:
           ./COMMIT-ID
           ./SHA256.sum
 
-  trigger-tests:
-    needs: [tag-uberjar-for-release]
-    permissions:
-      actions: write
-    runs-on: ubuntu-22.04
-    timeout-minutes: 5
-    steps:
-      - name: trigger pre-release testing
-        uses: actions/github-script@v7
-        with:
-          script: | # js
-            github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'pre-release.yml',
-              ref: '${{ github.ref }}',
-              inputs: {
-                commit: '${{ inputs.commit }}',
-                version: '${{ inputs.version }}',
-              }
-            });
+  run-pre-release-tests:
+    name: Run pre-release tests for ${{ inputs.version }}
+    needs: tag-uberjar-for-release
+    uses: ./.github/workflows/pre-release.yml
+    secrets: inherit
+    with:
+      commit: ${{ inputs.commit }}
+      version: ${{ inputs.version }}
+
+  auto-publish-release:
+    name: Auto-publish release ${{ inputs.version }}
+    if: ${{ inputs.auto }}
+    needs: run-pre-release-tests
+    uses: ./.github/workflows/release.yml
+    secrets: inherit
+    with:
+      version: ${{ inputs.version }}
+      commit: ${{ inputs.commit }}
+      auto: ${{ inputs.auto }}
+      # for now don't auto-set release channel because we don't want to have
+      # multiple nightlies due to race conditions
+      release-channel: none

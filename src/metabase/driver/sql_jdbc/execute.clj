@@ -9,6 +9,7 @@
    [clojure.java.jdbc :as jdbc]
    [clojure.string :as str]
    [java-time.api :as t]
+   [medley.core :as m]
    [metabase.driver :as driver]
    [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
    [metabase.driver.sql-jdbc.execute.diagnostic :as sql-jdbc.execute.diagnostic]
@@ -18,7 +19,7 @@
    [metabase.lib.schema.common :as lib.schema.common]
    [metabase.lib.schema.expression.temporal :as lib.schema.expression.temporal]
    [metabase.models.setting :refer [defsetting]]
-   [metabase.public-settings.premium-features :refer [defenterprise]]
+   [metabase.premium-features.core :refer [defenterprise]]
    [metabase.query-processor.error-type :as qp.error-type]
    [metabase.query-processor.middleware.limit :as limit]
    [metabase.query-processor.pipeline :as qp.pipeline]
@@ -30,6 +31,7 @@
    [metabase.util.i18n :refer [tru]]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
+   [metabase.util.performance :as perf]
    [potemkin :as p])
   (:import
    (java.sql Connection JDBCType PreparedStatement ResultSet ResultSetMetaData SQLFeatureNotSupportedException
@@ -227,7 +229,7 @@
 
 (defenterprise set-role-if-supported!
   "OSS no-op implementation of `set-role-if-supported!`."
-  metabase-enterprise.advanced-permissions.driver.impersonation
+  metabase-enterprise.impersonation.driver
   [_ _ _])
 
 ;; TODO - since we're not running the queries in a transaction, does this make any difference at all? (metabase#40012)
@@ -238,8 +240,8 @@
   [driver ^Connection conn]
   (let [dbmeta (.getMetaData conn)]
     (loop [[[level-name ^Integer level] & more] [[:read-uncommitted Connection/TRANSACTION_READ_UNCOMMITTED]
-                                                 [:repeatable-read  Connection/TRANSACTION_REPEATABLE_READ]
-                                                 [:read-committed   Connection/TRANSACTION_READ_COMMITTED]]]
+                                                 [:read-committed   Connection/TRANSACTION_READ_COMMITTED]
+                                                 [:repeatable-read  Connection/TRANSACTION_REPEATABLE_READ]]]
       (cond
         (.supportsTransactionIsolationLevel dbmeta level)
         (do
@@ -313,8 +315,8 @@
 (defn recursive-connection?
   "Whether or not we are in a recursive call to [[do-with-connection-with-options]]. If we are, you shouldn't set
   Connection options AGAIN, as that may override previous options that we don't want to override."
-  []
   {:added "0.47.0"}
+  []
   (pos? *connection-recursion-depth*))
 
 (mu/defn do-with-resolved-connection
@@ -528,8 +530,8 @@
   (when canceled-chan
     (a/go
       (when (a/<! canceled-chan)
-        (log/debug "Query canceled, calling Statement.cancel()")
-        (u/ignore-exceptions
+        (when-not (.isClosed stmt)
+          (log/debug "Query canceled, calling Statement.cancel()")
           (.cancel stmt))))))
 
 (defn- prepared-statement*
@@ -594,6 +596,12 @@
   [_ rs _ i]
   (get-object-of-class-thunk rs i java.time.LocalDateTime))
 
+(defmethod read-column-thunk [:sql-jdbc Types/ARRAY]
+  [_driver ^java.sql.ResultSet rs _rsmeta ^Integer i]
+  (fn []
+    (when-let [obj (.getObject rs i)]
+      (vec (.getArray ^java.sql.Array obj)))))
+
 (defmethod read-column-thunk [:sql-jdbc Types/TIMESTAMP_WITH_TIMEZONE]
   [_ rs _ i]
   (get-object-of-class-thunk rs i java.time.OffsetDateTime))
@@ -634,34 +642,57 @@
   "Returns a thunk that can be called repeatedly to get the next row in the result set, using appropriate methods to
   fetch each value in the row. Returns `nil` when the result set has no more rows."
   [driver ^ResultSet rs ^ResultSetMetaData rsmeta]
-  (let [fns (for [i (column-range rsmeta)]
-              (read-column-thunk driver rs rsmeta (long i)))]
+  (let [fns (mapv #(read-column-thunk driver rs rsmeta (long %))
+                  (column-range rsmeta))]
     (log-readers driver rsmeta fns)
     (let [thunk (if (seq fns)
-                  (apply juxt fns)
+                  (perf/juxt* fns)
                   (constantly []))]
       (fn row-thunk* []
         (when (.next rs)
           (thunk))))))
 
+(defn- resolve-missing-base-types
+  [driver metadatas]
+  (if (qp.store/initialized?)
+    (let [missing (keep (fn [{:keys [database_type base_type]}]
+                          (when-not base_type
+                            database_type))
+                        metadatas)
+          lookup (driver/dynamic-database-types-lookup
+                  driver (lib.metadata/database (qp.store/metadata-provider)) missing)]
+      (if (seq lookup)
+        (mapv (fn [{:keys [database_type base_type] :as metadata}]
+                (if-not base_type
+                  (m/assoc-some metadata :base_type (lookup database_type))
+                  metadata))
+              metadatas)
+        metadatas))
+    metadatas))
+
 (defmethod column-metadata :sql-jdbc
   [driver ^ResultSetMetaData rsmeta]
-  (mapv
-   (fn [^Integer i]
-     (let [col-name     (.getColumnLabel rsmeta i)
-           db-type-name (.getColumnTypeName rsmeta i)
-           base-type    (sql-jdbc.sync.interface/database-type->base-type driver (keyword db-type-name))]
-       (log/tracef "Column %d '%s' is a %s which is mapped to base type %s for driver %s\n"
-                   i col-name db-type-name base-type driver)
-       {:name      col-name
-        ;; TODO - disabled for now since it breaks a lot of tests. We can re-enable it when the tests are in a better
-        ;; state
-        #_:original_name #_(.getColumnName rsmeta i)
-        #_:jdbc_type #_ (u/ignore-exceptions
-                          (.getName (JDBCType/valueOf (.getColumnType rsmeta i))))
-        #_:db_type   #_db-type-name
-        :base_type   (or base-type :type/*)}))
-   (column-range rsmeta)))
+  (->> (mapv
+        (fn [^Long i]
+          (let [col-name     (.getColumnLabel rsmeta i)
+                db-type-name (.getColumnTypeName rsmeta i)
+                base-type    (sql-jdbc.sync.interface/database-type->base-type driver (keyword db-type-name))]
+            (log/tracef "Column %d '%s' is a %s which is mapped to base type %s for driver %s\n"
+                        i col-name db-type-name base-type driver)
+            {:name      col-name
+             ;; TODO - disabled for now since it breaks a lot of tests. We can re-enable it when the tests are in a better
+             ;; state
+             #_:original_name #_(.getColumnName rsmeta i)
+             #_:jdbc_type #_(u/ignore-exceptions
+                              (.getName (JDBCType/valueOf (.getColumnType rsmeta i))))
+             :base_type     base-type
+             :database_type db-type-name}))
+        (column-range rsmeta))
+       (resolve-missing-base-types driver)
+       (mapv (fn [{:keys [base_type] :as metadata}]
+               (if (nil? base_type)
+                 (assoc metadata :base_type :type/*)
+                 metadata)))))
 
 (defn reducible-rows
   "Returns an object that can be reduced to fetch the rows and columns in a `ResultSet` in a driver-specific way (e.g.
@@ -755,7 +786,7 @@
            (with-open [stmt          (statement-or-prepared-statement driver conn sql params nil)
                        ^ResultSet rs (try
                                        (let [max-rows 0] ; 0 means no limit
-                                          (execute-statement-or-prepared-statement! driver stmt max-rows params sql))
+                                         (execute-statement-or-prepared-statement! driver stmt max-rows params sql))
                                        (catch Throwable e
                                          (throw (ex-info (tru "Error executing query: {0}" (ex-message e))
                                                          {:driver driver
@@ -787,7 +818,6 @@
       (throw (ex-info (tru "Error executing write query: {0}" (ex-message e))
                       {:sql sql, :params params, :type qp.error-type/invalid-query}
                       e)))))
-
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                       Convenience Imports from Old Impl                                        |

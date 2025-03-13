@@ -4,6 +4,7 @@
    [clojure.data.xml :as xml]
    [clojure.java.io :as io]
    [clojure.string :as str]
+   [clojure.walk :as walk]
    [honey.sql :as sql]
    [honey.sql.helpers :as sql.helpers]
    [java-time.api :as t]
@@ -14,25 +15,35 @@
    [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
    [metabase.driver.sql-jdbc.execute :as sql-jdbc.execute]
    [metabase.driver.sql-jdbc.sync :as sql-jdbc.sync]
+   [metabase.driver.sql.parameters.substitution
+    :as sql.params.substitution]
    [metabase.driver.sql.query-processor :as sql.qp]
    [metabase.driver.sql.util :as sql.u]
-   [metabase.driver.sql.util.unprepare :as unprepare]
    [metabase.legacy-mbql.util :as mbql.u]
    [metabase.lib.util.match :as lib.util.match]
-   [metabase.query-processor.interface :as qp.i]
+   [metabase.query-processor.middleware.limit :as limit]
    [metabase.query-processor.timezone :as qp.timezone]
+   [metabase.util :as u]
    [metabase.util.honey-sql-2 :as h2x]
    [metabase.util.log :as log])
   (:import
-   (java.sql Connection ResultSet Time)
-   (java.time LocalDate LocalDateTime LocalTime OffsetDateTime OffsetTime ZonedDateTime)
-   (java.time.format DateTimeFormatter)))
+   (java.sql Connection PreparedStatement ResultSet Time)
+   (java.time
+    LocalDate
+    LocalDateTime
+    LocalTime
+    OffsetDateTime
+    OffsetTime
+    ZonedDateTime)
+   (java.time.format DateTimeFormatter)
+   [java.util UUID]))
 
 (set! *warn-on-reflection* true)
 
 (driver/register! :sqlserver, :parent :sql-jdbc)
 
 (doseq [[feature supported?] {:case-sensitivity-string-filter-options false
+                              :uuid-type                              true
                               :convert-timezone                       true
                               :datetime-diff                          true
                               :index-info                             true
@@ -187,6 +198,18 @@
             [year month day hour minute second fraction precision])
       (h2x/with-database-type-info "datetime2")))
 
+(defn- from-date-expression
+  "When truncating to date-sized chunks (year, quarter, month, week, day) we use the `:DateFromParts` function, which
+  returns a `:date` (Metabase `:type/Date`). But truncation is not supposed to change the type of the column!
+
+  This returns the `:DateFromParts` expression if the original field is `:type/Date`; otherwise (eg. `:type/DateTime`)
+  it casts to `:datetime2`."
+  [base-expr day-expr]
+  (if (or (= (:base-type *field-options*) :type/Date)
+          (lib.util.match/match-one base-expr [::h2x/typed _ {:database-type (_ :guard #{:date "date"})}]))
+    day-expr
+    (h2x/cast :datetime2 day-expr)))
+
 (defmethod sql.qp/date [:sqlserver :hour]
   [_driver _unit expr]
   (if (= (h2x/database-type expr) "time")
@@ -197,17 +220,29 @@
   [_driver _unit expr]
   (date-part :hour expr))
 
+;; TODO -- if we ever allow db-start-of-week to vary based on db localization settings, this should be replaced
+;; with something using the new system
+;; Issue: https://github.com/metabase/metabase/issues/39386
+(defn- weekday
+  "Wrapper around (date-part :weekday ...) to account for potentially varying @@DATEFIRST"
+  [expr]
+  [:coalesce
+   [:nullif
+    (h2x/mod (h2x/+ (date-part :weekday expr) [:raw "@@DATEFIRST"]) [:inline 7])
+    [:inline 0]]
+   [:inline 7]])
+
 (defmethod sql.qp/date [:sqlserver :day]
   [_driver _unit expr]
   ;; `::optimized-bucketing?` is added by `optimized-temporal-buckets`; this signifies that we can use more efficient
   ;; SQL functions like `day()` that don't return a full DATE. See `optimized-temporal-buckets` below for more info.
   (if (::optimized-bucketing? *field-options*)
     (h2x/day expr)
-    [:DateFromParts (h2x/year expr) (h2x/month expr) (h2x/day expr)]))
+    (from-date-expression expr [:DateFromParts (h2x/year expr) (h2x/month expr) (h2x/day expr)])))
 
 (defmethod sql.qp/date [:sqlserver :day-of-week]
   [_driver _unit expr]
-  (sql.qp/adjust-day-of-week :sqlserver (date-part :weekday expr)))
+  (sql.qp/adjust-day-of-week :sqlserver (weekday expr)))
 
 (defmethod sql.qp/date [:sqlserver :day-of-month]
   [_driver _unit expr]
@@ -224,9 +259,9 @@
                         "datetimeoffset"
                         "datetime")]
     (h2x/cast original-type
-      (date-add :day
-                (h2x/- 1 (date-part :weekday expr))
-                (h2x/->date expr)))))
+              (date-add :day
+                        (h2x/- 1 (weekday expr))
+                        (h2x/->date expr)))))
 
 (defmethod sql.qp/date [:sqlserver :week]
   [driver _ expr]
@@ -240,7 +275,7 @@
   [_ _ expr]
   (if (::optimized-bucketing? *field-options*)
     (h2x/month expr)
-    [:DateFromParts (h2x/year expr) (h2x/month expr) [:inline 1]]))
+    (from-date-expression expr [:DateFromParts (h2x/year expr) (h2x/month expr) [:inline 1]])))
 
 (defmethod sql.qp/date [:sqlserver :month-of-year]
   [_driver _unit expr]
@@ -251,9 +286,9 @@
 ;;     DATEADD(quarter, DATEPART(quarter, %s) - 1, FORMAT(%s, 'yyyy-01-01'))
 (defmethod sql.qp/date [:sqlserver :quarter]
   [_driver _unit expr]
-  (date-add :quarter
-            (h2x/dec (date-part :quarter expr))
-            [:DateFromParts (h2x/year expr) [:inline 1] [:inline 1]]))
+  (->> [:DateFromParts (h2x/year expr) [:inline 1] [:inline 1]]
+       (date-add :quarter (h2x/dec (date-part :quarter expr)))
+       (from-date-expression expr)))
 
 (defmethod sql.qp/date [:sqlserver :quarter-of-year]
   [_driver _unit expr]
@@ -263,7 +298,7 @@
   [_driver _unit expr]
   (if (::optimized-bucketing? *field-options*)
     (h2x/year expr)
-    [:DateFromParts (h2x/year expr) [:inline 1] [:inline 1]]))
+    (from-date-expression expr [:DateFromParts (h2x/year expr) [:inline 1] [:inline 1]])))
 
 (defmethod sql.qp/date [:sqlserver :year-of-era]
   [_driver _unit expr]
@@ -280,19 +315,29 @@
   ;; Work around this by converting the timestamps to minutes instead before calling DATEADD().
   (date-add :minute (h2x// expr 60) (h2x/literal "1970-01-01")))
 
+(defn- sanitize-contents
+  "Parsed xml may contain whitespace elements as `\"\n\n\t\t\"` in its contents. Leave only maps in content for
+  purposes of [[zone-id->windows-zone]]."
+  [parsed]
+  (walk/postwalk
+   (fn [x]
+     (if (and (map? x)
+              (contains? x :content)
+              (seq (:content x)))
+       (update x :content (partial filter map?))
+       x))
+   parsed))
+
 (defonce
   ^{:private true
     :doc     "A map of all zone-id to the corresponding windows-zone.
              I.e {\"Asia/Tokyo\" \"Tokyo Standard Time\"}"}
   zone-id->windows-zone
-  (let [data (-> (io/resource "timezones/windowsZones.xml")
-                 io/reader
-                 xml/parse
-                 :content
-                 second
-                 :content
-                 first
-                 :content)]
+  (let [parsed (-> (io/resource "timezones/windowsZones.xml")
+                   io/reader
+                   xml/parse)
+        sanitized (sanitize-contents parsed)
+        data (-> sanitized :content second :content first :content)]
     (->> (for [mapZone data
                :let [attrs       (:attrs mapZone)
                      window-zone (:other attrs)
@@ -381,8 +426,8 @@
 (defmethod sql.qp/apply-top-level-clause [:sqlserver :page]
   [_driver _top-level-clause honeysql-form {{:keys [items page]} :page}]
   (assoc honeysql-form :offset [:raw (format "%d ROWS FETCH NEXT %d ROWS ONLY"
-                                               (* items (dec page))
-                                               items)]))
+                                             (* items (dec page))
+                                             items)]))
 
 (defn- optimized-temporal-buckets
   "If `field-clause` is being truncated temporally to `:year`, `:month`, or `:day`, return a optimized set of
@@ -513,6 +558,10 @@
   [driver [_ arg power]]
   [:power (h2x/cast :float (sql.qp/->honeysql driver arg)) (sql.qp/->honeysql driver power)])
 
+(defmethod sql.qp/->honeysql [:sqlserver :avg]
+  [driver [_ field]]
+  [:avg [:cast (sql.qp/->honeysql driver field) :float]])
+
 (defn- format-approx-percentile-cont
   [_tag [expr p :as _args]]
   (let [[expr-sql & expr-args] (sql/format-expr expr {:nested true})
@@ -609,6 +658,10 @@
                          args)]
         ((get-method sql.qp/->honeysql [:sql-jdbc op]) driver clause)))))
 
+(defmethod sql.qp/->honeysql [:sqlserver ::sql.qp/cast-to-text]
+  [driver [_ expr]]
+  (sql.qp/->honeysql driver [::sql.qp/cast expr "varchar(256)"]))
+
 (defmethod driver/db-default-timezone :sqlserver
   [driver database]
   (sql-jdbc.execute/do-with-connection-with-options
@@ -675,7 +728,7 @@
       (fix-order-bys (dissoc m :order-by))
 
       (m :guard (partial add-limit? &parents))
-      (fix-order-bys (assoc m :limit qp.i/absolute-max-results)))))
+      (fix-order-bys (assoc m :limit limit/absolute-max-results)))))
 
 (defmethod sql.qp/preprocess :sqlserver
   [driver inner-query]
@@ -711,8 +764,8 @@
 (defmethod sql-jdbc.execute/statement :sqlserver
   [_ ^Connection conn]
   (let [stmt (.createStatement conn
-               ResultSet/TYPE_FORWARD_ONLY
-               ResultSet/CONCUR_READ_ONLY)]
+                               ResultSet/TYPE_FORWARD_ONLY
+                               ResultSet/CONCUR_READ_ONLY)]
     (try
       (try
         (.setFetchDirection stmt ResultSet/FETCH_FORWARD)
@@ -723,24 +776,24 @@
         (.close stmt)
         (throw e)))))
 
-(defmethod unprepare/unprepare-value [:sqlserver LocalDate]
+(defmethod sql.qp/inline-value [:sqlserver LocalDate]
   [_ ^LocalDate t]
   ;; datefromparts(year, month, day)
   ;; See https://docs.microsoft.com/en-us/sql/t-sql/functions/datefromparts-transact-sql?view=sql-server-ver15
   (format "DateFromParts(%d, %d, %d)" (.getYear t) (.getMonthValue t) (.getDayOfMonth t)))
 
-(defmethod unprepare/unprepare-value [:sqlserver LocalTime]
+(defmethod sql.qp/inline-value [:sqlserver LocalTime]
   [_ ^LocalTime t]
   ;; timefromparts(hour, minute, seconds, fraction, precision)
   ;; See https://docs.microsoft.com/en-us/sql/t-sql/functions/timefromparts-transact-sql?view=sql-server-ver15
   ;; precision = 7 which means the fraction is 100 nanoseconds, smallest supported by SQL Server
   (format "TimeFromParts(%d, %d, %d, %d, 7)" (.getHour t) (.getMinute t) (.getSecond t) (long (/ (.getNano t) 100))))
 
-(defmethod unprepare/unprepare-value [:sqlserver OffsetTime]
+(defmethod sql.qp/inline-value [:sqlserver OffsetTime]
   [driver t]
-  (unprepare/unprepare-value driver (t/local-time (t/with-offset-same-instant t (t/zone-offset 0)))))
+  (sql.qp/inline-value driver (t/local-time (t/with-offset-same-instant t (t/zone-offset 0)))))
 
-(defmethod unprepare/unprepare-value [:sqlserver OffsetDateTime]
+(defmethod sql.qp/inline-value [:sqlserver OffsetDateTime]
   [_ ^OffsetDateTime t]
   ;; DateTimeOffsetFromParts(year, month, day, hour, minute, seconds, fractions, hour_offset, minute_offset, precision)
   (let [offset-minutes (long (/ (.getTotalSeconds (.getOffset t)) 60))
@@ -751,11 +804,11 @@
             (.getHour t) (.getMinute t) (.getSecond t) (long (/ (.getNano t) 100))
             hour-offset minute-offset)))
 
-(defmethod unprepare/unprepare-value [:sqlserver ZonedDateTime]
+(defmethod sql.qp/inline-value [:sqlserver ZonedDateTime]
   [driver t]
-  (unprepare/unprepare-value driver (t/offset-date-time t)))
+  (sql.qp/inline-value driver (t/offset-date-time t)))
 
-(defmethod unprepare/unprepare-value [:sqlserver LocalDateTime]
+(defmethod sql.qp/inline-value [:sqlserver LocalDateTime]
   [_ ^LocalDateTime t]
   ;; DateTime2FromParts(year, month, day, hour, minute, seconds, fractions, precision)
   (format "DateTime2FromParts(%d, %d, %d, %d, %d, %d, %d, 7)"
@@ -771,9 +824,27 @@
   [driver ps i t]
   (sql-jdbc.execute/set-parameter driver ps i (t/local-time (t/with-offset-same-instant t (t/zone-offset 0)))))
 
+;; Azure Synapse supports the uuid data type, but it errors if you actually pass it a uuid as a parameter.
+;; Passing uuids as strings avoids that issue, and normal SQL Server also seems to be fine with this.
+(defmethod sql-jdbc.execute/set-parameter [:sqlserver UUID]
+  [_ ^PreparedStatement prepared-statement i object]
+  (.setObject prepared-statement i (str object)))
+
+(defmethod sql-jdbc.execute/read-column-thunk [:sqlserver java.sql.Types/CHAR]
+  [driver ^java.sql.ResultSet rs ^java.sql.ResultSetMetaData rsmeta ^Integer i]
+  (condp = (u/lower-case-en (.getColumnTypeName rsmeta i))
+    "uniqueidentifier"
+    (fn read-column-as-UUID []
+      (when-let [s (.getObject rs i)]
+        (try
+          (UUID/fromString s)
+          (catch IllegalArgumentException _
+            s))))
+    ((get-method sql-jdbc.execute/read-column-thunk [:sql-jdbc java.sql.Types/CHAR]) driver rs rsmeta i)))
+
 ;; instead of default `microsoft.sql.DateTimeOffset`
 (defmethod sql-jdbc.execute/read-column-thunk [:sqlserver microsoft.sql.Types/DATETIMEOFFSET]
-  [_^ResultSet rs _ ^Integer i]
+  [_ ^ResultSet rs _ ^Integer i]
   (fn []
     (.getObject rs i OffsetDateTime)))
 
@@ -782,11 +853,6 @@
   [driver bool]
   (driver.sql/->prepared-substitution driver (if bool 1 0)))
 
-(defmethod driver/normalize-db-details :sqlserver
-  [_ database]
-  (if-let [rowcount-override (-> database :details :rowcount-override)]
-    ;; if the user has set the rowcount-override connection property, it ends up in the details map, but it actually
-    ;; needs to be moved over to the settings map (which is where DB local settings go, as per #19399)
-    (-> (update database :details #(dissoc % :rowcount-override))
-        (update :settings #(assoc % :unaggregated-query-row-limit rowcount-override)))
-    database))
+(defmethod sql.params.substitution/->replacement-snippet-info [:sqlserver UUID]
+  [_driver this]
+  {:replacement-snippet (format "'%s'" (str this))})

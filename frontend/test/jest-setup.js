@@ -1,4 +1,4 @@
-import { TextEncoder, TextDecoder } from "util";
+import { TextDecoder, TextEncoder } from "util";
 import "cross-fetch/polyfill";
 import "raf/polyfill";
 import "jest-localstorage-mock";
@@ -16,7 +16,6 @@ process.on("uncaughtException", err =>
 
 if (process.env["DISABLE_LOGGING"] || process.env["DISABLE_LOGGING_FRONTEND"]) {
   global.console = {
-    ...console.log,
     log: jest.fn(),
     debug: jest.fn(),
     info: jest.fn(),
@@ -31,3 +30,13 @@ if (process.env["DISABLE_LOGGING"] || process.env["DISABLE_LOGGING_FRONTEND"]) {
 // (hacky fix)
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
+
+// https://github.com/jsdom/jsdom/issues/3002
+Range.prototype.getBoundingClientRect = () => ({
+  bottom: 0,
+  height: 0,
+  left: 0,
+  right: 0,
+  top: 0,
+  width: 0,
+});

@@ -3,6 +3,7 @@ import { t } from "ttag";
 import { PLUGIN_COLLECTIONS } from "metabase/plugins";
 import type {
   Collection,
+  CollectionEssentials,
   CollectionId,
   CollectionItem,
 } from "metabase-types/api";
@@ -27,7 +28,7 @@ export function isPersonalCollection(
 }
 
 export function isRootTrashCollection(
-  collection: Pick<Collection, "type">,
+  collection?: Pick<Collection, "type">,
 ): boolean {
   return collection?.type === "trash";
 }
@@ -61,12 +62,6 @@ export function isInstanceAnalyticsCollection(
     PLUGIN_COLLECTIONS.getCollectionType(collection).type ===
       "instance-analytics"
   );
-}
-
-export function getInstanceAnalyticsCustomCollection(
-  collections: Collection[],
-): Collection | null {
-  return PLUGIN_COLLECTIONS.getInstanceAnalyticsCustomCollection(collections);
 }
 
 export function isInstanceAnalyticsCustomCollection(
@@ -189,10 +184,6 @@ export function canArchiveItem(item: CollectionItem, collection?: Collection) {
   );
 }
 
-export function canDeleteItem(item: CollectionItem, collection?: Collection) {
-  return item.archived && (item.can_write ?? collection?.can_write ?? true);
-}
-
 export function canCopyItem(item: CollectionItem) {
   return item.copy && !item.archived;
 }
@@ -247,3 +238,28 @@ export function isValidCollectionId(
   const id = canonicalCollectionId(collectionId);
   return id === null || typeof id === "number";
 }
+
+export const getCollectionName = (
+  collection: Pick<Collection, "id" | "name">,
+) => {
+  if (isRootCollection(collection)) {
+    return t`Our analytics`;
+  }
+  return collection?.name || t`Untitled collection`;
+};
+
+export const getCollectionPath = (collection: CollectionEssentials) => {
+  const ancestors: CollectionEssentials[] =
+    collection.effective_ancestors || [];
+  const collections = ancestors.concat(collection);
+  return collections;
+};
+
+export const getCollectionPathAsString = (collection: CollectionEssentials) => {
+  const collections = getCollectionPath(collection);
+  return collections
+    .map(coll => getCollectionName(coll))
+    .join(` ${collectionPathSeparator} `);
+};
+
+export const collectionPathSeparator = "/";

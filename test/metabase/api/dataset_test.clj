@@ -1,36 +1,37 @@
-(ns metabase.api.dataset-test
+(ns ^:mb/driver-tests metabase.api.dataset-test
   "Unit tests for /api/dataset endpoints. There are additional tests for downloading XLSX/CSV/JSON results generally in
   [[metabase.query-processor.streaming-test]] and specifically for each format
   in [[metabase.query-processor.streaming.csv-test]] etc."
   (:require
-   [cheshire.core :as json]
    [clojure.data.csv :as csv]
    [clojure.set :as set]
    [clojure.string :as str]
    [clojure.test :refer :all]
    [medley.core :as m]
    [metabase.api.dataset :as api.dataset]
-   [metabase.api.pivots :as api.pivots]
+   [metabase.api.test-util :as api.test-util]
    [metabase.driver :as driver]
    [metabase.http-client :as client]
    [metabase.lib.core :as lib]
    [metabase.lib.metadata :as lib.metadata]
    [metabase.lib.metadata.jvm :as lib.metadata.jvm]
+   [metabase.lib.metadata.protocols :as lib.metadata.protocols]
    [metabase.lib.schema.id :as lib.schema.id]
-   [metabase.models.card :refer [Card]]
-   [metabase.models.data-permissions :as data-perms]
-   [metabase.models.permissions-group :as perms-group]
-   [metabase.models.query-execution :refer [QueryExecution]]
+   [metabase.lib.util :as lib.util]
+   [metabase.permissions.models.data-permissions :as data-perms]
+   [metabase.permissions.models.permissions-group :as perms-group]
+   [metabase.query-processor.compile :as qp.compile]
    [metabase.query-processor.middleware.constraints :as qp.constraints]
+   [metabase.query-processor.pivot.test-util :as api.pivots]
    [metabase.query-processor.test-util :as qp.test-util]
    [metabase.query-processor.util :as qp.util]
    [metabase.test :as mt]
    [metabase.test.data.users :as test.users]
    [metabase.test.fixtures :as fixtures]
    [metabase.util :as u]
+   [metabase.util.json :as json]
    [metabase.util.malli.schema :as ms]
-   [toucan2.core :as t2]
-   [toucan2.tools.with-temp :as t2.with-temp]))
+   [toucan2.core :as t2]))
 
 (set! *warn-on-reflection* true)
 
@@ -39,7 +40,7 @@
 (defn- format-response [m]
   (when-not (map? m)
     (throw (ex-info (format "Expected results to be a map! Got: %s" (u/pprint-to-str m))
-             {:results m})))
+                    {:results m})))
   (into
    {}
    (for [[k v] (-> m
@@ -59,7 +60,7 @@
   ;; it might take a fraction of a second for the QueryExecution to show up, it's saved asynchronously. So wait a bit
   ;; and retry if it's not there yet.
   (letfn [(thunk []
-            (t2/select-one QueryExecution
+            (t2/select-one :model/QueryExecution
                            :hash (qp.util/query-hash query)
                            {:order-by [[:started_at :desc]]}))]
     (loop [retries 3]
@@ -79,7 +80,7 @@
                     {:aggregation [[:count]]})
             result (mt/user-http-request :crowberto :post 202 "dataset" query)]
         (testing "\nAPI Response"
-          (is (partial=
+          (is (=?
                {:data                   {:rows             [[1000]]
                                          :cols             [(mt/obj->json->obj (qp.test-util/aggregate-col :count))]
                                          :native_form      true
@@ -98,29 +99,32 @@
                 :database_id            (mt/id)}
                (format-response result))))
         (testing "\nSaved QueryExecution"
-          (is (= {:hash         true
-                  :row_count    1
-                  :result_rows  1
-                  :context      :ad-hoc
-                  :executor_id  (mt/user->id :crowberto)
-                  :native       false
-                  :pulse_id     nil
-                  :card_id      nil
-                  :is_sandboxed false
-                  :dashboard_id nil
-                  :error        nil
-                  :id           true
-                  :action_id    nil
-                  :cache_hit    false
-                  :cache_hash   false
-                  :database_id  (mt/id)
-                  :started_at   true
-                  :running_time true}
+          (is (= {:hash             true
+                  :row_count        1
+                  :result_rows      1
+                  :context          :ad-hoc
+                  :executor_id      (mt/user->id :crowberto)
+                  :native           false
+                  :pulse_id         nil
+                  :card_id          nil
+                  :is_sandboxed     false
+                  :dashboard_id     nil
+                  :error            nil
+                  :id               true
+                  :action_id        nil
+                  :cache_hit        false
+                  :cache_hash       false
+                  :parameterized    false
+                  :database_id      (mt/id)
+                  :started_at       true
+                  :running_time     true
+                  :embedding_client nil
+                  :embedding_version nil}
                  (format-response (most-recent-query-execution-for-query query)))))))))
 
 (deftest failure-test
   ;; clear out recent query executions!
-  (t2/delete! QueryExecution)
+  (t2/delete! :model/QueryExecution)
   (testing "POST /api/dataset"
     (testing "\nEven if a query fails we still expect a 202 response from the API"
       ;; Error message's format can differ a bit depending on DB version and the comment we prepend to it, so check
@@ -171,7 +175,7 @@
   [url]
   (-> (client/client-full-response (test.users/username->token :rasta)
                                    :post 200 url
-                                   :query (json/generate-string (mt/mbql-query checkins {:limit 1})))
+                                   {:query (mt/mbql-query checkins {:limit 1})})
       :headers
       (select-keys ["Cache-Control" "Content-Disposition" "Content-Type" "Expires" "X-Accel-Buffering"])
       (update "Content-Disposition" #(some-> % (str/replace #"query_result_.+(\.\w+)"
@@ -200,17 +204,15 @@
 
 (deftest check-that-we-can-export-the-results-of-a-nested-query
   (mt/with-temp-copy-of-db
-    (t2.with-temp/with-temp [Card card {:dataset_query {:database (mt/id)
-                                                        :type     :native
-                                                        :native   {:query "SELECT * FROM USERS;"}}}]
+    (mt/with-temp [:model/Card card {:dataset_query {:database (mt/id)
+                                                     :type     :native
+                                                     :native   {:query "SELECT * FROM USERS;"}}}]
       (letfn [(do-test []
                 (let [result (mt/user-http-request :rasta :post 200 "dataset/csv"
-                                                   :query (json/generate-string
-                                                           {:database lib.schema.id/saved-questions-virtual-database-id
+                                                   {:query {:database lib.schema.id/saved-questions-virtual-database-id
                                                             :type     :query
-                                                            :query    {:source-table (str "card__" (u/the-id card))}}))]
+                                                            :query    {:source-table (str "card__" (u/the-id card))}}})]
                   (is (some? result))
-                  (def result result)
                   (when (some? result)
                     (is (= 16
                            (count (csv/read-csv result)))))))]
@@ -226,42 +228,116 @@
             (data-perms/set-database-permission! (perms-group/all-users) (mt/id) :perms/create-queries :no)
             (do-test)))))))
 
+(deftest native-query-with-long-column-alias
+  (testing "nested native query with long column alias (metabase#47584)"
+    (let [short-col-name "coun"
+          long-col-name  "Total_number_of_people_from_each_state_separated_by_state_and_then_we_do_a_count"
+
+          ;; Lightly validate the native form that comes back. Resist the urge to check for exact equality.
+          validate-native-form (fn [native-form-lines]
+                                 (and (some #(str/includes? % short-col-name) native-form-lines)
+                                      (some #(str/includes? % long-col-name) native-form-lines)))
+
+          ;; Disable truncate-alias when compiling the native query to ensure we don't truncate the column.
+          ;; We want to simulate a user-defined query where the column name is long, but valid for the driver.
+          native-sub-query (with-redefs [lib.util/truncate-alias
+                                         (fn mock-truncate-alias
+                                           [ss & _] ss)]
+                             (-> (mt/mbql-query people
+                                   {:source-table $$people
+                                    :aggregation  [[:aggregation-options [:count] {:name short-col-name}]]
+                                    :breakout     [[:field %state {:name long-col-name}]]
+                                    :limit        5})
+                                 qp.compile/compile
+                                 :query))
+
+          native-query (mt/native-query {:query native-sub-query})
+
+          ;; Let metadata-provider-with-cards-with-metadata-for-queries calculate the result-metadata.
+          metadata-provider (qp.test-util/metadata-provider-with-cards-with-metadata-for-queries [native-query])]
+      (mt/with-temp
+        [:model/Card card (assoc {:dataset_query native-query}
+                                 :result_metadata
+                                 (-> (lib.metadata.protocols/metadatas metadata-provider :metadata/card [1])
+                                     first
+                                     :result-metadata))]
+        (let [card-query {:database (mt/id)
+                          :type     "query"
+                          :query    {:source-table (str "card__" (u/the-id card))}}]
+          (mt/with-native-query-testing-context card-query
+            (testing "POST /api/dataset/native"
+              (is (=? {:query  validate-native-form
+                       :params nil}
+                      (-> (mt/user-http-request :crowberto :post 200 "dataset/native" card-query)
+                          (update :query #(str/split-lines (or (driver/prettify-native-form :h2 %)
+                                                               "error: no query generated")))))))
+            (testing "POST /api/dataset"
+              (is (=?
+                   {:data        {:rows             [["AK" 68] ["AL" 56] ["AR" 49] ["AZ" 20] ["CA" 90]]
+                                  :cols             [{:name         long-col-name
+                                                      :display_name long-col-name
+                                                      :field_ref    ["field" long-col-name {}]
+                                                      :source       "fields"}
+                                                     {:name         short-col-name
+                                                      :display_name short-col-name
+                                                      :field_ref    ["field" short-col-name {}]
+                                                      :source       "fields"}]
+                                  :native_form      {:query  validate-native-form
+                                                     :params nil}
+                                  :results_timezone "UTC"}
+                    :row_count   5
+                    :status      "completed"
+                    :context     "ad-hoc"
+                    :json_query  (merge query-defaults card-query)
+                    :database_id (mt/id)}
+                   (-> (mt/user-http-request :crowberto :post 202 "dataset" card-query)
+                       (update-in [:data :native_form :query]
+                                  #(str/split-lines (or (driver/prettify-native-form :h2 %)
+                                                        "error: no query generated")))))))))))))
+
 (deftest formatted-results-ignore-query-constraints
   (testing "POST /api/dataset/:format"
     (testing "Downloading CSV/JSON/XLSX results shouldn't be subject to the default query constraints (#9831)"
       ;; even if the query comes in with `add-default-userland-constraints` (as will be the case if the query gets saved
       (with-redefs [qp.constraints/default-query-constraints (constantly {:max-results 10, :max-results-bare-rows 10})]
-        (let [result (mt/user-http-request :crowberto :post 200 "dataset/csv"
-                                           :query (json/generate-string
-                                                   {:database (mt/id)
-                                                    :type     :query
-                                                    :query    {:source-table (mt/id :venues)}
-                                                    :middleware
-                                                    {:add-default-userland-constraints? true
-                                                     :userland-query?                   true}}))]
-          (is (some? result))
-          (when (some? result)
-            (is (= 101
-                   (count (csv/read-csv result))))))))))
+        (doseq [:let     [query {:database (mt/id)
+                                 :type     :query
+                                 :query    {:source-table (mt/id :venues)}
+                                 :middleware
+                                 {:add-default-userland-constraints? true
+                                  :userland-query?                   true}}]
+                encoded? [true false]
+                :let     [query (cond-> query
+                                  encoded? json/encode)]]
+          (let [result (mt/user-http-request :crowberto :post 200 "dataset/csv"
+                                             {:query query})]
+            (is (some? result))
+            (when (some? result)
+              (is (= 101
+                     (count (csv/read-csv result)))))))))))
 
 (deftest export-with-remapped-fields
   (testing "POST /api/dataset/:format"
     (testing "Downloaded CSV/JSON/XLSX results should respect remapped fields (#18440)"
-      (let [query (json/generate-string {:database (mt/id)
-                                         :type     :query
-                                         :query    {:source-table (mt/id :venues)
-                                                    :limit 1}
-                                         :middleware
-                                         {:add-default-userland-constraints? true
-                                          :userland-query?                   true}})]
-        (mt/with-column-remappings [venues.category_id categories.name]
-          (let [result (mt/user-http-request :crowberto :post 200 "dataset/csv"
-                                             :query query)]
-            (is (str/includes? result "Asian"))))
-        (mt/with-column-remappings [venues.category_id (values-of categories.name)]
-          (let [result (mt/user-http-request :crowberto :post 200 "dataset/csv"
-                                             :query query)]
-            (is (str/includes? result "Asian"))))))))
+      (let [query {:database (mt/id)
+                   :type     :query
+                   :query    {:source-table (mt/id :venues)
+                              :limit 1}
+                   :middleware
+                   {:add-default-userland-constraints? true
+                    :userland-query?                   true}}]
+        (doseq [encoded? [true false]
+                :let     [query (cond-> query
+                                  encoded? json/encode)]]
+          (testing (format "encoded? %b" encoded?)
+            (mt/with-column-remappings [venues.category_id categories.name]
+              (let [result (mt/user-http-request :crowberto :post 200 "dataset/csv"
+                                                 {:query query})]
+                (is (str/includes? result "Asian"))))
+            (mt/with-column-remappings [venues.category_id (values-of categories.name)]
+              (let [result (mt/user-http-request :crowberto :post 200 "dataset/csv"
+                                                 {:query query})]
+                (is (str/includes? result "Asian"))))))))))
 
 (deftest non-download-queries-should-still-get-the-default-constraints
   (testing (str "non-\"download\" queries should still get the default constraints "
@@ -298,7 +374,7 @@
               :params nil}
              (mt/user-http-request :crowberto :post 200 "dataset/native"
                                    (assoc (mt/mbql-query venues {:fields [$id $name]})
-                                     :pretty false)))))))
+                                          :pretty false)))))))
 
 (deftest ^:parallel compile-test-2
   (testing "POST /api/dataset/native"
@@ -334,7 +410,7 @@
                          [:message            [:= "You do not have permissions to run this query."]]]
                         (mt/user-http-request :rasta :post "dataset/native"
                                               (mt/mbql-query venues
-                                                             {:fields [$id $name]}))))))))))
+                                                {:fields [$id $name]}))))))))))
 
 (deftest ^:parallel compile-test-4
   (testing "POST /api/dataset/native"
@@ -374,19 +450,19 @@
     (testing "\nCan we fetch a native version of an MBQL query?"
       (testing "`:now` is usable inside `:case` with mongo (#32216)"
         (mt/test-driver :mongo
-          (is (= {:$switch
-                  {:branches
-                   [{:case {:$eq [{:$dayOfMonth {:date "$$NOW", :timezone "UTC"}}
-                                  {:$dayOfMonth {:date "$$NOW", :timezone "UTC"}}]},
-                     :then "a"}]
-                   :default "b"}}
+          (is (= {"$switch"
+                  {"branches"
+                   [{"case" {"$eq" [{"$dayOfMonth" {"date" "$$NOW", "timezone" "UTC"}}
+                                    {"$dayOfMonth" {"date" "$$NOW", "timezone" "UTC"}}]},
+                     "then" "a"}]
+                   "default" "b"}}
                  (-> (mt/user-http-request
                       :crowberto :post 200 "dataset/native"
                       (mt/mbql-query venues
                         {:expressions
                          {:E [:case [[[:= [:get-day [:now]] [:get-day [:now]]] "a"]]
                               {:default "b"}]}}))
-                     :query first :$project :E))))))))
+                     :query json/decode first (get-in ["$project" "E"])))))))))
 
 (deftest report-timezone-test
   (mt/test-driver :postgres
@@ -412,7 +488,7 @@
             (is (= 6 (count (get-in result [:data :cols]))))
             (is (= 1144 (count rows)))
             (is (= ["AK" "Affiliate" "Doohickey" 0 18 81] (first rows)))
-            (is (= ["WV" "Facebook" nil 4 45 292] (nth rows 1000)))
+            (is (= ["MD" "Twitter" nil 4 16 62] (nth rows 1000)))
             (is (= [nil nil nil 7 18760 69540] (last rows)))))))))
 
 (deftest ^:parallel pivot-dataset-with-added-expression-test
@@ -441,14 +517,14 @@
                         "Sum of Quantity"
                         "test-expr"]
                        (map :display_name cols)))
-                (is (= {:base_type       "type/Integer"
-                        :effective_type  "type/Integer"
-                        :name            "pivot-grouping"
-                        :display_name    "pivot-grouping"
-                        :expression_name "pivot-grouping"
-                        :field_ref       ["expression" "pivot-grouping"]
-                        :source          "breakout"}
-                       (nth cols 3))))
+                (is (=? {:base_type       "type/Integer"
+                         :effective_type  "type/Integer"
+                         :name            "pivot-grouping"
+                         :display_name    "pivot-grouping"
+                         :expression_name "pivot-grouping"
+                         :field_ref       ["expression" "pivot-grouping"]
+                         :source          "breakout"}
+                        (nth cols 3))))
               (is (= [nil nil nil 7 18760 69540 "wheeee"] (last rows))))))))))
 
 (deftest ^:parallel pivot-filter-dataset-test
@@ -507,8 +583,8 @@
                                             {:parameter parameter})))))))
 
 (deftest ^:parallel parameter-values-test-2
-  (mt/with-temp [Card {card-id :id} {:database_id (mt/id)
-                                     :dataset_query (mt/mbql-query products)}]
+  (mt/with-temp [:model/Card {card-id :id} {:database_id (mt/id)
+                                            :dataset_query (mt/mbql-query products)}]
     (let [parameter {:values_query_type "list",
                      :values_source_type "card",
                      :values_source_config {:card_id card-id,
@@ -578,7 +654,7 @@
                                :has_more_values false}]
       (with-redefs [api.dataset/parameter-field-values (constantly mock-default-result)]
         (testing "if value-field not found in source card"
-          (t2.with-temp/with-temp [Card {source-card-id :id}]
+          (mt/with-temp [:model/Card {source-card-id :id}]
             (is (= mock-default-result
                    (mt/user-http-request :crowberto :post 200 "dataset/parameter/values"
                                          {:parameter  {:values_source_type   "card"
@@ -589,7 +665,7 @@
                                                        :id                   "abc"}})))))
 
         (testing "if value-field not found in source card"
-          (t2.with-temp/with-temp [Card {source-card-id :id} {:archived true}]
+          (mt/with-temp [:model/Card {source-card-id :id} {:archived true}]
             (is (= mock-default-result
                    (mt/user-http-request :crowberto :post 200 "dataset/parameter/values"
                                          {:parameter  {:values_source_type   "card"
@@ -607,8 +683,8 @@
             query             (-> (lib/query metadata-provider venues)
                                   (lib/order-by (lib.metadata/field metadata-provider (mt/id :venues :id)))
                                   (lib/limit 2))]
-        (is (=? {:data {:rows [["1" "Red Medicine" "4" 10.0646 -165.374 3]
-                               ["2" "Stout Burgers & Beers" "11" 34.0996 -118.329 2]]}}
+        (is (=? {:data {:rows [[1 "Red Medicine" 4 10.0646 -165.374 3]
+                               [2 "Stout Burgers & Beers" 11 34.0996 -118.329 2]]}}
                 (mt/user-http-request :crowberto :post 202 "dataset" query)))))))
 
 (deftest ^:parallel mlv2-query-convert-to-native-test
@@ -655,8 +731,8 @@
           (is (= expected
                  (->> (mt/user-http-request
                        :crowberto :post 200
-                       (format "dataset/%s?format_rows=%s" (name export-format) apply-formatting?)
-                       :query (json/generate-string q))
+                       (format "dataset/%s" (name export-format))
+                       {:query q, :format_rows apply-formatting?})
                       ((get output-helper export-format))))))))))
 
 (deftest ^:parallel query-metadata-test
@@ -665,19 +741,49 @@
              :tables    [{:id (mt/id :products)}]
              :fields    empty?}
             (mt/user-http-request :crowberto :post 200 "dataset/query_metadata"
-                                   (mt/mbql-query products)))))
+                                  (mt/mbql-query products)))))
   (testing "Parameterized native query"
     (is (=? {:databases [{:id (mt/id)}]
              :tables    empty?
              :fields    [{:id (mt/id :people :id)}]}
             (mt/user-http-request :crowberto :post 200 "dataset/query_metadata"
-                                   {:database (mt/id)
-                                    :type     :native
-                                    :native   {:query "SELECT COUNT(*) FROM people WHERE {{id}}"
-                                               :template-tags
-                                               {"id" {:name         "id"
-                                                      :display-name "Id"
-                                                      :type         :dimension
-                                                      :dimension    [:field (mt/id :people :id) nil]
-                                                      :widget-type  :id
-                                                      :default      nil}}}})))))
+                                  {:database (mt/id)
+                                   :type     :native
+                                   :native   {:query "SELECT COUNT(*) FROM people WHERE {{id}}"
+                                              :template-tags
+                                              {"id" {:name         "id"
+                                                     :display-name "Id"
+                                                     :type         :dimension
+                                                     :dimension    [:field (mt/id :people :id) nil]
+                                                     :widget-type  :id
+                                                     :default      nil}}}})))))
+
+(deftest dataset-query-metadata-with-archived-and-deleted-source-card-test
+  (testing "Don't throw an error if source card is deleted (#48461)"
+    (mt/with-temp
+      [:model/Card {card-id-1 :id} {:dataset_query (mt/mbql-query products)}
+       :model/Card {card-id-2 :id} {:dataset_query {:type  :query
+                                                    :query {:source-table (str "card__" card-id-1)}}}]
+      (letfn [(query-metadata [expected-status card-id]
+                (-> (mt/user-http-request :crowberto :post expected-status
+                                          "dataset/query_metadata"
+                                          {:type     :query
+                                           :query    {:source-table (str "card__" card-id)}
+                                           :database (mt/id)})
+                    (api.test-util/select-query-metadata-keys-for-debugging)))]
+        (api.test-util/before-and-after-deleted-card
+         card-id-1
+         #(testing "Before delete"
+            (doseq [card-id [card-id-1 card-id-2]]
+              (is (=?
+                   {:fields    empty?
+                    :tables    [{:id (str "card__" card-id)}]
+                    :databases [{:id (mt/id) :engine string?}]}
+                   (query-metadata 200 card-id)))))
+         #(testing "After delete"
+            (doseq [card-id [card-id-1 card-id-2]]
+              (is (=?
+                   {:fields    empty?
+                    :tables    empty?
+                    :databases [{:id (mt/id) :engine string?}]}
+                   (query-metadata 200 card-id))))))))))

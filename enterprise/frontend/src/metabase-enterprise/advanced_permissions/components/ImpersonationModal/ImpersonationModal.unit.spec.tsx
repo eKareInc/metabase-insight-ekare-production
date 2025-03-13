@@ -5,9 +5,9 @@ import { Route } from "react-router";
 
 import {
   setupDatabaseEndpoints,
-  setupUserAttributesEndpoint,
   setupExistingImpersonationEndpoint,
   setupMissingImpersonationEndpoint,
+  setupUserAttributesEndpoint,
 } from "__support__/server-mocks";
 import {
   renderWithProviders,
@@ -113,7 +113,7 @@ describe("impersonation modal", () => {
 
     expect(
       await screen.findByRole("link", { name: /edit settings/i }),
-    ).toHaveAttribute("href", "/admin/databases/1");
+    ).toHaveAttribute("href", "/admin/databases/1/edit");
   });
 
   it("should refer to 'users' instead of 'roles' for redshift impersonation", async () => {

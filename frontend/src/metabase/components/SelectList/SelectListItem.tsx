@@ -1,3 +1,4 @@
+import cx from "classnames";
 import type * as React from "react";
 import _ from "underscore";
 
@@ -5,7 +6,7 @@ import type { IconProps } from "metabase/ui";
 
 import type { BaseSelectListItemProps } from "./BaseSelectListItem";
 import { BaseSelectListItem } from "./BaseSelectListItem";
-import { ItemRoot, ItemIcon, ItemTitle } from "./SelectListItem.styled";
+import { ItemIcon, ItemRoot, ItemTitle } from "./SelectListItem.styled";
 
 export interface SelectListItemProps
   extends Omit<BaseSelectListItemProps, "children"> {
@@ -13,6 +14,10 @@ export interface SelectListItemProps
   icon?: string | IconProps;
   rightIcon?: string | IconProps;
   children?: React.ReactNode;
+  classNames?: {
+    root?: string;
+    icon?: string;
+  };
 }
 
 const getIconProps = (icon?: string | IconProps): IconProps =>
@@ -22,6 +27,8 @@ export function SelectListItem({
   name,
   icon,
   rightIcon,
+  className,
+  classNames = {},
   ...otherProps
 }: SelectListItemProps) {
   const iconProps = getIconProps(icon);
@@ -30,15 +37,22 @@ export function SelectListItem({
   return (
     <BaseSelectListItem
       as={ItemRoot}
+      className={cx(classNames.root, className)}
       {...otherProps}
       name={name}
       aria-label={name}
       hasLeftIcon={!!icon}
       hasRightIcon={!!rightIcon}
     >
-      {icon && <ItemIcon color="brand" {...iconProps} />}
-      <ItemTitle data-testid="option-text">{name}</ItemTitle>
-      {rightIconProps.name && <ItemIcon {...rightIconProps} />}
+      {icon && (
+        <ItemIcon className={classNames.icon} color="brand" {...iconProps} />
+      )}
+      <ItemTitle fw="bold" lh="normal" data-testid="option-text">
+        {name}
+      </ItemTitle>
+      {rightIconProps.name && (
+        <ItemIcon className={classNames.icon} {...rightIconProps} />
+      )}
     </BaseSelectListItem>
   );
 }

@@ -1,16 +1,15 @@
-/* eslint-disable import/order, react/prop-types */
-import { Component, createRef } from "react";
-import _ from "underscore";
-
+/* eslint-disable react/prop-types */
+import "leaflet-draw";
 import "leaflet/dist/leaflet.css";
 import "./LeafletMap.module.css";
 
 import L from "leaflet";
-import "leaflet-draw";
+import { Component, createRef } from "react";
+import _ from "underscore";
 
+import MetabaseSettings from "metabase/lib/settings";
 import * as Lib from "metabase-lib";
 import Question from "metabase-lib/v1/Question";
-import MetabaseSettings from "metabase/lib/settings";
 
 export default class LeafletMap extends Component {
   constructor(props) {
@@ -24,7 +23,8 @@ export default class LeafletMap extends Component {
       const element = this.mapRef.current;
 
       const map = (this.map = L.map(element, {
-        scrollWheelZoom: false,
+        scrollWheelZoom: true,
+        wheelPxPerZoomLevel: 30,
         minZoom: 2,
         drawControlTooltips: false,
         zoomSnap: false,
@@ -122,6 +122,17 @@ export default class LeafletMap extends Component {
     this.map.remove();
   }
 
+  supportsFilter() {
+    const {
+      series: [{ card }],
+      metadata,
+    } = this.props;
+
+    const question = new Question(card, metadata);
+    const { isNative } = Lib.queryDisplayInfo(question.query());
+    return !isNative || question.isSaved();
+  }
+
   startFilter() {
     this._filter = new L.Draw.Rectangle(
       this.map,
@@ -157,22 +168,28 @@ export default class LeafletMap extends Component {
     });
 
     const question = new Question(card, metadata);
-    const { isNative } = Lib.queryDisplayInfo(question.query());
-
-    if (!isNative) {
+    if (this.supportsFilter()) {
       const query = question.query();
       const stageIndex = -1;
+
+      // Longitudes should be wrapped to the canonical range [-180, 180]. If the delta is >= 360,
+      // select the full range; otherwise, you wind up selecting only the overlapping portion.
+      const lngDelta = Math.abs(bounds.getEast() - bounds.getWest());
+      const west = lngDelta >= 360 ? -180 : bounds.getSouthWest().wrap().lng;
+      const east = lngDelta >= 360 ? 180 : bounds.getNorthEast().wrap().lng;
+
       const filterBounds = {
         north: bounds.getNorth(),
         south: bounds.getSouth(),
-        west: bounds.getWest(),
-        east: bounds.getEast(),
+        west,
+        east,
       };
       const updatedQuery = Lib.updateLatLonFilter(
         query,
         stageIndex,
         latitudeColumn,
         longitudeColumn,
+        question.id(),
         filterBounds,
       );
       const updatedQuestion = question.setQuery(updatedQuery);

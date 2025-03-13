@@ -1,3 +1,4 @@
+import type React from "react";
 import type {
   ComponentType,
   Dispatch,
@@ -6,48 +7,60 @@ import type {
   SetStateAction,
 } from "react";
 import { t } from "ttag";
-import _ from "underscore";
 import type { AnySchema } from "yup";
 
 import noResultsSource from "assets/img/no_results.svg";
-import { strategies } from "metabase/admin/performance/constants/complex";
+import {
+  getPerformanceTabMetadata,
+  strategies,
+} from "metabase/admin/performance/constants/complex";
+import type { ModelWithClearableCache } from "metabase/admin/performance/types";
 import { UNABLE_TO_CHANGE_ADMIN_PERMISSIONS } from "metabase/admin/permissions/constants/messages";
 import {
+  type DataPermission,
   DataPermissionValue,
   type DatabaseEntityId,
-  type DataPermission,
   type EntityId,
   type PermissionSubject,
 } from "metabase/admin/permissions/types";
+import { InteractiveEmbeddingSettings } from "metabase/admin/settings/components/EmbeddingSettings/InteractiveEmbeddingSettings";
 import type { ADMIN_SETTINGS_SECTIONS } from "metabase/admin/settings/selectors";
 import type {
-  ActualModelFilters,
-  AvailableModelFilters,
+  MetricFilterControlsProps,
+  MetricFilterSettings,
+} from "metabase/browse/metrics";
+import type {
   ModelFilterControlsProps,
-} from "metabase/browse/utils";
+  ModelFilterSettings,
+} from "metabase/browse/models";
+import type { LinkProps } from "metabase/core/components/Link";
 import { getIconBase } from "metabase/lib/icon";
 import PluginPlaceholder from "metabase/plugins/components/PluginPlaceholder";
 import type { SearchFilterComponent } from "metabase/search/types";
-import type { GroupProps, IconName, IconProps } from "metabase/ui";
+import type { IconName, IconProps, StackProps } from "metabase/ui";
 import type Question from "metabase-lib/v1/Question";
 import type Database from "metabase-lib/v1/metadata/Database";
+import type { UiParameter } from "metabase-lib/v1/parameters/types";
 import type {
+  BaseUser,
   Bookmark,
   CacheableDashboard,
   CacheableModel,
   Collection,
   CollectionAuthorityLevelConfig,
   CollectionEssentials,
+  CollectionId,
   CollectionInstanceAnaltyicsConfig,
   Dashboard,
+  Database as DatabaseType,
   Dataset,
   Group,
   GroupPermissions,
   GroupsPermissions,
+  ModelCacheRefreshStatus,
+  Pulse,
   Revision,
-  SearchResult,
   User,
-  UserListResult,
 } from "metabase-types/api";
 import type { AdminPathKey, State } from "metabase-types/store";
 
@@ -76,9 +89,16 @@ export const PLUGIN_ADMIN_ALLOWED_PATH_GETTERS: ((
 ) => AdminPathKey[])[] = [];
 
 export const PLUGIN_ADMIN_TOOLS = {
-  INDEX_ROUTE: "model-caching",
-  EXTRA_ROUTES_INFO: [],
-  EXTRA_ROUTES: [],
+  COMPONENT: null,
+};
+
+export const PLUGIN_ADMIN_TROUBLESHOOTING = {
+  EXTRA_ROUTES: [] as ReactNode[],
+  GET_EXTRA_NAV: (): ReactNode[] => [],
+};
+
+export const PLUGIN_ADMIN_SETTINGS = {
+  InteractiveEmbeddingSettings: InteractiveEmbeddingSettings,
 };
 
 // functions that update the sections
@@ -95,6 +115,8 @@ export const PLUGIN_ADMIN_PERMISSIONS_DATABASE_POST_ACTIONS = {
 export const PLUGIN_ADMIN_PERMISSIONS_DATABASE_ACTIONS = {
   impersonated: [],
 };
+
+export const PLUGIN_ADMIN_PERMISSIONS_TABLE_OPTIONS = [];
 
 export const PLUGIN_ADMIN_PERMISSIONS_TABLE_ROUTES = [];
 export const PLUGIN_ADMIN_PERMISSIONS_TABLE_GROUP_ROUTES = [];
@@ -117,7 +139,7 @@ export const PLUGIN_ADMIN_PERMISSIONS_TABLE_FIELDS_POST_ACTION = {
 export const PLUGIN_DATA_PERMISSIONS: {
   permissionsPayloadExtraSelectors: ((
     state: State,
-  ) => Record<string, unknown>)[];
+  ) => [Record<string, undefined | { group_id: string }[]>, string[]])[];
   hasChanges: ((state: State) => boolean)[];
   shouldRestrictNativeQueryPermissions: (
     permissions: GroupsPermissions,
@@ -132,7 +154,7 @@ export const PLUGIN_DATA_PERMISSIONS: {
     | ((
         permissions: GroupsPermissions,
         groupId: number,
-        { databaseId }: DatabaseEntityId,
+        entityId: EntityId,
         value: any,
         database: Database,
         permission: DataPermission,
@@ -154,7 +176,17 @@ export const PLUGIN_ADMIN_USER_FORM_FIELDS = {
 export const PLUGIN_ADMIN_USER_MENU_ITEMS = [];
 export const PLUGIN_ADMIN_USER_MENU_ROUTES = [];
 
+// auth settings
+interface AuthTabs {
+  name: string;
+  key: string;
+  to: string;
+}
+
+export const PLUGIN_ADMIN_SETTINGS_AUTH_TABS: AuthTabs[] = [];
+
 // authentication providers
+
 export const PLUGIN_AUTH_PROVIDERS: GetAuthProviders[] = [];
 
 export const PLUGIN_LDAP_FORM_FIELDS = {
@@ -166,7 +198,7 @@ export const PLUGIN_LDAP_FORM_FIELDS = {
       [setting: string]: {
         display_name?: string | undefined;
         warningMessage?: string | undefined;
-        description?: string | undefined;
+        description?: string | ReactNode | undefined;
         note?: string | undefined;
       };
     };
@@ -183,26 +215,32 @@ export const PLUGIN_LDAP_FORM_FIELDS = {
 // Otherwise, the user is logged in via SSO and should hide first name, last name, and email field in profile settings metabase#23298.
 export const PLUGIN_IS_PASSWORD_USER: ((user: User) => boolean)[] = [];
 
+const defaultLandingPageIllustration = {
+  src: "app/img/bridge.svg",
+  isDefault: true,
+};
+
+const defaultLoginPageIllustration = {
+  src: "app/img/bridge.svg",
+  isDefault: true,
+};
+
+const getLoadingMessage = (isSlow: boolean = false) =>
+  isSlow ? t`Waiting for results...` : t`Doing science...`;
+
 // selectors that customize behavior between app versions
 export const PLUGIN_SELECTORS = {
   canWhitelabel: (_state: State) => false,
-  getLoadingMessageFactory: (_state: State) => (isSlow: boolean) =>
-    isSlow ? t`Waiting for results...` : t`Doing science...`,
+  getLoadingMessageFactory: (_state: State) => getLoadingMessage,
   getIsWhiteLabeling: (_state: State) => false,
   // eslint-disable-next-line no-literal-metabase-strings -- This is the actual Metabase name, so we don't want to translate it.
   getApplicationName: (_state: State) => "Metabase",
   getShowMetabaseLinks: (_state: State) => true,
   getLoginPageIllustration: (_state: State): IllustrationValue => {
-    return {
-      src: "app/img/bridge.svg",
-      isDefault: true,
-    };
+    return defaultLoginPageIllustration;
   },
   getLandingPageIllustration: (_state: State): IllustrationValue => {
-    return {
-      src: "app/img/bridge.svg",
-      isDefault: true,
-    };
+    return defaultLandingPageIllustration;
   },
   getNoDataIllustration: (_state: State): string => {
     return noResultsSource;
@@ -225,9 +263,20 @@ export const PLUGIN_SNIPPET_SIDEBAR_ROW_RENDERERS = {};
 export const PLUGIN_SNIPPET_SIDEBAR_MODALS = [];
 export const PLUGIN_SNIPPET_SIDEBAR_HEADER_BUTTONS = [];
 
-export const PLUGIN_DASHBOARD_SUBSCRIPTION_PARAMETERS_SECTION_OVERRIDE = {
-  Component: undefined,
-};
+interface PluginDashboardSubscriptionParametersSectionOverride {
+  Component?: ComponentType<{
+    className?: string;
+    parameters: UiParameter[];
+    hiddenParameters?: string;
+    dashboard: Dashboard;
+    pulse: Pulse;
+    setPulseParameters: (parameters: UiParameter[]) => void;
+  }>;
+}
+export const PLUGIN_DASHBOARD_SUBSCRIPTION_PARAMETERS_SECTION_OVERRIDE: PluginDashboardSubscriptionParametersSectionOverride =
+  {
+    Component: undefined,
+  };
 
 export const PLUGIN_LLM_AUTODESCRIPTION: PluginLLMAutoDescription = {
   isEnabled: () => false,
@@ -240,10 +289,14 @@ const AUTHORITY_LEVEL_REGULAR: CollectionAuthorityLevelConfig = {
   icon: "folder",
 };
 
-type AuthorityLevelMenuItem = {
-  title: string;
-  icon: string;
-  action: () => void;
+export type ItemWithCollection = { collection: CollectionEssentials };
+
+type GetCollectionIdType = (
+  sourceCollectionId?: CollectionId | null,
+) => CollectionId | null;
+
+export type CollectionAuthorityLevelDisplayProps = {
+  collection: Collection;
 };
 
 export const PLUGIN_COLLECTIONS = {
@@ -254,21 +307,33 @@ export const PLUGIN_COLLECTIONS = {
     [JSON.stringify(AUTHORITY_LEVEL_REGULAR.type)]: AUTHORITY_LEVEL_REGULAR,
   },
   REGULAR_COLLECTION: AUTHORITY_LEVEL_REGULAR,
-  isRegularCollection: (_: Partial<Collection> | Bookmark) => true,
+  isRegularCollection: (_data: Partial<Collection> | Bookmark) => true,
   getCollectionType: (
-    _: Partial<Collection>,
+    _collection: Partial<Collection>,
   ): CollectionAuthorityLevelConfig | CollectionInstanceAnaltyicsConfig =>
     AUTHORITY_LEVEL_REGULAR,
-  getInstanceAnalyticsCustomCollection: (
-    _collections: Collection[],
-  ): Collection | null => null,
+  useGetDefaultCollectionId: null as GetCollectionIdType | null,
   CUSTOM_INSTANCE_ANALYTICS_COLLECTION_ENTITY_ID: "",
   INSTANCE_ANALYTICS_ADMIN_READONLY_MESSAGE: UNABLE_TO_CHANGE_ADMIN_PERMISSIONS,
   getAuthorityLevelMenuItems: (
     _collection: Collection,
     _onUpdate: (collection: Collection, values: Partial<Collection>) => void,
-  ): AuthorityLevelMenuItem[] => [],
+  ): React.ReactNode[] => [],
   getIcon: getIconBase,
+  filterOutItemsFromInstanceAnalytics: <Item extends ItemWithCollection>(
+    items: Item[],
+  ) => items as Item[],
+  canCleanUp: (_collection: Collection) => false as boolean,
+  useGetCleanUpMenuItems: (
+    _collection: Collection,
+  ): { menuItems: JSX.Element[]; showIndicator: boolean } => ({
+    menuItems: [],
+    showIndicator: false,
+  }),
+  cleanUpRoute: null as React.ReactElement | null,
+  cleanUpAlert: (() => null) as (props: {
+    collection: Collection;
+  }) => JSX.Element | null,
 };
 
 export type CollectionAuthorityLevelIcon = ComponentType<
@@ -297,6 +362,8 @@ export const PLUGIN_COLLECTION_COMPONENTS = {
     PluginPlaceholder as FormCollectionAuthorityLevelPicker,
   CollectionInstanceAnalyticsIcon:
     PluginPlaceholder as CollectionInstanceAnalyticsIcon,
+  CollectionAuthorityLevelDisplay:
+    PluginPlaceholder as ComponentType<CollectionAuthorityLevelDisplayProps>,
 };
 
 export type RevisionOrModerationEvent = {
@@ -309,29 +376,25 @@ export type RevisionOrModerationEvent = {
 
 export const PLUGIN_MODERATION = {
   isEnabled: () => false,
-  QuestionModerationIcon: PluginPlaceholder,
+  EntityModerationIcon: PluginPlaceholder,
   QuestionModerationSection: PluginPlaceholder,
-  QuestionModerationButton: PluginPlaceholder,
   ModerationReviewBanner: PluginPlaceholder,
+  ModerationReviewTextForQuestion: PluginPlaceholder,
+  ModerationReviewTextForDashboard: PluginPlaceholder,
   ModerationStatusIcon: PluginPlaceholder,
   getQuestionIcon: PluginPlaceholder,
   getStatusIcon: (_moderated_status?: string): string | IconProps | undefined =>
     undefined,
-  getModerationTimelineEvents: (
-    _reviews: any,
-    _usersById: Record<string, UserListResult>,
-    _currentUser: User | null,
-  ) => [] as RevisionOrModerationEvent[],
-  getMenuItems: (
-    _question?: Question,
-    _isModerator?: boolean,
-    _reload?: () => void,
-  ) => [],
+  getModerationTimelineEvents: (_reviews: any, _currentUser: BaseUser | null) =>
+    [] as RevisionOrModerationEvent[],
+  useDashboardMenuItems: (_model?: Dashboard, _reload?: () => void) => [],
+  useQuestionMenuItems: (_model?: Question, _reload?: () => void) => [],
 };
 
 export type InvalidateNowButtonProps = {
   targetId: number;
-  targetModel: CacheableModel;
+  /** The type of object that the target is */
+  targetModel: ModelWithClearableCache;
   targetName: string;
 };
 
@@ -344,28 +407,33 @@ export type SidebarCacheSectionProps = {
 export type SidebarCacheFormProps = {
   item: CacheableDashboard | Question;
   model: CacheableModel;
-  setPage: (page: "default" | "caching") => void;
-} & GroupProps;
+  onClose: () => void;
+} & StackProps;
+
+export type PreemptiveCachingSwitchProps = {
+  handleSwitchToggle: () => void;
+};
 
 export const PLUGIN_CACHING = {
-  cacheTTLFormField: null as any,
-  dashboardCacheTTLFormField: null,
-  questionCacheTTLFormField: null,
-  getQuestionsImplicitCacheTTL: (_question?: any) => null as number | null,
+  isGranularCachingEnabled: () => false,
   StrategyFormLauncherPanel: PluginPlaceholder as any,
   GranularControlsExplanation: PluginPlaceholder as any,
-  DashboardStrategySidebar: PluginPlaceholder as any,
   SidebarCacheSection:
     PluginPlaceholder as ComponentType<SidebarCacheSectionProps>,
-  SidebarCacheForm: PluginPlaceholder as ComponentType<SidebarCacheFormProps>,
+  SidebarCacheForm: PluginPlaceholder as ComponentType<
+    SidebarCacheFormProps & { onBack: () => void }
+  >,
   InvalidateNowButton:
     PluginPlaceholder as ComponentType<InvalidateNowButtonProps>,
-  isEnabled: () => false,
   hasQuestionCacheSection: (_question: Question) => false,
   canOverrideRootStrategy: false,
+  /** Metadata describing the different kinds of strategies */
   strategies: strategies,
-  ModelPersistenceTab: PluginPlaceholder as any,
-  ModelPersistenceConfiguration: PluginPlaceholder as any,
+  DashboardAndQuestionCachingTab: PluginPlaceholder as any,
+  StrategyEditorForQuestionsAndDashboards: PluginPlaceholder as any,
+  getTabMetadata: getPerformanceTabMetadata,
+  PreemptiveCachingSwitch:
+    PluginPlaceholder as ComponentType<PreemptiveCachingSwitchProps>,
 };
 
 export const PLUGIN_REDUCERS: {
@@ -418,9 +486,19 @@ export const PLUGIN_APPLICATION_PERMISSIONS = {
   getRoutes: (): ReactNode => null,
   tabs: [] as any,
   selectors: {
+    canAccessSettings: (_state: any) => false,
     canManageSubscriptions: (_state: any) => true,
   },
 };
+
+// Comes with PLUGIN_APPLICATION_PERMISSIONS
+export interface UserWithApplicationPermissions extends User {
+  permissions?: {
+    can_access_monitoring: boolean;
+    can_access_setting: boolean;
+    can_access_subscription: boolean;
+  };
+}
 
 export const PLUGIN_GROUP_MANAGERS: PluginGroupManagersType = {
   UserTypeToggle: () => null as any,
@@ -436,42 +514,86 @@ export const PLUGIN_GROUP_MANAGERS: PluginGroupManagersType = {
 
 export const PLUGIN_MODEL_PERSISTENCE = {
   isModelLevelPersistenceEnabled: () => false,
-  ModelCacheControl: PluginPlaceholder as any,
-  getMenuItems: (_question?: any, _onChange?: any) => ({}),
+  ModelCacheToggle: PluginPlaceholder as ({
+    persistedModel,
+    model,
+  }: {
+    persistedModel?: ModelCacheRefreshStatus;
+    model: Question;
+  }) => JSX.Element,
 };
 
 export const PLUGIN_EMBEDDING = {
   isEnabled: () => false,
+  isInteractiveEmbeddingEnabled: (_state: State) => false,
+};
+
+export const PLUGIN_EMBEDDING_SDK = {
+  isEnabled: () => false,
+  SimpleDataPicker: (_props: any) => null,
 };
 
 export const PLUGIN_CONTENT_VERIFICATION = {
+  contentVerificationEnabled: false,
   VerifiedFilter: {} as SearchFilterComponent<"verified">,
-  availableModelFilters: {} as AvailableModelFilters,
-  ModelFilterControls: (() => null) as ComponentType<ModelFilterControlsProps>,
-  sortModelsByVerification: (_a: SearchResult, _b: SearchResult) => 0,
   sortCollectionsByVerification: (
     _a: CollectionEssentials,
     _b: CollectionEssentials,
   ) => 0,
-  useModelFilterSettings: () =>
-    [{}, _.noop] as [
-      ActualModelFilters,
-      Dispatch<SetStateAction<ActualModelFilters>>,
-    ],
+
+  ModelFilterControls: (_props: ModelFilterControlsProps) => null,
+  getDefaultModelFilters: (_state: State): ModelFilterSettings => ({
+    verified: false,
+  }),
+
+  getDefaultMetricFilters: (_state: State): MetricFilterSettings => ({
+    verified: false,
+  }),
+  MetricFilterControls: (_props: MetricFilterControlsProps) => null,
 };
 
-export const PLUGIN_DASHBOARD_HEADER = {
-  extraButtons: (_dashboard: Dashboard) => [],
+export type InsightsLinkProps = (
+  | {
+      question: Pick<Question, "id" | "collection">;
+      dashboard?: never;
+    }
+  | {
+      question?: never;
+      dashboard: Pick<Dashboard, "id" | "collection">;
+    }
+) &
+  Omit<LinkProps, "to">;
+
+export const PLUGIN_AUDIT = {
+  isAuditDb: (_db: DatabaseType) => false,
+  InsightsLink: PluginPlaceholder as ComponentType<InsightsLinkProps>,
 };
 
-export const PLUGIN_QUERY_BUILDER_HEADER = {
-  extraButtons: (_question: Question) => [],
+type GsheetConnectionModalProps = {
+  isModalOpen: boolean;
+  onClose: () => void;
+  reconnect: boolean;
 };
 
 export const PLUGIN_UPLOAD_MANAGEMENT = {
   UploadManagementTable: PluginPlaceholder,
+  GsheetsSyncStatus: PluginPlaceholder,
+  GsheetConnectionModal:
+    PluginPlaceholder as ComponentType<GsheetConnectionModalProps>,
+  GsheetMenuItem: PluginPlaceholder as ComponentType<{ onClick: () => void }>,
+  GsheetConnectButton: PluginPlaceholder,
 };
 
 export const PLUGIN_IS_EE_BUILD = {
   isEEBuild: () => false,
+};
+
+export const PLUGIN_RESOURCE_DOWNLOADS = {
+  /**
+   * Returns if 'download results' on cards and pdf exports are enabled in public and embedded contexts.
+   */
+  areDownloadsEnabled: (_args: {
+    hide_download_button?: boolean | null;
+    downloads?: boolean | null;
+  }) => true,
 };

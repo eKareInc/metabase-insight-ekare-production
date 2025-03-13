@@ -5,18 +5,34 @@
    [medley.core :as m]
    [metabase-enterprise.serialization.v2.backfill-ids :as serdes.backfill]
    [metabase-enterprise.serialization.v2.ingest :as serdes.ingest]
+   [metabase-enterprise.serialization.v2.models :as serdes.models]
    [metabase.models.serialization :as serdes]
+   [metabase.util :as u]
    [metabase.util.log :as log]
-   [toucan2.core :as t2]))
+   [toucan2.core :as t2]
+   [toucan2.model :as t2.model]))
 
 (declare load-one!)
 
+(def ^:private model->circular-dependency-keys
+  "Sometimes models have circular dependencies. For example, a card for a Dashboard Question has a `dashboard_id`
+  pointing to the dashboard it's in. But when we try to load that dashboard, we'll create all its dashcards, and one
+  of those dashcards will point to the card we started with.
+
+  This map works around this: given a model (e.g. `Card`) that triggered a dependency loop, it provides a set of keys
+  to remove from the model so that we'll be able to successfully load it."
+  {"Dashboard" #{:dashcards}
+   "Card" #{:dashboard_id}})
+
 (defn- without-references
   "Remove references to other entities from a given one. Used to break circular dependencies when loading."
-  [entity]
-  (if (:dashcards entity)
-    (dissoc entity :dashcards)
-    (throw (ex-info "No known references found when breaking circular dependency!" {:entity entity}))))
+  [model entity]
+  (let [keys-to-remove (or (model->circular-dependency-keys model)
+                           (throw (ex-info "Don't know which keys to remove to break circular dependency!"
+                                           {:entity entity
+                                            :model model
+                                            :error ::no-known-references})))]
+    (apply dissoc entity keys-to-remove)))
 
 (defn- load-deps!
   "Given a list of `deps` (hierarchies), [[load-one]] them all.
@@ -30,7 +46,7 @@
                 (load-one! ctx dep)
                 (catch Exception e
                   (cond
-                    ;; It was missing but we found it locally, so just return the context.
+                    ;; It was missing, but we found it locally, so just return the context.
                     (and (= (:error (ex-data e)) ::not-found)
                          (serdes/load-find-local dep))
                     ctx
@@ -38,13 +54,35 @@
                     ;; It's a circular dep, strip off probable cause and retry. This will store an incomplete version
                     ;; of an entity, but this is not a problem - a full version is waiting to be stored up the stack.
                     (= (:error (ex-data e)) ::circular)
-                    (do
+                    (let [model (:model (ex-data e))]
                       (log/debug "Detected circular dependency" (serdes/log-path-str dep))
-                      (load-one! (update ctx :expanding disj dep) dep without-references))
+                      (load-one! (update ctx :expanding disj dep) dep (partial without-references model)))
 
                     :else
                     (throw e)))))]
       (reduce loader ctx deps))))
+
+(defn- path-error-data [error-type expanding path]
+  (let [last-model (:model (last path))]
+    {:path       (mapv (partial into {}) path)
+     :deps-chain (set (map #(mapv (partial into {}) %) expanding))
+     :model      last-model
+     :table      (some->> last-model (keyword "model") t2/table-name)
+     :error      error-type}))
+
+(defn- valid-model-name-for-load? [model-name]
+  ;; linear scan, but small n
+  (->> (concat serdes.models/inlined-models
+               serdes.models/exported-models)
+       (some #{model-name})
+       boolean))
+
+(defn- exported-with-entity-id?
+  "Returns true if entities with the given model-name should have been exported with an entity_id."
+  [model-name]
+  (when (valid-model-name-for-load? model-name)
+    (let [model (t2.model/resolve-model (symbol model-name))]
+      (serdes.backfill/has-entity-id? model))))
 
 (defn- load-one!
   "Loads a single entity, specified by its `:serdes/meta` abstract path, into the appdb, doing some bookkeeping to
@@ -62,18 +100,27 @@
   [{:keys [expanding ingestion seen] :as ctx} path & [modfn]]
   (log/infof "Loading %s" (serdes/log-path-str path))
   (cond
-    (expanding path) (throw (ex-info (format "Circular dependency on %s" (pr-str path)) {:path path
-                                                                                         :error ::circular}))
-    (seen path) ctx ; Already been done, just skip it.
+    (expanding path) (throw (ex-info (format "Circular dependency on %s" (serdes/log-path-str path))
+                                     (path-error-data ::circular expanding path)))
+    (seen path) ctx ; Already been done, can skip it.
     :else (let [ingested (try
                            (serdes.ingest/ingest-one ingestion path)
                            (catch Exception e
                              (throw (ex-info (format "Failed to read file for %s" (serdes/log-path-str path))
-                                             {:path       path
-                                              :deps-chain expanding
-                                              :error      ::not-found}
+                                             (path-error-data ::not-found expanding path)
                                              e))))
+                ;; Use the abstract path as attached by the ingestion process, not the original one we were passed.
+                rebuilt-path (serdes/path ingested)
+                ;; If nil or absent :entity_id is taken as a signal to create a new entity
+                ;; To get a nil entity_id, a user has to manually set the entity_id to null or remove it
+                ;; in the yaml file.
+                ;; In all other cases we should expect an :entity_id:
+                ;; - exported entities have a :entity_id for every model that can have one
+                ;; - backfill (pre import) guarantees all entities have ids in the appdb
+                expect-entity-id (some-> rebuilt-path peek :model exported-with-entity-id?)
+                require-new-entity (and expect-entity-id (nil? (:entity_id ingested)))
                 ingested (cond-> ingested
+                           require-new-entity (assoc :entity_id (u/generate-nano-id))
                            modfn modfn)
                 deps     (serdes/dependencies ingested)
                 _        (log/debug "Loading dependencies" deps)
@@ -82,22 +129,21 @@
                              (load-deps! deps)
                              (update :seen conj path)
                              (update :expanding disj path))
-                ;; Use the abstract path as attached by the ingestion process, not the original one we were passed.
-                rebuilt-path    (serdes/path ingested)
-                local-or-nil    (serdes/load-find-local rebuilt-path)]
+                local-or-nil (when-not require-new-entity (serdes/load-find-local rebuilt-path))]
             (try
               (serdes/load-one! ingested local-or-nil)
               ctx
               (catch Exception e
-                (throw (ex-info (format "Failed to load into database for %s" (pr-str path))
-                                {:path       path
-                                 :deps-chain expanding}
+                ;; ugly mapv here to convered #ordered/map into normal map so it's readable in the logs
+                (throw (ex-info (format "Failed to load into database for %s" (serdes/log-path-str path))
+                                (path-error-data ::load-failure expanding path)
                                 e)))))))
 
 (defn load-metabase!
   "Loads in a database export from an ingestion source, which is any Ingestable instance."
-  [ingestion & {:keys [backfill?]
-                :or   {backfill? true}}]
+  [ingestion & {:keys [backfill? continue-on-error]
+                :or   {backfill?   true
+                       continue-on-error false}}]
   (t2/with-transaction [_tx]
     ;; We proceed in the arbitrary order of ingest-list, deserializing all the files. Their declared dependencies
     ;; guide the import, and make sure all containers are imported before contents, etc.
@@ -107,5 +153,17 @@
           ctx      {:expanding #{}
                     :seen      #{}
                     :ingestion ingestion
-                    :from-ids  (m/index-by :id contents)}]
-      (reduce load-one! ctx contents))))
+                    :from-ids  (m/index-by :id contents)
+                    :errors    []}]
+      (log/infof "Starting deserialization, total %s documents" (count contents))
+      (reduce (fn [ctx item]
+                (try
+                  (load-one! ctx item)
+                  (catch Exception e
+                    (when-not continue-on-error
+                      (throw e))
+                    ;; eschew big and scary stacktrace
+                    (log/warnf "Skipping deserialization error: %s %s" (ex-message e) (ex-data e))
+                    (update ctx :errors conj e))))
+              ctx
+              contents))))

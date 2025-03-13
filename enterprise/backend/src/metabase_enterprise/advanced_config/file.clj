@@ -97,13 +97,12 @@
    [clojure.walk :as walk]
    [environ.core :as env]
    [metabase-enterprise.advanced-config.file.databases]
-   [metabase-enterprise.advanced-config.file.interface
-    :as advanced-config.file.i]
+   [metabase-enterprise.advanced-config.file.interface :as advanced-config.file.i]
    [metabase-enterprise.advanced-config.file.settings]
    [metabase-enterprise.advanced-config.file.users]
    [metabase.driver.common.parameters]
    [metabase.driver.common.parameters.parse :as params.parse]
-   [metabase.public-settings.premium-features :as premium-features]
+   [metabase.premium-features.core :as premium-features]
    [metabase.util :as u]
    [metabase.util.files :as u.files]
    [metabase.util.i18n :refer [trs tru]]
@@ -220,7 +219,9 @@
       (str/join parts))))
 
 (defn- expand-templates-in-str [s]
-  (str/join (map expand-template-str-part (params.parse/parse s))))
+  (if-let [[_, raw-string] (re-matches #"\{\{\{(.+)\}\}\}" s)]
+    (str/trim raw-string)
+    (str/join (map expand-template-str-part (params.parse/parse s)))))
 
 (defn- expand-templates [m]
   (walk/postwalk

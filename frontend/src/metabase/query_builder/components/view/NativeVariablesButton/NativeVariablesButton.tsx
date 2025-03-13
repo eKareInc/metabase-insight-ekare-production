@@ -1,9 +1,9 @@
+import cx from "classnames";
 import { t } from "ttag";
 
-import Tooltip from "metabase/core/components/Tooltip";
-import { Icon } from "metabase/ui";
+import { Icon, Tooltip } from "metabase/ui";
 
-import { ButtonRoot } from "./NativeVariablesButton.styled";
+import NativeVariablesButtonS from "./NativeVariablesButton.module.css";
 
 interface NativeVariablesButtonProps {
   className?: string;
@@ -18,9 +18,13 @@ export const NativeVariablesButton = ({
   size,
   toggleTemplateTagsEditor,
 }: NativeVariablesButtonProps) => (
-  <Tooltip tooltip={t`Variables`}>
-    <ButtonRoot className={className} isSelected={isShowingTemplateTagsEditor}>
+  <Tooltip label={t`Variables`}>
+    <a
+      className={cx(className, NativeVariablesButtonS.ButtonRoot, {
+        [NativeVariablesButtonS.isSelected]: isShowingTemplateTagsEditor,
+      })}
+    >
       <Icon name="variable" size={size} onClick={toggleTemplateTagsEditor} />
-    </ButtonRoot>
+    </a>
   </Tooltip>
 );

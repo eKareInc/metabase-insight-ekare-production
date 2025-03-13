@@ -1,9 +1,9 @@
-import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import dayjs from "dayjs";
 import fetchMock from "fetch-mock";
 
 import { mockSettings } from "__support__/settings";
-import { renderWithProviders } from "__support__/ui";
+import { renderWithProviders, screen, waitFor } from "__support__/ui";
 import { ProfileLink } from "metabase/nav/components/ProfileLink";
 import type { HelpLinkSetting } from "metabase-types/api";
 import {
@@ -11,8 +11,8 @@ import {
   createMockUser,
 } from "metabase-types/api/mocks";
 import {
-  createMockAdminState,
   createMockAdminAppState,
+  createMockAdminState,
 } from "metabase-types/store/mocks";
 
 const REGULAR_ITEMS = [
@@ -36,18 +36,24 @@ function setup({
   isPaidPlan = true,
   helpLinkSetting = "metabase",
   helpLinkCustomDestinationSetting = "https://custom-destination.com/help",
+  instanceCreationDate = dayjs().toISOString(),
+  dismissedOnboardingFromSidebar = false,
 }: {
   isAdmin?: boolean;
   isHosted?: boolean;
   isPaidPlan?: boolean;
   helpLinkSetting?: HelpLinkSetting;
   helpLinkCustomDestinationSetting?: string;
+  instanceCreationDate?: string;
+  dismissedOnboardingFromSidebar?: boolean;
 }) {
   const settings = mockSettings({
     "is-hosted?": isHosted,
     "token-status": createMockTokenStatus({ valid: isPaidPlan }),
     "help-link": helpLinkSetting,
     "help-link-custom-destination": helpLinkCustomDestinationSetting,
+    "instance-creation": instanceCreationDate,
+    "dismissed-onboarding-sidebar-link": dismissedOnboardingFromSidebar,
   });
 
   const admin = createMockAdminState({
@@ -73,6 +79,7 @@ describe("ProfileLink", () => {
   beforeEach(() => {
     fetchMock.get("path:/api/util/bug_report_details", "mockBugReportDetails");
   });
+
   describe("self-hosted", () => {
     it("should show the proper set of items for normal users", async () => {
       setup({ isAdmin: false });
@@ -116,6 +123,36 @@ describe("ProfileLink", () => {
       HOSTED_ITEMS.forEach(title => {
         expect(screen.getByText(title)).toBeInTheDocument();
       });
+    });
+  });
+
+  describe("'How to use Metabase' link", () => {
+    it("should render if the instance was created more than 30 days ago even if the link hasn't ever been dismissed from the sidebar", async () => {
+      setup({
+        instanceCreationDate: dayjs().subtract(42, "days").toISOString(),
+        dismissedOnboardingFromSidebar: false,
+      });
+
+      await openMenu();
+      expect(screen.getByText("How to use Metabase")).toBeInTheDocument();
+    });
+
+    it("should render on new instances if the link was dismissed from the sidebar", async () => {
+      setup({
+        dismissedOnboardingFromSidebar: true,
+      });
+
+      await openMenu();
+      expect(screen.getByText("How to use Metabase")).toBeInTheDocument();
+    });
+
+    it("should not render on new instances if the link hasn't ever been dismissed from the sidebar", async () => {
+      setup({
+        dismissedOnboardingFromSidebar: false,
+      });
+
+      await openMenu();
+      expect(screen.queryByText("How to use Metabase")).not.toBeInTheDocument();
     });
   });
 

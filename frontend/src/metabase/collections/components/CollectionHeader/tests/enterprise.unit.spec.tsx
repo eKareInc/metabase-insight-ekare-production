@@ -8,7 +8,7 @@ import { setup } from "./setup";
 describe("Instance Analytics Collection Header", () => {
   const defaultOptions = {
     collection: {
-      name: "Metabase Analytics",
+      name: "Usage Analytics",
       type: "instance-analytics" as CollectionType,
       can_write: false,
     },
@@ -77,7 +77,7 @@ describe("instance analytics custom reports collection", () => {
   it("should not show move button", async () => {
     setup(defaultOptions);
     await userEvent.click(getIcon("ellipsis"));
-    await screen.findByRole("dialog");
+    await screen.findByRole("menu");
 
     expect(getIcon("lock")).toBeInTheDocument();
     expect(queryIcon("move")).not.toBeInTheDocument();
@@ -87,7 +87,7 @@ describe("instance analytics custom reports collection", () => {
   it("should not show archive button", async () => {
     setup(defaultOptions);
     await userEvent.click(getIcon("ellipsis"));
-    await screen.findByRole("dialog");
+    await screen.findByRole("menu");
 
     expect(getIcon("lock")).toBeInTheDocument();
     expect(queryIcon("archive")).not.toBeInTheDocument();
@@ -113,7 +113,7 @@ describe("Official Collections Header", () => {
     expect(
       await screen.findByText("Make collection official"),
     ).toBeInTheDocument();
-    expect(await getIcon("badge")).toBeInTheDocument();
+    expect(getIcon("official_collection")).toBeInTheDocument();
   });
 
   it("should not allow non-admin users to designate official collections", async () => {
@@ -125,7 +125,7 @@ describe("Official Collections Header", () => {
     expect(
       screen.queryByText("Make collection official"),
     ).not.toBeInTheDocument();
-    expect(await queryIcon("badge")).not.toBeInTheDocument();
+    expect(queryIcon("official_collection")).not.toBeInTheDocument();
   });
 
   it("should not allow admin users to designate read-only collections as official", async () => {
@@ -140,6 +140,6 @@ describe("Official Collections Header", () => {
     expect(
       screen.queryByText("Make collection official"),
     ).not.toBeInTheDocument();
-    expect(await queryIcon("badge")).not.toBeInTheDocument();
+    expect(queryIcon("official_collection")).not.toBeInTheDocument();
   });
 });

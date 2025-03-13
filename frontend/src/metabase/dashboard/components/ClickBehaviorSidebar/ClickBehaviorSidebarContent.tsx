@@ -6,13 +6,13 @@ import { isTableDisplay } from "metabase/lib/click-behavior";
 import { useSelector } from "metabase/lib/redux";
 import type { UiParameter } from "metabase-lib/v1/parameters/types";
 import type {
-  Dashboard,
-  QuestionDashboardCard,
   ClickBehavior,
+  Dashboard,
+  DashboardCard,
   DatasetColumn,
 } from "metabase-types/api";
 
-import { SidebarContent } from "./ClickBehaviorSidebar.styled";
+import { SidebarContent } from "./ClickBehaviorSidebarComponents";
 import { ClickBehaviorSidebarMainView } from "./ClickBehaviorSidebarMainView/ClickBehaviorSidebarMainView";
 import { TableClickBehaviorView } from "./TableClickBehaviorView/TableClickBehaviorView";
 import { TypeSelector } from "./TypeSelector/TypeSelector";
@@ -20,7 +20,7 @@ import { getClickBehaviorForColumn } from "./utils";
 
 interface Props {
   dashboard: Dashboard;
-  dashcard: QuestionDashboardCard;
+  dashcard: DashboardCard;
   parameters: UiParameter[];
   clickBehavior?: ClickBehavior;
   isTypeSelectorVisible: boolean | null;

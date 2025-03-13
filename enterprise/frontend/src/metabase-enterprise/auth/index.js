@@ -5,7 +5,7 @@ import { t } from "ttag";
 import _ from "underscore";
 import * as Yup from "yup";
 
-import SettingHeader from "metabase/admin/settings/components/SettingHeader";
+import { SettingHeader } from "metabase/admin/settings/components/SettingHeader";
 import GroupMappingsWidget from "metabase/admin/settings/containers/GroupMappingsWidget";
 import { LOGIN, LOGIN_GOOGLE } from "metabase/auth/actions";
 import { FormSwitch } from "metabase/forms";
@@ -13,16 +13,13 @@ import MetabaseSettings from "metabase/lib/settings";
 import {
   PLUGIN_ADMIN_SETTINGS_UPDATES,
   PLUGIN_AUTH_PROVIDERS,
-  PLUGIN_LDAP_FORM_FIELDS,
   PLUGIN_IS_PASSWORD_USER,
+  PLUGIN_LDAP_FORM_FIELDS,
   PLUGIN_REDUX_MIDDLEWARES,
 } from "metabase/plugins";
 import { Stack } from "metabase/ui";
 import SessionTimeoutSetting from "metabase-enterprise/auth/components/SessionTimeoutSetting";
-import {
-  hasAnySsoPremiumFeature,
-  hasPremiumFeature,
-} from "metabase-enterprise/settings";
+import { hasPremiumFeature } from "metabase-enterprise/settings";
 
 import { createSessionMiddleware } from "../auth/middleware/session-middleware";
 
@@ -64,18 +61,6 @@ PLUGIN_ADMIN_SETTINGS_UPDATES.push(sections =>
         type: "boolean",
         getHidden: (_settings, derivedSettings) =>
           !hasPremiumFeature("disable_password_login") ||
-          (!derivedSettings["google-auth-enabled"] &&
-            !derivedSettings["ldap-enabled"] &&
-            !derivedSettings["saml-enabled"] &&
-            !derivedSettings["jwt-enabled"]),
-      },
-      {
-        key: "send-new-sso-user-admin-email?",
-        display_name: t`Notify admins of new SSO users`,
-        description: t`When enabled, administrators will receive an email the first time a user uses Single Sign-On.`,
-        type: "boolean",
-        getHidden: (_, derivedSettings) =>
-          !hasAnySsoPremiumFeature() ||
           (!derivedSettings["google-auth-enabled"] &&
             !derivedSettings["ldap-enabled"] &&
             !derivedSettings["saml-enabled"] &&
@@ -207,7 +192,7 @@ PLUGIN_ADMIN_SETTINGS_UPDATES.push(sections => ({
         display_name: t`JWT Identity Provider URI`,
         placeholder: "https://jwt.yourdomain.org",
         type: "string",
-        required: true,
+        required: false,
         autoFocus: true,
         getHidden: (_, derivedSettings) => !derivedSettings["jwt-enabled"],
       },
@@ -284,10 +269,11 @@ if (hasPremiumFeature("sso_ldap")) {
       "ldap-user-provisioning-enabled?": Yup.boolean().default(null),
     },
     UserProvisioning: ({ fields, settings }) => (
-      <Stack spacing="0.75rem" m="2.5rem 0">
+      <Stack gap="0.75rem" m="2.5rem 0">
         <SettingHeader
           id="ldap-user-provisioning-enabled?"
-          setting={settings["ldap-user-provisioning-enabled?"]}
+          title={settings["ldap-user-provisioning-enabled?"].display_name}
+          description={settings["ldap-user-provisioning-enabled?"].description}
         />
         <FormSwitch
           id="ldap-user-provisioning-enabled?"

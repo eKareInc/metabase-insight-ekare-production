@@ -7,11 +7,12 @@
    [clojure.walk :as walk]
    [malli.core :as mc]
    [malli.transform :as mtx]
+   [metabase.models.dashboard.constants :as dashboards.constants]
    [metabase.query-processor.util :as qp.util]
-   [metabase.shared.dashboards.constants :as dashboards.constants]
    [metabase.util :as u]
    [metabase.util.files :as u.files]
    [metabase.util.i18n :as i18n]
+   [metabase.util.malli :as mu]
    [metabase.util.malli.registry :as mr]
    [metabase.util.yaml :as yaml]
    [metabase.xrays.automagic-dashboards.populate :as populate])
@@ -339,10 +340,10 @@
   values based on the template display type if those dimensions aren't already present."
   [card-spec]
   (update-vals
-    card-spec
-    (fn [{:keys [visualization] :as card-spec}]
-      (let [defaults (get-in dashboards.constants/card-size-defaults [(keyword visualization) :default])]
-        (into defaults card-spec)))))
+   card-spec
+   (fn [{:keys [visualization] :as card-spec}]
+     (let [defaults (get-in dashboards.constants/card-size-defaults [(keyword visualization) :default])]
+       (into defaults card-spec)))))
 
 (defn- set-default-card-dimensions
   "Update the card template dimensions to align with the default FE dimensions."
@@ -409,11 +410,11 @@
     (u.files/with-open-path-to-resource [path dashboard-templates-dir]
       (into {} (load-dashboard-template-dir path)))))
 
-(defn get-dashboard-templates
+(mu/defn get-dashboard-templates
   "Get all dashboard templates with prefix `prefix`.
    prefix is greedy, so [\"table\"] will match table/TransactionTable.yaml, but not
    table/TransactionTable/ByCountry.yaml"
-  [prefix]
+  [prefix :- [:sequential :string]]
   (->> prefix
        (get-in @dashboard-templates)
        (keep (comp ::leaf val))))

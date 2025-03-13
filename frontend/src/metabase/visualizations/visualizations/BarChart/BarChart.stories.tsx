@@ -1,14 +1,15 @@
-import type { Story } from "@storybook/react";
+import type { StoryFn } from "@storybook/react";
 
 import {
   SdkVisualizationWrapper,
   VisualizationWrapper,
 } from "__support__/storybook";
 import { NumberColumn, StringColumn } from "__support__/visualizations";
-import type { MetabaseTheme } from "embedding-sdk";
+import type { MetabaseTheme } from "metabase/embedding-sdk/theme";
 import { Box } from "metabase/ui";
 import { registerVisualization } from "metabase/visualizations";
 import Visualization from "metabase/visualizations/components/Visualization";
+import type { Series } from "metabase-types/api";
 import { createMockCard } from "metabase-types/api/mocks";
 
 import { BarChart } from "./BarChart";
@@ -35,9 +36,9 @@ const MOCK_SERIES = [
       ],
     },
   },
-];
+] as Series;
 
-export const Default: Story = () => (
+export const Default: StoryFn = () => (
   <VisualizationWrapper>
     <Box h={500}>
       <Visualization rawSeries={MOCK_SERIES} width={500} />
@@ -46,8 +47,11 @@ export const Default: Story = () => (
 );
 
 // Example of how themes can be applied in the SDK.
-export const EmbeddingHugeFont: Story = () => {
-  const theme: MetabaseTheme = { fontSize: "20px" };
+export const EmbeddingHugeFont: StoryFn = () => {
+  const theme: MetabaseTheme = {
+    fontSize: "20px",
+    components: { cartesian: { padding: "0.5rem 1rem" } },
+  };
 
   return (
     <SdkVisualizationWrapper theme={theme}>

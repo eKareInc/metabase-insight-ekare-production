@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 import { Link } from "react-router";
 
@@ -6,7 +7,7 @@ import { color } from "metabase/lib/colors";
 import type { ColorName } from "metabase/lib/colors/types";
 import { Icon } from "metabase/ui";
 
-export interface MenuItemProps {
+interface MenuItemProps {
   color?: ColorName;
   hoverColor?: ColorName;
   hoverBgColor?: ColorName;
@@ -22,6 +23,7 @@ export const MenuItemContent = styled.div<MenuItemProps>`
     color(props.disabled ? "text-light" : props.color || "text-dark")};
   padding: 0.85em 1.45em;
   text-decoration: none;
+
   :hover {
     color: ${props => color((!props.disabled && props.hoverColor) || "brand")};
     background-color: ${props =>
@@ -29,32 +31,16 @@ export const MenuItemContent = styled.div<MenuItemProps>`
         ? color(props.hoverBgColor)
         : "var(--mb-color-bg-light)"};
   }
+
   > .Icon {
     color: ${props =>
       color(props.disabled ? "text-light" : props.color || "text-dark")};
     margin-right: 0.65em;
   }
+
   :hover > .Icon {
     color: ${props => color((!props.disabled && props.hoverColor) || "brand")};
-  },
-  /* icon specific tweaks
-     the alert icon should be optically aligned  with the x-height of the text */
-  > .Icon.Icon-alert {
-    transform: translate-y(1px),
-}
-  /* the embed icon should be optically aligned with the x-height of the text */
-  > .Icon.Icon-embed {
-    transform: translate-y(1px);
   }
-  /* the download icon should be optically aligned with the x-height of the text */
-  > .Icon.Icon-download: {
-    transform: translate-y(1px);
-  }
-  /* the history icon is wider so it needs adjustment to center it with other
-   icons */
-  "> .Icon.Icon-history": {
-    transform: translate-x(-2px);
-  },
 `;
 
 export const MenuItemIcon = styled(Icon)`
@@ -63,6 +49,7 @@ export const MenuItemIcon = styled(Icon)`
 
 export const MenuItemTitle = styled.span`
   font-weight: bold;
+  line-height: 1rem;
 `;
 
 export const MenuLink = styled(Link)`

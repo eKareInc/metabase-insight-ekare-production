@@ -2,39 +2,30 @@
 import cx from "classnames";
 import PropTypes from "prop-types";
 import * as React from "react";
-import { connect } from "react-redux";
 import { t } from "ttag";
 import _ from "underscore";
 
 import { canonicalCollectionId } from "metabase/collections/utils";
 import TippyPopoverWithTrigger from "metabase/components/PopoverWithTrigger/TippyPopoverWithTrigger";
-import ButtonsS from "metabase/css/components/buttons.module.css";
 import CS from "metabase/css/core/index.css";
 import Search from "metabase/entities/search";
 import SnippetCollections from "metabase/entities/snippet-collections";
 import Snippets from "metabase/entities/snippets";
-import { color } from "metabase/lib/colors";
+import { connect } from "metabase/lib/redux";
 import {
+  PLUGIN_SNIPPET_SIDEBAR_HEADER_BUTTONS,
+  PLUGIN_SNIPPET_SIDEBAR_MODALS,
   PLUGIN_SNIPPET_SIDEBAR_PLUS_MENU_OPTIONS,
   PLUGIN_SNIPPET_SIDEBAR_ROW_RENDERERS,
-  PLUGIN_SNIPPET_SIDEBAR_MODALS,
-  PLUGIN_SNIPPET_SIDEBAR_HEADER_BUTTONS,
 } from "metabase/plugins";
 import SidebarContent from "metabase/query_builder/components/SidebarContent";
 import SidebarHeader from "metabase/query_builder/components/SidebarHeader";
-import { Icon } from "metabase/ui";
+import { Flex, Icon } from "metabase/ui";
 
 import { SnippetRow } from "../SnippetRow";
 
-import {
-  SidebarFooter,
-  SidebarIcon,
-  AddSnippetIcon,
-  MenuIconContainer,
-  SearchSnippetIcon,
-  SnippetTitle,
-  HideSearchIcon,
-} from "./SnippetSidebar.styled";
+import S from "./SnippetSidebar.module.css";
+import { SnippetSidebarEmptyState } from "./SnippetSidebarEmptyState";
 
 const ICON_SIZE = 16;
 const HEADER_ICON_SIZE = 16;
@@ -63,10 +54,13 @@ class SnippetSidebarInner extends React.Component {
   };
 
   footer = () => (
-    <SidebarFooter onClick={() => this.setState({ showArchived: true })}>
-      <SidebarIcon name="view_archive" size={ICON_SIZE} />
+    <Flex
+      className={S.SidebarFooter}
+      onClick={() => this.setState({ showArchived: true })}
+    >
+      <Icon className={S.SidebarIcon} name="view_archive" size={ICON_SIZE} />
       {t`Archived snippets`}
-    </SidebarFooter>
+    </Flex>
   );
 
   render() {
@@ -76,6 +70,7 @@ class SnippetSidebarInner extends React.Component {
       snippetCollection,
       search,
     } = this.props;
+
     const { showSearch, searchString, showArchived } = this.state;
 
     if (showArchived) {
@@ -97,26 +92,9 @@ class SnippetSidebarInner extends React.Component {
         {!showSearch &&
         displayedItems.length === 0 &&
         snippetCollection.id === "root" ? (
-          <div className={cx(CS.px3, CS.flex, CS.flexColumn, CS.alignCenter)}>
-            <svg
-              viewBox="0 0 10 10"
-              className={CS.mb2}
-              style={{ width: "25%", marginTop: 120 }}
-            >
-              <path
-                style={{ stroke: color("bg-medium"), strokeWidth: 1 }}
-                d="M0,1H8M0,3H10M0,5H7M0,7H10M0,9H3"
-              />
-            </svg>
-            <h4
-              className={CS.textMedium}
-            >{t`Snippets are reusable bits of SQL`}</h4>
-            <button
-              onClick={openSnippetModalWithSelectedText}
-              className={cx(ButtonsS.Button, ButtonsS.ButtonPrimary)}
-              style={{ marginTop: 80 }}
-            >{t`Create a snippet`}</button>
-          </div>
+          <SnippetSidebarEmptyState
+            onClick={openSnippetModalWithSelectedText}
+          />
         ) : (
           <div>
             <div
@@ -150,7 +128,8 @@ class SnippetSidebarInner extends React.Component {
                   {snippetCollection.id === "root" ? (
                     t`Snippets`
                   ) : (
-                    <SnippetTitle
+                    <span
+                      className={S.SnippetTitle}
                       onClick={() => {
                         const parentId = snippetCollection.parent_id;
                         this.props.setSnippetCollectionId(
@@ -167,7 +146,7 @@ class SnippetSidebarInner extends React.Component {
                     >
                       <Icon name="chevronleft" className={CS.mr1} />
                       {snippetCollection.name}
-                    </SnippetTitle>
+                    </span>
                   )}
                 </span>
               </div>
@@ -186,10 +165,12 @@ class SnippetSidebarInner extends React.Component {
                   ),
                 ]}
                 {snippets.length >= MIN_SNIPPETS_FOR_SEARCH && (
-                  <SearchSnippetIcon
+                  <Icon
+                    className={cx(S.SearchSnippetIcon, {
+                      [S.isHidden]: showSearch,
+                    })}
                     name="search"
                     size={HEADER_ICON_SIZE}
-                    isHidden={showSearch}
                     onClick={this.showSearch}
                   />
                 )}
@@ -198,10 +179,12 @@ class SnippetSidebarInner extends React.Component {
                   <TippyPopoverWithTrigger
                     triggerClasses="flex"
                     triggerContent={
-                      <AddSnippetIcon
+                      <Icon
+                        className={cx(S.AddSnippetIcon, {
+                          [S.isHidden]: showSearch,
+                        })}
                         name="add"
                         size={HEADER_ICON_SIZE}
-                        isHidden={showSearch}
                       />
                     }
                     placement="bottom-end"
@@ -217,7 +200,8 @@ class SnippetSidebarInner extends React.Component {
                             f(this),
                           ),
                         ].map(({ icon, name, onClick }) => (
-                          <MenuIconContainer
+                          <Flex
+                            className={S.MenuIconContainer}
                             key={name}
                             onClick={() => {
                               onClick();
@@ -230,16 +214,18 @@ class SnippetSidebarInner extends React.Component {
                               className={CS.mr2}
                             />
                             <h4>{name}</h4>
-                          </MenuIconContainer>
+                          </Flex>
                         ))}
                       </div>
                     )}
                   />
                 )}
-                <HideSearchIcon
+                <Icon
+                  className={cx(S.HideSearchIcon, {
+                    [S.isHidden]: !showSearch,
+                  })}
                   name="close"
                   size={HEADER_ICON_SIZE}
-                  isHidden={!showSearch}
                   onClick={this.hideSearch}
                 />
               </div>

@@ -1,4 +1,4 @@
-(ns metabase.driver.sqlserver-test
+(ns ^:mb/driver-tests metabase.driver.sqlserver-test
   (:require
    [clojure.string :as str]
    [clojure.test :refer :all]
@@ -8,15 +8,14 @@
    [medley.core :as m]
    [metabase.config :as config]
    [metabase.driver :as driver]
+   [metabase.driver.common :as driver.common]
    [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
    [metabase.driver.sql-jdbc.execute :as sql-jdbc.execute]
    [metabase.driver.sql.query-processor :as sql.qp]
-   [metabase.driver.sql.util.unprepare :as unprepare]
    [metabase.driver.sqlserver :as sqlserver]
-   [metabase.models :refer [Database]]
    [metabase.query-processor :as qp]
    [metabase.query-processor.compile :as qp.compile]
-   [metabase.query-processor.interface :as qp.i]
+   [metabase.query-processor.middleware.limit :as limit]
    [metabase.query-processor.preprocess :as qp.preprocess]
    [metabase.query-processor.store :as qp.store]
    [metabase.query-processor.test-util :as qp.test-util]
@@ -24,8 +23,7 @@
    [metabase.test :as mt]
    [metabase.test.util.timezone :as test.tz]
    [metabase.util.date-2 :as u.date]
-   [next.jdbc]
-   [toucan2.tools.with-temp :as t2.with-temp]))
+   [next.jdbc]))
 
 (set! *warn-on-reflection* true)
 
@@ -59,16 +57,16 @@
           (is (query= original
                       (#'sqlserver/fix-order-bys original))))
         (testing "In source query -- add `:limit`"
-          (is (query= {:source-query (assoc original :limit qp.i/absolute-max-results)}
+          (is (query= {:source-query (assoc original :limit limit/absolute-max-results)}
                       (#'sqlserver/fix-order-bys {:source-query original}))))
         (testing "In source query in source query-- add `:limit` at both levels"
-          (is (query= {:source-query {:source-query (assoc original :limit qp.i/absolute-max-results)
+          (is (query= {:source-query {:source-query (assoc original :limit limit/absolute-max-results)
                                       :order-by     [[:asc [:field 1]]]
-                                      :limit        qp.i/absolute-max-results}}
+                                      :limit        limit/absolute-max-results}}
                       (#'sqlserver/fix-order-bys {:source-query {:source-query original
                                                                  :order-by     [[:asc [:field 1]]]}}))))
         (testing "In source query inside source query for join -- add `:limit`"
-          (is (query= {:joins [{:source-query {:source-query (assoc original :limit qp.i/absolute-max-results)}}]}
+          (is (query= {:joins [{:source-query {:source-query (assoc original :limit limit/absolute-max-results)}}]}
                       (#'sqlserver/fix-order-bys
                        {:joins [{:source-query {:source-query original}}]}))))))))
 
@@ -109,12 +107,12 @@
             :subprotocol        "sqlserver"
             :user               "cam"}
            (sql-jdbc.conn/connection-details->spec :sqlserver
-             {:user               "cam"
-              :password           "toucans"
-              :db                 "birddb"
-              :host               "localhost"
-              :port               1433
-              :additional-options "trustServerCertificate=false"})))))
+                                                   {:user               "cam"
+                                                    :password           "toucans"
+                                                    :db                 "birddb"
+                                                    :host               "localhost"
+                                                    :port               1433
+                                                    :additional-options "trustServerCertificate=false"})))))
 
 (deftest ^:parallel add-max-results-limit-test
   (mt/test-driver :sqlserver
@@ -203,13 +201,13 @@
               ["Stout Burgers & Beers"]
               ["The Apple Pan"]]
              (mt/rows
-               (qp/process-query
-                (mt/mbql-query venues
-                  {:source-query {:source-table $$venues
-                                  :fields       [$name]
-                                  :order-by     [[:asc $id]]
-                                  :limit        5}
-                   :limit        3}))))))))
+              (qp/process-query
+               (mt/mbql-query venues
+                 {:source-query {:source-table $$venues
+                                 :fields       [$name]
+                                 :order-by     [[:asc $id]]
+                                 :limit        5}
+                  :limit        3}))))))))
 
 (deftest ^:parallel locale-bucketing-test
   (mt/test-driver :sqlserver
@@ -237,13 +235,62 @@
              (with-open [stmt (sql-jdbc.execute/prepared-statement :sqlserver conn sql params)
                          rs   (sql-jdbc.execute/execute-prepared-statement! :sqlserver stmt)]
                (let [row-thunk (sql-jdbc.execute/row-thunk :sqlserver rs (.getMetaData rs))]
-                 (is (= [#t "2019-02-01"]
+                 (is (= [#t "2019-02-01T00:00:00"]
                         (row-thunk))))))
            ;; rollback transaction so `temp` table gets discarded
            (finally
              (.rollback conn))))))))
 
-(deftest unprepare-test
+(deftest ^:parallel locale-week-test
+  (mt/test-driver :sqlserver
+    (testing "Make sure aggregating by week starts weeks on the appropriate day regardless of the value of DATEFIRST"
+      ;; we're manually sending sql to the database instead of using process-query because setting DATEFIRST doesn't
+      ;; persist otherwise
+      (sql-jdbc.execute/do-with-connection-with-options
+       :sqlserver
+       (mt/db)
+       {:session-timezone (qp.timezone/report-timezone-id-if-supported :sqlserver (mt/db))}
+       (fn [^java.sql.Connection conn]
+         (doseq [datefirst (range 1 8)]
+           (binding [driver.common/*start-of-week* :sunday]
+             (let [{:keys [query params]} (qp.compile/compile (mt/mbql-query users
+                                                                {:aggregation [["count"]]
+                                                                 :breakout [!week.last_login]
+                                                                 :filter [:= $name "Plato Yeshua"]}))
+                   sql (format "SET DATEFIRST %d; %s" datefirst query)]
+               (with-open [stmt (sql-jdbc.execute/prepared-statement :sqlserver conn sql params)
+                           rs   (sql-jdbc.execute/execute-prepared-statement! :sqlserver stmt)]
+                 (let [row-thunk (sql-jdbc.execute/row-thunk :sqlserver rs (.getMetaData rs))
+                       row (row-thunk)]
+                   (is (= [#t "2014-03-30T00:00" 1]
+                          row))))))))))))
+
+(deftest ^:parallel locale-day-of-week-test
+  (mt/test-driver :sqlserver
+    (testing "Make sure aggregating by day of week starts weeks on the appropriate day regardless of the value of
+    DATEFIRST"
+      ;; we're manually sending sql to the database instead of using process-query because setting DATEFIRST doesn't
+      ;; persist otherwise
+      (sql-jdbc.execute/do-with-connection-with-options
+       :sqlserver
+       (mt/db)
+       {:session-timezone (qp.timezone/report-timezone-id-if-supported :sqlserver (mt/db))}
+       (fn [^java.sql.Connection conn]
+         (doseq [datefirst (range 1 8)]
+           (binding [driver.common/*start-of-week* :sunday]
+             (let [{:keys [query params]} (qp.compile/compile (mt/mbql-query users
+                                                                {:aggregation [["count"]]
+                                                                 :breakout [!day-of-week.last_login]
+                                                                 :filter [:= $name "Plato Yeshua"]}))
+                   sql (format "SET DATEFIRST %d; %s" datefirst query)]
+               (with-open [stmt (sql-jdbc.execute/prepared-statement :sqlserver conn sql params)
+                           rs   (sql-jdbc.execute/execute-prepared-statement! :sqlserver stmt)]
+                 (let [row-thunk (sql-jdbc.execute/row-thunk :sqlserver rs (.getMetaData rs))
+                       row (row-thunk)]
+                   (is (= [3 1]
+                          row))))))))))))
+
+(deftest ^:parallel inline-value-test
   (mt/test-driver :sqlserver
     (let [date (t/local-date 2019 11 5)
           time (t/local-time 19 27)]
@@ -263,7 +310,7 @@
         (let [expected (or expected t)]
           #_{:clj-kondo/ignore [:discouraged-var]}
           (testing (format "Convert %s to SQL literal" (colorize/magenta (with-out-str (pr t))))
-            (let [sql (format "SELECT %s AS t;" (unprepare/unprepare-value :sqlserver t))]
+            (let [sql (format "SELECT %s AS t;" (sql.qp/inline-value :sqlserver t))]
               (sql-jdbc.execute/do-with-connection-with-options
                :sqlserver
                (mt/db)
@@ -367,50 +414,116 @@
                      (take 5 (mt/rows
                               (mt/run-mbql-query checkins
                                 {:aggregation [[:count]]
-                                 :breakout    [[:field $date {:temporal-unit unit}]]}))))))))))))
+                                 :breakout    [[:field $date {:temporal-unit unit}]]})))))
+              (is (= [:type/Date :type/Integer]
+                     (->> {:aggregation [[:count]]
+                           :breakout    [[:field $date {:temporal-unit unit}]]}
+                          (mt/run-mbql-query checkins)
+                          :data
+                          :results_metadata
+                          :columns
+                          (map :base_type)))))))))))
 
-(deftest ^:parallel max-results-bare-rows-test
+(deftest ^:parallel truncated-datetime-still-datetime-test
   (mt/test-driver :sqlserver
-    (testing "Should support overriding the ROWCOUNT for a specific SQL Server DB (#9940)"
-      (t2.with-temp/with-temp [Database db {:name    "SQL Server with ROWCOUNT override"
-                                            :engine  "sqlserver"
-                                            :details (-> (:details (mt/db))
-                                                         ;; SQL server considers a ROWCOUNT of 0 to be unconstrained
-                                                         ;; we are putting this in the details map, since that's where connection
-                                                         ;; properties go in a client save operation, but it will be MOVED to the
-                                                         ;; settings map instead (which is where DB-local settings go), via the
-                                                         ;; driver/normalize-db-details implementation for :sqlserver
-                                                         (assoc :rowcount-override 0))}]
-        ;; TODO FIXME -- This query probably shouldn't be returning ANY rows given that we're setting the LIMIT to zero.
-        ;; For now I've had to keep a bug where it always returns at least one row regardless of the limit. See comments
-        ;; in [[metabase.query-processor.middleware.limit/limit-xform]].
-        (mt/with-db db
-          (is (= 3000 (-> {:query (str "DECLARE @DATA AS TABLE(\n"
-                                       "    IDX INT IDENTITY(1,1),\n"
-                                       "    V INT\n"
-                                       ")\n"
-                                       "DECLARE @STEP INT \n"
-                                       "SET @STEP = 1\n"
-                                       "WHILE @STEP <=3000\n"
-                                       "BEGIN\n"
-                                       "    INSERT INTO @DATA(V)\n"
-                                       "    SELECT 1\n"
-                                       "    SET @STEP = @STEP + 1\n"
-                                       "END \n"
-                                       "\n"
-                                       "DECLARE @TEMP AS TABLE(\n"
-                                       "    IDX INT IDENTITY(1,1),\n"
-                                       "    V INT\n"
-                                       ")\n"
-                                       "INSERT INTO @TEMP(V)\n"
-                                       "SELECT V FROM @DATA\n"
-                                       "\n"
-                                       "SELECT COUNT(1) FROM @TEMP\n")}
-                          mt/native-query
-                          qp/userland-query
-                          qp/process-query
-                          mt/rows
-                          ffirst))))))))
+    (testing "When truncating a `:type/DateTime` to a date-sized unit, return datetime"
+      (letfn [(query-with-bucketing [unit]
+                (mt/mbql-query orders
+                  {:aggregation [[:count]]
+                   :breakout    [[:field $created_at {:temporal-unit unit}]]}))]
+        (doseq [[unit {:keys [expected-sql expected-rows]}]
+                {"year"
+                 {:expected-sql
+                  ["SELECT"
+                   "  CAST(",
+                   "    DATEFROMPARTS(YEAR(dbo.orders.created_at), 1, 1) AS datetime2"
+                   "  ) AS created_at,"
+                   "  COUNT(*) AS count"
+                   "FROM"
+                   "  dbo.orders"
+                   "GROUP BY"
+                   "  YEAR(dbo.orders.created_at)"
+                   "ORDER BY"
+                   "  YEAR(dbo.orders.created_at) ASC"]
+
+                  :expected-rows
+                  [["2013-01-01T00:00:00Z" 235]
+                   ["2014-01-01T00:00:00Z" 498]
+                   ["2015-01-01T00:00:00Z" 267]]}
+
+                 "month"
+                 {:expected-sql
+                  ["SELECT"
+                   "  CAST("
+                   "    DATEFROMPARTS("
+                   "      YEAR(dbo.orders.created_at),"
+                   "      MONTH(dbo.orders.created_at),"
+                   "      1"
+                   "    ) AS datetime2"
+                   "  ) AS created_at,"
+                   "  COUNT(*) AS count"
+                   "FROM"
+                   "  dbo.orders"
+                   "GROUP BY"
+                   "  YEAR(dbo.orders.created_at),"
+                   "  MONTH(dbo.orders.created_at)"
+                   "ORDER BY"
+                   "  YEAR(dbo.orders.created_at) ASC,"
+                   "  MONTH(dbo.orders.created_at) ASC"]
+
+                  :expected-rows
+                  [["2013-01-01T00:00:00Z" 8]
+                   ["2013-02-01T00:00:00Z" 11]
+                   ["2013-03-01T00:00:00Z" 21]
+                   ["2013-04-01T00:00:00Z" 26]
+                   ["2013-05-01T00:00:00Z" 23]]}
+
+                 "day"
+                 {:expected-sql
+                  ["SELECT"
+                   "  CAST("
+                   "    DATEFROMPARTS("
+                   "      YEAR(dbo.orders.created_at),"
+                   "      MONTH(dbo.orders.created_at),"
+                   "      DAY(dbo.orders.created_at)"
+                   "    ) AS datetime2"
+                   "  ) AS created_at,"
+                   "  COUNT(*) AS count"
+                   "FROM"
+                   "  dbo.orders"
+                   "GROUP BY"
+                   "  YEAR(dbo.orders.created_at),"
+                   "  MONTH(dbo.orders.created_at),"
+                   "  DAY(dbo.orders.created_at)"
+                   "ORDER BY"
+                   "  YEAR(dbo.orders.created_at) ASC,"
+                   "  MONTH(dbo.orders.created_at) ASC,"
+                   "  DAY(dbo.orders.created_at) ASC"]
+
+                  :expected-rows
+                  [["2013-01-03T00:00:00Z" 1]
+                   ["2013-01-10T00:00:00Z" 1]
+                   ["2013-01-19T00:00:00Z" 1]
+                   ["2013-01-22T00:00:00Z" 1]
+                   ["2013-01-23T00:00:00Z" 1]]}}]
+          (testing (format "\nUnit = %s\n" unit)
+            (testing "Should generate the correct SQL query"
+              (is (= expected-sql
+                     (pretty-sql (:query (qp.compile/compile (query-with-bucketing unit)))))))
+            (testing "Should still return correct results"
+              (is (= expected-rows
+                     (take 5 (mt/rows
+                              (mt/run-mbql-query checkins
+                                {:aggregation [[:count]]
+                                 :breakout    [[:field $date {:temporal-unit unit}]]})))))
+              (is (= [:type/DateTime :type/Integer]
+                     (->> {:aggregation [[:count]]
+                           :breakout    [[:field $created_at {:temporal-unit unit}]]}
+                          (mt/run-mbql-query orders)
+                          :data
+                          :results_metadata
+                          :columns
+                          (map :base_type)))))))))))
 
 (deftest filter-by-datetime-fields-test
   (mt/test-driver :sqlserver
@@ -469,3 +582,7 @@
                       {}
                       (fn [^java.sql.Connection conn]
                         (next.jdbc/execute! conn query))))))))))))
+
+(deftest ^:parallel db-default-timezone-test
+  (mt/test-driver :sqlserver
+    (is (= "Z" (str (driver/db-default-timezone :sqlserver (mt/db)))))))

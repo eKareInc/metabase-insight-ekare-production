@@ -1,8 +1,6 @@
 import cx from "classnames";
-import PropTypes from "prop-types";
-import { Component } from "react";
-import * as React from "react";
-import { findDOMNode } from "react-dom";
+import type * as React from "react";
+import { Component, createRef } from "react";
 import _ from "underscore";
 
 import TippyPopover from "metabase/components/Popover/TippyPopover";
@@ -10,24 +8,26 @@ import FormS from "metabase/css/components/form.module.css";
 import CS from "metabase/css/core/index.css";
 import { isObscured } from "metabase/lib/dom";
 import {
-  KEYCODE_ESCAPE,
+  KEYCODE_BACKSPACE,
+  KEYCODE_DOWN,
   KEYCODE_ENTER,
+  KEYCODE_ESCAPE,
   KEYCODE_TAB,
   KEYCODE_UP,
-  KEYCODE_DOWN,
-  KEYCODE_BACKSPACE,
+  KEY_BACKSPACE,
   KEY_COMMA,
   KEY_ENTER,
-  KEY_BACKSPACE,
 } from "metabase/lib/keyboard";
 import { Icon } from "metabase/ui";
 
 import { TokenFieldAddon, TokenFieldItem } from "../TokenFieldItem";
 
+import S from "./TokenField.module.css";
 import {
-  TokenInputItem,
-  TokenFieldContainer,
   PrefixContainer,
+  TokenFieldContainer,
+  TokenInputControl,
+  TokenInputItem,
 } from "./TokenField.styled";
 
 export type LayoutRendererArgs = {
@@ -46,7 +46,7 @@ export type TokenFieldProps = {
   placeholder?: string | undefined;
   multi?: boolean;
   validateValue?: (value: any) => boolean;
-  parseFreeformValue?: (value: any) => any;
+  parseFreeformValue?: (value: string | undefined) => any;
   updateOnInputChange?: boolean;
   optionRenderer?: (option: any) => React.ReactNode;
   valueRenderer?: (value: any) => React.ReactNode;
@@ -88,8 +88,7 @@ const defaultStyleValue = {
 };
 
 class _TokenField extends Component<TokenFieldProps, TokenFieldState> {
-  inputRef: React.RefObject<HTMLInputElement>;
-  scrollElement = null;
+  inputRef = createRef<HTMLInputElement>();
 
   constructor(props: TokenFieldProps) {
     super(props);
@@ -103,42 +102,7 @@ class _TokenField extends Component<TokenFieldProps, TokenFieldState> {
       isAllSelected: false,
       listIsHovered: false,
     };
-
-    this.inputRef = React.createRef();
   }
-
-  static propTypes = {
-    value: PropTypes.array.isRequired,
-    onChange: PropTypes.func.isRequired,
-    options: PropTypes.array,
-    placeholder: PropTypes.string,
-    multi: PropTypes.bool,
-    validateValue: PropTypes.func,
-    parseFreeformValue: PropTypes.func,
-    updateOnInputChange: PropTypes.bool,
-    optionRenderer: PropTypes.func,
-    valueRenderer: PropTypes.func,
-    layoutRenderer: PropTypes.func,
-    color: PropTypes.string,
-    style: PropTypes.object,
-    className: PropTypes.string,
-    valueStyle: PropTypes.object,
-    optionsStyle: PropTypes.object,
-    optionsClassName: PropTypes.string,
-    prefix: PropTypes.string,
-    canAddItems: PropTypes.bool,
-    autoFocus: PropTypes.bool,
-    removeSelected: PropTypes.bool,
-    idKey: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
-    valueKey: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
-    labelKey: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
-    onFocus: PropTypes.func,
-    onBlur: PropTypes.func,
-    onInputKeyDown: PropTypes.func,
-    onInputChange: PropTypes.func,
-    updateOnInputBlur: PropTypes.bool,
-    filterOption: PropTypes.func,
-  };
 
   UNSAFE_componentWillMount() {
     this._updateFilteredValues(this.props);
@@ -476,18 +440,8 @@ class _TokenField extends Component<TokenFieldProps, TokenFieldState> {
     return JSON.stringify(v1) === JSON.stringify(v2);
   }
 
-  componentDidUpdate(prevProps: TokenFieldProps, prevState: TokenFieldState) {
+  componentDidUpdate(prevProps: TokenFieldProps) {
     const input = this.inputRef.current;
-
-    if (
-      prevState.selectedOptionValue !== this.state.selectedOptionValue &&
-      this.scrollElement != null
-    ) {
-      const element = findDOMNode(this.scrollElement);
-      if (element && isObscured(element) && element instanceof Element) {
-        element.scrollIntoView({ block: "nearest" });
-      }
-    }
 
     // if we added a value then scroll to the last item (the input)
     if (this.props.value.length > prevProps.value.length) {
@@ -583,6 +537,7 @@ class _TokenField extends Component<TokenFieldProps, TokenFieldState> {
           "TokenField--focused": isFocused,
         })}
         onMouseDownCapture={this.onMouseDownCapture}
+        data-testid="token-field"
       >
         {!!prefix && (
           <PrefixContainer data-testid="input-prefix">{prefix}</PrefixContainer>
@@ -604,7 +559,7 @@ class _TokenField extends Component<TokenFieldProps, TokenFieldState> {
               >
                 <Icon
                   name="close"
-                  className={cx(CS.flex, CS.alignCenter)}
+                  className={cx(CS.flex, CS.alignCenter, S.closeIcon)}
                   size={12}
                 />
               </TokenFieldAddon>
@@ -613,7 +568,7 @@ class _TokenField extends Component<TokenFieldProps, TokenFieldState> {
         ))}
         {canAddItems && (
           <TokenInputItem>
-            <input
+            <TokenInputControl
               ref={this.inputRef}
               style={{ ...defaultStyleValue, ...valueStyle }}
               className={cx(CS.full, FormS.noFocus, CS.borderless, CS.px1)}
@@ -636,6 +591,7 @@ class _TokenField extends Component<TokenFieldProps, TokenFieldState> {
     const optionsList =
       filteredOptions.length === 0 ? null : (
         <ul
+          role="listbox"
           className={cx(
             optionsClassName,
             CS.overflowAuto,
@@ -719,12 +675,6 @@ const DefaultTokenFieldLayout = ({
     </TippyPopover>
   </div>
 );
-
-DefaultTokenFieldLayout.propTypes = {
-  valuesList: PropTypes.element.isRequired,
-  optionsList: PropTypes.element,
-  isFocused: PropTypes.bool,
-};
 
 /**
  * @deprecated use MultiSelect or Autocomplete from metabase/ui

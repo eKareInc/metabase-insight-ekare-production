@@ -1,15 +1,13 @@
 (ns metabase.models.params.chain-filter-test
   (:require
-   [cheshire.core :as json]
    [clojure.test :refer :all]
-   [metabase.models :refer [Field FieldValues]]
    [metabase.models.field-values :as field-values]
    [metabase.models.params.chain-filter :as chain-filter]
    [metabase.models.params.field-values :as params.field-values]
    [metabase.test :as mt]
    [metabase.util :as u]
-   [toucan2.core :as t2]
-   [toucan2.tools.with-temp :as t2.with-temp]))
+   [metabase.util.json :as json]
+   [toucan2.core :as t2]))
 
 (defn shorthand->constraint [field-id v]
   (if-not (vector? v)
@@ -26,7 +24,6 @@
        :value    (vec v)
        :options  options})))
 
-
 (defmacro ^:private chain-filter [field field->value & options]
   `(chain-filter/chain-filter
     (mt/$ids nil ~(symbol (str \% (name field))))
@@ -36,11 +33,11 @@
 
 (defmacro ^:private chain-filter-search [field field->value query & options]
   `(chain-filter/chain-filter-search
-     (mt/$ids nil ~(symbol (str \% (name field))))
-     (mt/$ids nil ~(vec (for [[k v] field->value]
-                          (shorthand->constraint (symbol (str \% k)) v))))
-     ~query
-     ~@options))
+    (mt/$ids nil ~(symbol (str \% (name field))))
+    (mt/$ids nil ~(vec (for [[k v] field->value]
+                         (shorthand->constraint (symbol (str \% k)) v))))
+    ~query
+    ~@options))
 
 (defn take-n-values
   "Call `take` on the result of chain-filter function.
@@ -331,7 +328,6 @@
          #"Cannot search against non-Text Field"
          (chain-filter/chain-filter-search (mt/$ids %venues.price) nil "s")))))
 
-
 ;;; --------------------------------------------------- Remapping ----------------------------------------------------
 
 (defn do-with-human-readable-values-remapping [thunk]
@@ -474,10 +470,11 @@
               :has_more_values false}
              (chain-filter-search venues.category_id {venues.price 4} "zzzzz"))))))
 
+;; Detail: Key (entity_id)=(6nmVTpCpKFRkZJigvqSVm) already exists.
 (deftest use-cached-field-values-test
   (testing "chain-filter should use cached FieldValues if applicable (#13832)"
     (let [field-id (mt/id :categories :name)]
-      (mt/with-model-cleanup [FieldValues]
+      (mt/with-model-cleanup [:model/FieldValues]
         (testing "should created a full FieldValues when constraints is `nil`"
           ;; warm up the cache
           (chain-filter categories.name nil)
@@ -486,7 +483,7 @@
             (is (= {:values          [["African"] ["American"] ["Artisan"]]
                     :has_more_values false}
                    (take-n-values 3 (chain-filter categories.name nil))))
-            (is (= 1 (t2/count FieldValues :field_id field-id :type :full)))))
+            (is (= 1 (t2/count :model/FieldValues :field_id field-id :type :full)))))
 
         (testing "should create a linked-filter FieldValues when have constraints"
           ;; make sure we have a clean start
@@ -498,12 +495,12 @@
             (is (= {:values          [["Japanese"] ["Steakhouse"]]
                     :has_more_values false}
                    (chain-filter categories.name {venues.price 4})))
-            (is (= 1 (t2/count FieldValues :field_id field-id :type :linked-filter)))))
+            (is (= 1 (t2/count :model/FieldValues :field_id field-id :type :linked-filter)))))
 
         (testing "should search with the cached FieldValues when search without constraints"
           (mt/with-temp
             [:model/Field       field (-> (t2/select-one :model/Field (mt/id :categories :name))
-                                          (dissoc :id)
+                                          (dissoc :id :entity_id)
                                           (assoc :name "NAME2"))
              :model/FieldValues  _    {:field_id (:id field)
                                        :type     :full
@@ -518,12 +515,12 @@
           (testing "should create a linked-filter FieldValues"
             ;; warm up the cache
             (chain-filter categories.name {venues.price 4})
-            (is (= 1 (t2/count FieldValues :field_id field-id :type "linked-filter"))))
+            (is (= 1 (t2/count :model/FieldValues :field_id field-id :type "linked-filter"))))
 
           (testing "should search for the values of linked-filter FieldValues"
-            (t2/update! FieldValues {:field_id field-id
-                                     :type     "linked-filter"}
-                        {:values (json/generate-string ["Good" "Bad"])
+            (t2/update! :model/FieldValues {:field_id field-id
+                                            :type     "linked-filter"}
+                        {:values (json/encode ["Good" "Bad"])
                          ;; HACK: currently this is hardcoded to true for linked-filter
                          ;; in [[params.field-values/fetch-advanced-field-values]]
                          ;; we want this to false to test this case
@@ -532,8 +529,8 @@
                     :has_more_values false}
                    (chain-filter-search categories.name {venues.price 4} "o")))
             (testing "Shouldn't use cached FieldValues if has_more_values=true"
-              (t2/update! FieldValues {:field_id field-id
-                                       :type     "linked-filter"}
+              (t2/update! :model/FieldValues {:field_id field-id
+                                              :type     "linked-filter"}
                           {:has_more_values true})
               (is (= {:values          [["Steakhouse"]]
                       :has_more_values false}
@@ -541,7 +538,7 @@
 
 (deftest use-cached-field-values-for-remapped-field-test
   (testing "fetching a remapped field should returns remapped values (#21528)"
-    (mt/with-discard-model-updates [:model/Field]
+    (mt/with-discard-model-updates! [:model/Field]
       (t2/update! :model/Field (mt/id :venues :category_id) {:has_field_values "list"})
       (mt/with-column-remappings [venues.category_id categories.name]
         (is (= {:values          [[2 "American"] [3 "Artisan"] [4 "Asian"]]
@@ -589,41 +586,41 @@
           (testing "no FieldValues"
             (thunk))
           (testing "with FieldValues for myfield"
-            (t2.with-temp/with-temp [FieldValues _ {:field_id %myfield, :values ["value" nil ""]}]
-              (mt/with-temp-vals-in-db Field %myfield {:has_field_values "auto-list"}
+            (mt/with-temp [:model/FieldValues _ {:field_id %myfield, :values ["value" nil ""]}]
+              (mt/with-temp-vals-in-db :model/Field %myfield {:has_field_values "auto-list"}
                 (testing "Sanity check: make sure we will actually use the cached FieldValues"
                   (is (field-values/field-should-have-field-values? %myfield))
                   (is (#'chain-filter/use-cached-field-values? %myfield)))
                 (thunk)))))))))
 
-(defn- do-with-clean-field-values-for-field
+(defn- do-with-clean-field-values-for-field!
   [field-or-field-id thunk]
-  (mt/with-model-cleanup [FieldValues]
+  (mt/with-model-cleanup [:model/FieldValues]
     (let [field-id         (u/the-id field-or-field-id)
-          has_field_values (t2/select-one-fn :has_field_values Field :id field-id)
-          fvs              (t2/select FieldValues :field_id field-id)]
+          has_field_values (t2/select-one-fn :has_field_values :model/Field :id field-id)
+          fvs              (t2/select :model/FieldValues :field_id field-id)]
       ;; switch to "list" to prevent [[field-values/create-or-update-full-field-values!]]
       ;; from changing this to `nil` if the field is `auto-list` and exceeds threshholds
-      (t2/update! Field field-id {:has_field_values "list"})
-      (t2/delete! FieldValues :field_id field-id)
+      (t2/update! :model/Field field-id {:has_field_values "list"})
+      (t2/delete! :model/FieldValues :field_id field-id)
       (try
         (thunk)
         (finally
-         (t2/update! Field field-id {:has_field_values has_field_values})
-         (t2/insert! FieldValues fvs))))))
+          (t2/update! :model/Field field-id {:has_field_values has_field_values})
+          (t2/insert! :model/FieldValues fvs))))))
 
-(defmacro ^:private with-clean-field-values-for-field
+(defmacro ^:private with-clean-field-values-for-field!
   "Run `body` with all FieldValues for `field-id` deleted.
   Restores the deleted FieldValues when we're done."
   {:style/indent 1}
   [field-or-field-id & body]
-  `(do-with-clean-field-values-for-field ~field-or-field-id (fn [] ~@body)))
+  `(do-with-clean-field-values-for-field! ~field-or-field-id (fn [] ~@body)))
 
 (deftest chain-filter-has-more-values-test
   (testing "the `has_more_values` property should be correct\n"
     (testing "for cached fields"
       (testing "without contraints"
-        (with-clean-field-values-for-field (mt/id :categories :name)
+        (with-clean-field-values-for-field! (mt/id :categories :name)
           (testing "`false` for field has values less than [[field-values/*total-max-length*]] threshold"
             (is (= false
                    (:has_more_values (chain-filter categories.name {})))))
@@ -636,13 +633,13 @@
                    (:has_more_values (chain-filter categories.name {} :limit Integer/MAX_VALUE))))))
 
         (testing "`true` if the values of a field exceeds our [[field-values/*total-max-length*]] limit"
-          (with-clean-field-values-for-field (mt/id :categories :name)
+          (with-clean-field-values-for-field! (mt/id :categories :name)
             (binding [field-values/*total-max-length* 10]
               (is (= true
                      (:has_more_values (chain-filter categories.name {}))))))))
 
       (testing "with contraints"
-        (with-clean-field-values-for-field (mt/id :categories :name)
+        (with-clean-field-values-for-field! (mt/id :categories :name)
           (testing "`false` for field has values less than [[field-values/*total-max-length*]] threshold"
             (is (= false
                    (:has_more_values (chain-filter categories.name {venues.price 4})))))
@@ -654,15 +651,15 @@
             (is (= false
                    (:has_more_values (chain-filter categories.name {venues.price 4} :limit Integer/MAX_VALUE))))))
 
-        (with-clean-field-values-for-field (mt/id :categories :name)
+        (with-clean-field-values-for-field! (mt/id :categories :name)
           (testing "`true` if the values of a field exceeds our [[field-values/*total-max-length*]] limit"
-              (binding [field-values/*total-max-length* 10]
-                (is (= true
-                       (:has_more_values (chain-filter categories.name {venues.price 4})))))))))
+            (binding [field-values/*total-max-length* 10]
+              (is (= true
+                     (:has_more_values (chain-filter categories.name {venues.price 4})))))))))
 
     (testing "for non-cached fields"
       (testing "with contraints"
-        (with-clean-field-values-for-field (mt/id :venues :latitude)
+        (with-clean-field-values-for-field! (mt/id :venues :latitude)
           (testing "`false` if we don't specify limit"
             (is (= false
                    (:has_more_values (chain-filter venues.latitude {venues.price 4})))))
@@ -690,12 +687,12 @@
                                 :fk :users}]
                               []]]
       (mt/$ids nil
-        (mt/with-dynamic-redefs [chain-filter/database-fk-relationships @#'chain-filter/database-fk-relationships*
-                                 chain-filter/find-joins                (fn
-                                                                          ([a b c]
-                                                                           (#'chain-filter/find-joins* a b c false))
-                                                                          ([a b c d]
-                                                                           (#'chain-filter/find-joins* a b c d)))]
+        (mt/with-dynamic-fn-redefs [chain-filter/database-fk-relationships @#'chain-filter/database-fk-relationships*
+                                    chain-filter/find-joins                (fn
+                                                                             ([a b c]
+                                                                              (#'chain-filter/find-joins* a b c false))
+                                                                             ([a b c d]
+                                                                              (#'chain-filter/find-joins* a b c d)))]
           (testing "receiver_id is active and should be used for the join"
             (is (= [{:lhs {:table $$messages, :field %messages.receiver_id}
                      :rhs {:table $$users, :field %users.id}}]

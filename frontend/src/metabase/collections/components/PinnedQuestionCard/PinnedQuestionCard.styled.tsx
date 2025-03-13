@@ -1,7 +1,8 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
+import { doNotForwardProps } from "metabase/common/utils/doNotForwardProps";
 import Link from "metabase/core/components/Link";
-import { color } from "metabase/lib/colors";
 import { LegendLabel } from "metabase/visualizations/components/legend/LegendCaption.styled";
 import ChartSkeleton from "metabase/visualizations/components/skeletons/ChartSkeleton";
 import StaticSkeleton from "metabase/visualizations/components/skeletons/StaticSkeleton";
@@ -11,7 +12,7 @@ export const CardActionMenuContainer = styled.div`
   top: 0.3125rem;
   right: 0.3125rem;
   z-index: 3;
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
   visibility: hidden;
 `;
 
@@ -23,11 +24,14 @@ export const CardPreviewSkeleton = styled(ChartSkeleton)`
   padding: 0.5rem 1rem;
 `;
 
-export interface CardRootProps {
+interface CardRootProps {
   isPreview?: boolean;
 }
 
-export const CardRoot = styled(Link)<CardRootProps>`
+export const CardRoot = styled(
+  Link,
+  doNotForwardProps("isPreview"),
+)<CardRootProps>`
   position: relative;
   display: block;
   overflow: hidden;
@@ -35,7 +39,7 @@ export const CardRoot = styled(Link)<CardRootProps>`
   padding: ${props => (props.isPreview ? "0" : "0.5rem 0")};
   border: 1px solid var(--mb-color-border);
   border-radius: 0.375rem;
-  background-color: ${color("white")};
+  background-color: var(--mb-color-bg-white);
 
   &:hover {
     ${CardActionMenuContainer} {

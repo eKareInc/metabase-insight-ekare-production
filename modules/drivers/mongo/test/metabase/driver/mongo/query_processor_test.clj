@@ -1,4 +1,4 @@
-(ns metabase.driver.mongo.query-processor-test
+(ns ^:mb/driver-tests metabase.driver.mongo.query-processor-test
   (:require
    [clojure.set :as set]
    [clojure.string :as str]
@@ -6,10 +6,12 @@
    [java-time.api :as t]
    [metabase.driver :as driver]
    [metabase.driver.mongo.query-processor :as mongo.qp]
-   [metabase.models :refer [Field Table]]
+   [metabase.lib.core :as lib]
+   [metabase.lib.metadata :as lib.metadata]
+   [metabase.lib.metadata.jvm :as lib.metadata.jvm]
    [metabase.query-processor :as qp]
-   [metabase.query-processor-test.date-time-zone-functions-test
-    :as qp.datetime-test]
+   [metabase.query-processor-test.alternative-date-test :as qp.alternative-date-test]
+   [metabase.query-processor-test.date-time-zone-functions-test :as qp.datetime-test]
    [metabase.query-processor.compile :as qp.compile]
    [metabase.query-processor.timezone :as qp.timezone]
    [metabase.test :as mt]
@@ -245,8 +247,8 @@
                     {:aggregation [[:count]]
                      :breakout    [$tips.source.username]}))))
           (testing "Parent fields are removed from projections when child fields are included (#19135)"
-            (let [table       (t2/select-one Table :db_id (mt/id))
-                  fields      (t2/select Field :table_id (u/the-id table))
+            (let [table       (t2/select-one :model/Table :db_id (mt/id))
+                  fields      (t2/select :model/Field :table_id (u/the-id table))
                   projections (-> (mongo.qp/mbql->native
                                    (mt/mbql-query tips {:fields (mapv (fn [f]
                                                                         [:field (u/the-id f) nil])
@@ -264,8 +266,8 @@
                                     :condition [:= $tips.source.categories &Tips.$tips.source.categories]}]})
                   compiled (mongo.qp/mbql->native query)
                   let-lhs (-> compiled (get-in [:query 0 "$lookup" :let]) keys first)]
-                 (is (and (not (str/includes? let-lhs "."))
-                          (str/includes? let-lhs "source_categories"))))))))))
+              (is (and (not (str/includes? let-lhs "."))
+                       (str/includes? let-lhs "source_categories"))))))))))
 
 (deftest ^:parallel multiple-distinct-count-test
   (mt/test-driver :mongo
@@ -273,8 +275,9 @@
       (is (= {:projections ["count" "count_2"]
               :query
               [{"$group" {"_id" nil, "count" {"$addToSet" "$name"}, "count_2" {"$addToSet" "$price"}}}
+               {"$addFields" {"count" {"$size" "$count"} "count_2" {"$size" "$count_2"}}}
                {"$sort" {"_id" 1}}
-               {"$project" {"_id" false, "count" {"$size" "$count"}, "count_2" {"$size" "$count_2"}}}
+               {"$project" {"_id" false, "count" true, "count_2" true}}
                {"$limit" 5}],
               :collection  "venues"
               :mbql?       true}
@@ -282,6 +285,32 @@
               (mt/mbql-query venues
                 {:aggregation [[:distinct $name]
                                [:distinct $price]]
+                 :limit       5})))))))
+
+(deftest ^:parallel multiple-aggregations-with-distinct-count-expression-test
+  (mt/test-driver
+    :mongo
+    (testing "Should generate correct queries for `:distinct` in expressions (#35425)"
+      (is (= {:projections ["expression" "expression_2"],
+              :query
+              [{"$group"
+                {"_id"                 nil,
+                 "expression~count"    {"$addToSet" "$name"},
+                 "expression~count1"   {"$addToSet" "$price"},
+                 "expression_2~count"  {"$addToSet" "$name"},
+                 "expression_2~count1" {"$addToSet" "$price"}}}
+               {"$addFields"
+                {"expression"   {"$add" [{"$size" "$expression~count"} {"$size" "$expression~count1"}]},
+                 "expression_2" {"$subtract" [{"$size" "$expression_2~count"} {"$size" "$expression_2~count1"}]}}}
+               {"$sort" {"_id" 1}}
+               {"$project" {"_id" false, "expression" true, "expression_2" true}}
+               {"$limit" 5}],
+              :collection "venues",
+              :mbql? true}
+             (qp.compile/compile
+              (mt/mbql-query venues
+                {:aggregation [[:+ [:distinct $name] [:distinct $price]]
+                               [:- [:distinct $name] [:distinct $price]]]
                  :limit       5})))))))
 
 (defn- extract-projections [projections q]
@@ -443,15 +472,21 @@
                                              [:-
                                               [:absolute-datetime (t/local-date "2008-05-31")]
                                               [:interval -1 :week]
-                                              86400000]]))))))
+                                              86400000]])))))))))
+
+(deftest ^:synchronized temporal-arithmetic-mongo-4-test
+  (mt/test-driver :mongo
+    (mt/with-metadata-provider (mt/id)
       (testing "Date arithmetic fails with Mongo 4-"
         (with-redefs [mongo.qp/get-mongo-version (constantly {:version "4", :semantic-version [4]})]
-          (is (thrown-with-msg? clojure.lang.ExceptionInfo  #"Date arithmetic not supported in versions before 5"
-                                (mongo.qp/compile-filter [:<
-                                                          [:+
-                                                           [:interval 1 :year]
-                                                           [:field "date-field"]]
-                                                          [:absolute-datetime (t/local-date "2008-05-31")]]))))))))
+          (is (thrown-with-msg?
+               clojure.lang.ExceptionInfo
+               #"Date arithmetic not supported in versions before 5"
+               (mongo.qp/compile-filter [:<
+                                         [:+
+                                          [:interval 1 :year]
+                                          [:field "date-field"]]
+                                         [:absolute-datetime (t/local-date "2008-05-31")]]))))))))
 
 (deftest ^:parallel datetime-math-tests
   (mt/test-driver :mongo
@@ -541,37 +576,80 @@
         {"$expr" {"$eq" ["$price" {"$add" [{"$subtract" ["$price" 5]} 100]}]}}
         [:= $price [:+ [:- $price 5] 100]]))))
 
-(deftest uniqe-alias-index-test
+(deftest ^:parallel uniqe-alias-index-test
   (mt/test-driver
-   :mongo
-   (testing "Field aliases have deterministic unique indices"
-     (let [query (mt/mbql-query
-                  nil
-                  {:joins [{:alias "Products"
-                            :source-table $$products
-                            :condition [:= &Products.products.id $orders.product_id]
-                            :fields :all}
-                           {:alias "People"
-                            :source-table $$people
-                            :condition [:= &People.people.id $orders.user_id]
-                            :fields :all}]
-                   :source-query {:source-table $$orders
-                                  :joins [{:alias "Products"
-                                           :source-table $$products
-                                           :condition [:= &Products.products.id $orders.product_id]
-                                           :fields :all}
-                                          {:alias "People"
-                                           :source-table $$people
-                                           :condition [:= &People.people.id $orders.user_id]
-                                           :fields :all}]}})
-           compiled (qp.compile/compile query)
-           indices (reduce (fn [acc lookup-stage]
-                             (let [let-var-name (-> (get-in lookup-stage ["$lookup" :let]) keys first)
+    :mongo
+    (testing "Field aliases have deterministic unique indices"
+      (let [query (mt/mbql-query
+                    nil
+                    {:joins [{:alias "Products"
+                              :source-table $$products
+                              :condition [:= &Products.products.id $orders.product_id]
+                              :fields :all}
+                             {:alias "People"
+                              :source-table $$people
+                              :condition [:= &People.people.id $orders.user_id]
+                              :fields :all}]
+                     :source-query {:source-table $$orders
+                                    :joins [{:alias "Products"
+                                             :source-table $$products
+                                             :condition [:= &Products.products.id $orders.product_id]
+                                             :fields :all}
+                                            {:alias "People"
+                                             :source-table $$people
+                                             :condition [:= &People.people.id $orders.user_id]
+                                             :fields :all}]}})
+            compiled (qp.compile/compile query)
+            indices (reduce (fn [acc lookup-stage]
+                              (let [let-var-name (-> (get-in lookup-stage ["$lookup" :let]) keys first)
                                    ;; Following expression ensures index is an integer.
-                                   index (Integer/parseInt (re-find #"\d+$" let-var-name))]
+                                    index (Integer/parseInt (re-find #"\d+$" let-var-name))]
                                ;; Following expression tests that index is unique.
-                               (is (not (contains? acc index)))
-                               (conj acc index)))
-                           #{}
-                           (filter #(contains? % "$lookup") (:query compiled)))]
-       (is (= #{1 2 3 4} indices))))))
+                                (is (not (contains? acc index)))
+                                (conj acc index)))
+                            #{}
+                            (filter #(contains? % "$lookup") (:query compiled)))]
+        (is (= #{1 2 3 4} indices))))))
+
+(deftest ^:parallel parse-query-string-test
+  (testing "`parse-query-string` returns no `Bson...` typed values  (#38181)"
+    ;; ie. parse result does not look as follows: `#object[org.bson.BsonString 0x5f26b3a1 "BsonString{value='1000'}"]`
+    (let [parsed (mongo.qp/parse-query-string "[{\"limit\": \"1000\"}]")]
+      (is (not (instance? org.bson.BsonValue (get-in parsed [0 "limit"])))))))
+
+(deftest ^:parallel parse-query-string-test-2
+  (mt/test-driver :mongo
+    (mt/dataset qp.alternative-date-test/string-times
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"MongoDB does not support parsing strings as dates. Try parsing to a datetime instead"
+           (qp/process-query
+            (mt/mbql-query times {:fields [$d]}))))
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"MongoDB does not support parsing strings as times. Try parsing to a datetime instead"
+           (qp/process-query
+            (mt/mbql-query times {:fields [$t]})))))))
+
+(deftest ^:parallel filter-uuids-with-string-patterns-test
+  (mt/test-driver :mongo
+    (mt/dataset uuid-dogs
+      (let [mp (lib.metadata.jvm/application-database-metadata-provider (mt/id))
+            dogs (lib.metadata/table mp (mt/id :dogs))
+            person-id (lib.metadata/field mp (mt/id :dogs :person_id))]
+        (is (= [[1 #uuid "27e164bc-54f8-47a0-a85a-9f0e90dd7667" "Ivan" #uuid "d6b02fa2-bf7b-4b32-80d5-060b649c9859"]
+                [2 #uuid "3a0c0508-6b00-40ff-97f6-549666b2d16b" "Zach" #uuid "d6b02fa2-bf7b-4b32-80d5-060b649c9859"]]
+               (-> (lib/query mp dogs)
+                   (lib/filter (lib/starts-with person-id "d6"))
+                   qp/process-query
+                   mt/rows)))
+        (is (= [[3 #uuid "d6a82cf5-7dc9-48a3-a15d-61df91a6edeb" "Boss" #uuid "d39bbe77-4e2e-4b7b-8565-cce90c25c99b"]]
+               (-> (lib/query mp dogs)
+                   (lib/filter (lib/ends-with person-id "9b"))
+                   qp/process-query
+                   mt/rows)))
+        (is (= [[3 #uuid "d6a82cf5-7dc9-48a3-a15d-61df91a6edeb" "Boss" #uuid "d39bbe77-4e2e-4b7b-8565-cce90c25c99b"]]
+               (-> (lib/query mp dogs)
+                   (lib/filter (lib/contains person-id "e"))
+                   qp/process-query
+                   mt/rows)))))))

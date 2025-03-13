@@ -1,4 +1,4 @@
-(ns metabase.query-processor.middleware.annotate-test
+(ns ^:mb/driver-tests metabase.query-processor.middleware.annotate-test
   (:require
    [clojure.test :refer :all]
    [medley.core :as m]
@@ -209,7 +209,8 @@
                                                             :num-bins  10
                                                             :bin-width 5
                                                             :min-value -100
-                                                            :max-value 100}}]}]
+                                                            :max-value 100}}]
+             :was_binned true}]
            (annotate/column-info
             {:type  :query
              :query {:fields [[:field "price" {:base-type     :type/Number
@@ -301,7 +302,34 @@
              (lib.tu.macros/$ids venues
                (#'annotate/col-info-for-field-clause
                 {:expressions {"double-price" [:* $price 2]}}
-                [:expression "double-price"])))))))
+                [:expression "double-price"])))))
+    (testing "col info for a boolean `expression` should have the correct `base_type`"
+      (lib.tu.macros/$ids people
+        (doseq [expression [[:< $id 10]
+                            [:<= $id 10]
+                            [:> $id 10]
+                            [:>= $id 10]
+                            [:= $id 10]
+                            [:!= $id 10]
+                            [:between $id 10 20]
+                            [:starts-with $id "a"]
+                            [:ends-with $id "a"]
+                            [:contains $id "a"]
+                            [:does-not-contain $name "a"]
+                            [:inside $latitude $longitude 90 -90 -90 90]
+                            [:is-empty $name]
+                            [:not-empty $name]
+                            [:is-null $name]
+                            [:not-null $name]
+                            [:time-interval $created-at 1 :year]
+                            [:relative-time-interval $created-at 1 :year -2 :year]
+                            [:and [:> $id 10] [:< $id 20]]
+                            [:or [:> $id 10] [:< $id 20]]
+                            [:not [:> $id 10]]]]
+          (is (=? {:base_type :type/Boolean}
+                  (#'annotate/col-info-for-field-clause
+                   {:expressions {"expression" expression}}
+                   [:expression "expression"]))))))))
 
 (deftest ^:parallel col-info-expressions-test-2
   (qp.store/with-metadata-provider meta/metadata-provider
@@ -344,12 +372,13 @@
 ;; test that added information about aggregations looks the way we'd expect
 (defn- aggregation-names
   ([ag-clause]
-   (aggregation-names {:source-table (meta/id :venues)} ag-clause))
-
-  ([inner-query ag-clause]
-   (binding [driver/*driver* :h2]
-     (qp.store/with-metadata-provider meta/metadata-provider
-       (select-keys (#'annotate/col-info-for-aggregation-clause inner-query ag-clause) [:name :display_name])))))
+   (let [inner-query {:source-table (meta/id :venues)
+                      :aggregation  [ag-clause]}]
+     (binding [driver/*driver* :h2]
+       (qp.store/with-metadata-provider meta/metadata-provider
+         (-> (#'annotate/col-info-for-aggregation-clauses inner-query)
+             first
+             (select-keys [:name :display_name])))))))
 
 (deftest ^:parallel aggregation-names-test
   (testing "basic aggregations"
@@ -415,8 +444,9 @@
    (col-info-for-aggregation-clause {:source-table (meta/id :venues)} clause))
 
   ([inner-query clause]
-   (binding [driver/*driver* :h2]
-     (#'annotate/col-info-for-aggregation-clause inner-query clause))))
+   (let [inner-query (update inner-query :aggregation (fnil conj []) clause)]
+     (binding [driver/*driver* :h2]
+       (first (#'annotate/col-info-for-aggregation-clauses inner-query))))))
 
 (deftest ^:parallel col-info-for-aggregation-clause-test
   (qp.store/with-metadata-provider meta/metadata-provider
@@ -460,15 +490,14 @@
   (qp.store/with-metadata-provider meta/metadata-provider
     (testing (str "if a driver is kind enough to supply us with some information about the `:cols` that come back, we "
                   "should include that information in the results. Their information should be preferred over ours")
-      (is (=? {:cols [{:name           "metric"
-                       :display_name   "Total Events"
+      (is (=? {:cols [{:display_name   "Total Events"
                        :base_type      :type/Text
                        :effective_type :type/Text
                        :source         :aggregation
                        :field_ref      [:aggregation 0]}]}
               (add-column-info
                (lib.tu.macros/mbql-query venues {:aggregation [[:metric 1]]})
-               {:cols [{:name "totalEvents", :display_name "Total Events", :base_type :type/Text}]}))))))
+               {:cols [{:display_name "Total Events", :base_type :type/Text}]}))))))
 
 (deftest ^:parallel col-info-for-aggregation-clause-test-4
   (qp.store/with-metadata-provider meta/metadata-provider
@@ -483,8 +512,8 @@
 (defn- infered-col-type
   [expr]
   (-> (add-column-info (lib.tu.macros/mbql-query venues {:expressions {"expr" expr}
-                                              :fields      [[:expression "expr"]]
-                                              :limit       10})
+                                                         :fields      [[:expression "expr"]]
+                                                         :limit       10})
                        {})
       :cols
       first
@@ -492,9 +521,9 @@
 
 (deftest ^:parallel computed-columns-inference
   (letfn [(infer [expr] (-> (lib.tu.macros/mbql-query venues
-                                           {:expressions {"expr" expr}
-                                            :fields [[:expression "expr"]]
-                                            :limit 10})
+                              {:expressions {"expr" expr}
+                               :fields [[:expression "expr"]]
+                               :limit 10})
                             (add-column-info {})
                             :cols
                             first))]
@@ -699,19 +728,16 @@
   (testing "Aggregated question with source is an aggregated models should infer display_name correctly (#23248)"
     (qp.store/with-metadata-provider (lib.tu/metadata-provider-with-cards-for-queries
                                       meta/metadata-provider
-                                      [(lib.tu.macros/$ids products
-                                         {:type     :query
-                                          :database (meta/id)
-                                          :query    {:source-table $$products
-                                                     :aggregation
-                                                     [[:aggregation-options
-                                                       [:sum $price]
-                                                       {:name "sum"}]
-                                                      [:aggregation-options
-                                                       [:max $rating]
-                                                       {:name "max"}]]
-                                                     :breakout     [$category]
-                                                     :order-by     [[:asc $category]]}})])
+                                      [(lib.tu.macros/mbql-query products
+                                         {:aggregation
+                                          [[:aggregation-options
+                                            [:sum $price]
+                                            {:name "sum"}]
+                                           [:aggregation-options
+                                            [:max $rating]
+                                            {:name "max"}]]
+                                          :breakout     [$category]
+                                          :order-by     [[:asc $category]]})])
       (let [query (qp.preprocess/preprocess
                    (lib.tu.macros/mbql-query nil
                      {:source-table "card__1"
@@ -810,16 +836,15 @@
                                                   :result-metadata [{:name         "B_COLUMN"
                                                                      :display_name "B Column"
                                                                      :base_type    :type/Text}]}]})
-        (let [query {:database (meta/id)
-                     :type     :query
-                     :query    {:source-table "card__1"
-                                :joins        [{:fields       "all"
-                                                :source-table "card__2"
-                                                :condition    [:=
-                                                               [:field "A_COLUMN" {:base-type :type/Text}]
-                                                               [:field "B_COLUMN" {:base-type  :type/Text
-                                                                                   :join-alias "alias"}]]
-                                                :alias        "alias"}]}}
+        (let [query (lib.tu.macros/mbql-query nil
+                      {:source-table "card__1"
+                       :joins        [{:fields       "all"
+                                       :source-table "card__2"
+                                       :condition    [:=
+                                                      [:field "A_COLUMN" {:base-type :type/Text}]
+                                                      [:field "B_COLUMN" {:base-type  :type/Text
+                                                                          :join-alias "alias"}]]
+                                       :alias        "alias"}]})
               cols  (qp.preprocess/query->expected-cols query)]
           (is (= "alias → B Column"
                  (-> cols second :display_name))

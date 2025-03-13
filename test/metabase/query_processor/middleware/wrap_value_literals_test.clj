@@ -10,6 +10,7 @@
    [metabase.lib.test-util :as lib.tu]
    [metabase.lib.test-util.macros :as lib.tu.macros]
    [metabase.query-processor.middleware.wrap-value-literals :as qp.wrap-value-literals]
+   [metabase.query-processor.preprocess :as qp.preprocess]
    [metabase.query-processor.store :as qp.store]
    [metabase.query-processor.timezone :as qp.timezone]
    [metabase.test :as mt]))
@@ -214,24 +215,24 @@
 
 (deftest ^:parallel wrap-literals-around-expressions-test
   (testing "does wrapping literals work against expressions? (#27185)"
-    (is (= (lib.tu.macros/mbql-query checkins
-             {:expressions {"foo" $date}
-              :filter      [:>
-                            [:expression "foo" {:base-type :type/DateTime}]
-                            [:absolute-datetime #t "2014-01-01T00:00" :default]]})
-           (wrap-value-literals
+    (is (=? (lib.tu.macros/mbql-query checkins
+              {:expressions {"foo" $date}
+               :filter      [:>
+                             [:expression "foo" {:base-type :type/DateTime}]
+                             [:absolute-datetime #t "2014-01-01T00:00" :default]]})
+            (wrap-value-literals
              (lib.tu.macros/mbql-query checkins
                {:expressions {"foo" $date}
                 :filter      [:> [:expression "foo" {:base-type :type/DateTime}] "2014-01-01"]}))))))
 
 (deftest ^:parallel other-clauses-test
   (testing "Make sure we apply the transformation to predicates in all parts of the query, not only `:filter`"
-    (is (= (lib.tu.macros/mbql-query checkins
-             {:aggregation [[:share
-                             [:> !day.date [:absolute-datetime (t/local-date #t "2015-06-01") :day]]]]})
-           (wrap-value-literals
-            (lib.tu.macros/mbql-query checkins
-              {:aggregation [[:share [:> !day.date "2015-06-01"]]]}))))))
+    (is (=? (lib.tu.macros/mbql-query checkins
+              {:aggregation [[:share
+                              [:> !day.date [:absolute-datetime (t/local-date #t "2015-06-01") :day]]]]})
+            (wrap-value-literals
+             (lib.tu.macros/mbql-query checkins
+               {:aggregation [[:share [:> !day.date "2015-06-01"]]]}))))))
 
 (deftest ^:parallel base-type-test
   (testing "Make sure base-type from `:field` w/ name is picked up correctly"
@@ -301,3 +302,52 @@
                      lib.convert/->legacy-MBQL
                      wrap-value-literals
                      (lib/query query))))))))
+
+(deftest ^:parallel model-source-type-info-test
+  (testing "type info is added to fields coming from model source query (#46059)"
+    ;; Basically, this checks whether the [[metabase.query-processor.middleware.wrap-value-literals/type-info]] :field
+    ;; adds options to values in expressions, where other arg is field clause with name instead of int id.
+    (mt/with-temp [:model/Card {id :id} {:dataset_query (mt/mbql-query venues)
+                                         :type          :model}]
+      (let [query (mt/mbql-query
+                    venues
+                    {:source-table (str "card__" id)
+                     :filter [:= [:field "ID" {:base-type :type/Integer}] 1]})
+            preprocessed (qp.preprocess/preprocess query)]
+        ;; [:query :filter 2 2 :database_type] points to wrapped value's options
+        (is (= "BIGINT" (get-in preprocessed [:query :filter 2 2 :database_type])))))))
+
+(deftest ^:parallel model-join-type-info-test
+  (testing "type info is added to fields coming from join"
+    ;; Basically, this checks whether the [[metabase.query-processor.middleware.wrap-value-literals/type-info]] :field
+    ;; adds options to values in expressions, where other arg is field clause with name instead of int id.
+    (mt/with-temp [:model/Card {id :id} {:dataset_query (mt/mbql-query venues)
+                                         :type          :model}]
+      (let [query (mt/mbql-query
+                    venues
+                    {:filter [:= [:field "ID" {:base-type :type/Integer :join-alias "x"}] 1]
+                     :joins [{:alias "x"
+                              :condition [:=
+                                          $id
+                                          [:field "ID" {:base-type :type/Integer :join-alias "x"}]]
+                              :source-table (str "card__" id)}]})
+            preprocessed (qp.preprocess/preprocess query)]
+        ;; [:query :filter 2 2 :database_type] points to wrapped value's options
+        (is (= "BIGINT" (get-in preprocessed [:query :filter 2 2 :database_type])))))))
+
+(deftest ^:parallel type-info-gets-field-ref-data-test
+  (testing "type info includes data from :field_ref as well as :source-metadata"
+    (is (=? {:query
+             {:filter
+              [:=
+               [:field "CATEGORY" {:base-type :type/Text}]
+               [:value "Doohickey" {:base_type :type/Text,
+                                    :effective_type :type/Text,
+                                    :database_type "CHARACTER VARYING"}]]}}
+            (wrap-value-literals
+             (qp.preprocess/preprocess
+              (mt/mbql-query products
+                {:filter [:= [:field "CATEGORY" {:base-type :type/Text}] "Doohickey"]
+                 :source-query {:source-table $$products
+                                :aggregation [[:count]]
+                                :breakout [$category]}})))))))

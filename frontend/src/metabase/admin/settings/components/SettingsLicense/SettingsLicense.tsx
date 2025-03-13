@@ -1,8 +1,8 @@
-import { connect } from "react-redux";
 import { t } from "ttag";
 
 import Button from "metabase/core/components/Button";
 import ExternalLink from "metabase/core/components/ExternalLink";
+import { connect } from "metabase/lib/redux";
 import { getUpgradeUrl } from "metabase/selectors/settings";
 import type { State } from "metabase-types/store";
 
@@ -22,7 +22,7 @@ interface StateProps {
 type SettingsLicenseProps = StateProps;
 
 const mapStateToProps = (state: State): StateProps => ({
-  upgradeUrl: getUpgradeUrl(state, { utm_media: "license" }),
+  upgradeUrl: getUpgradeUrl(state, { utm_content: "license" }),
 });
 
 const SettingsLicense = ({ upgradeUrl }: SettingsLicenseProps) => {

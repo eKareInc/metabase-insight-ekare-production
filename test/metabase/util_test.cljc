@@ -1,16 +1,17 @@
-(ns ^:mb/once metabase.util-test
+(ns metabase.util-test
   "Tests for functions in `metabase.util`."
   (:require
-   #?@(:clj [[metabase.test :as mt]])
+   #?@(:clj [[metabase.test :as mt]
+             [malli.generator :as mg]])
+   [clojure.string :as str]
    [clojure.test :refer [are deftest is testing]]
    [clojure.test.check.clojure-test :refer [defspec]]
    [clojure.test.check.generators :as gen]
    [clojure.test.check.properties :as prop]
    [flatland.ordered.map :refer [ordered-map]]
-   #_:clj-kondo/ignore
-   [malli.generator :as mg]
-   [metabase.util :as u])
-  #?(:clj (:import [java.time Month DayOfWeek])))
+   [metabase.util :as u]
+   [metabase.util.number :as u.number])
+  #?(:clj (:import [java.time DayOfWeek Month])))
 
 #?(:clj (set! *warn-on-reflection* true))
 
@@ -184,8 +185,8 @@
   (testing "select-keys-when"
     (is (= {:a 100, :b nil, :d 200}
            (u/select-keys-when {:a 100, :b nil, :d 200, :e nil}
-             :present #{:a :b :c}
-             :non-nil #{:d :e :f})))))
+                               :present #{:a :b :c}
+                               :non-nil #{:d :e :f})))))
 
 (deftest ^:parallel order-of-magnitude-test
   (are [n expected] (= expected
@@ -218,7 +219,7 @@
 
 (deftest ^:parallel snake-key-test
   (is (= {:num_cans 2, :lisp_case? {:nested_maps? true}}
-         (u/snake-keys {:num-cans 2, :lisp-case? {:nested-maps? true}}))))
+         (u/deep-snake-keys {:num-cans 2, :lisp-case? {:nested-maps? true}}))))
 
 (deftest ^:parallel one-or-many-test
   (are [input expected] (= expected
@@ -271,6 +272,13 @@
     "IBIS" "Ibis"
     "Ibis" "Ibis"))
 
+(deftest ^:parallel truncate-test
+  (are [s n expected] (= expected
+                         (u/truncate s n))
+    "string" 10 "string"
+    "string" 3  "str"
+    "string" 0  ""))
+
 #?(:clj
    (deftest capitalize-en-turkish-test
      (mt/with-locale "tr"
@@ -278,27 +286,6 @@
               (u/capitalize-en "ibis")
               (u/capitalize-en "IBIS")
               (u/capitalize-en "Ibis"))))))
-
-(deftest ^:parallel parse-currency-test
-  (are [s expected] (= expected
-                       (u/parse-currency s))
-    nil             nil
-    ""              nil
-    "   "           nil
-    "$1,000"        1000.0M
-    "$1,000,000"    1000000.0M
-    "$1,000.00"     1000.0M
-    "€1.000"        1000.0M
-    "€1.000,00"     1000.0M
-    "€1.000.000,00" 1000000.0M
-    "-£127.54"      -127.54M
-    "-127,54 €"     -127.54M
-    "kr-127,54"     -127.54M
-    "€ 127,54-"     -127.54M
-    "¥200"          200.0M
-    "¥200."         200.0M
-    "$.05"          0.05M
-    "0.05"          0.05M))
 
 (deftest ^:parallel email->domain-test
   (are [domain email] (= domain
@@ -318,16 +305,16 @@
 #_{:clj-kondo/ignore [:clojure-lsp/unused-public-var]}
 (defspec pick-first-test 100
   (prop/for-all [coll (gen/list gen/small-integer)]
-                (let [result (u/pick-first pos? coll)]
-                  (or (and (nil? result)
-                           (every? (complement pos?) coll))
-                      (let [[x ys] result
-                            [non-pos [m & rest]] (split-with (complement pos?) coll)]
-                        (and (vector? result)
-                             (= (count result) 2)
-                             (pos? x)
-                             (= x m)
-                             (= ys (concat non-pos rest))))))))
+    (let [result (u/pick-first pos? coll)]
+      (or (and (nil? result)
+               (every? (complement pos?) coll))
+          (let [[x ys] result
+                [non-pos [m & rest]] (split-with (complement pos?) coll)]
+            (and (vector? result)
+                 (= (count result) 2)
+                 (pos? x)
+                 (= x m)
+                 (= ys (concat non-pos rest))))))))
 
 (deftest ^:parallel normalize-map-test
   (testing "nil and empty maps return empty maps"
@@ -361,8 +348,8 @@
                    (expensive-fn 1)
                    (expensive-fn 2)
                    (expensive-fn 3))]
-      (is (= [result @counter]
-             [2 [1 2]]))))
+      (is (= [2 [1 2]]
+             [result @counter]))))
   (testing "failure"
     (is (nil? (u/or-with even? 1 3 5)))))
 
@@ -373,6 +360,7 @@
     "x"                                   :dispatch-type/string
     :x                                    :dispatch-type/keyword
     1                                     :dispatch-type/integer
+    (u.number/bigint "10")                :dispatch-type/integer
     1.1                                   :dispatch-type/number
     {:a 1}                                :dispatch-type/map
     [1]                                   :dispatch-type/sequential
@@ -433,11 +421,11 @@
   (testing "classify correctly"
     (is (= {:to-update [{:id 2 :name "c3"}]
             :to-delete [{:id 1 :name "c1"} {:id 3 :name "c3"}]
-            :to-create [{:id -1 :name "-c1"}]
+            :to-create [{:name "c5"} {:id -1 :name "-c1"}]
             :to-skip   [{:id 4 :name "c4"}]}
            (u/row-diff
             [{:id 1 :name "c1"}   {:id 2 :name "c2"} {:id 3 :name "c3"} {:id 4 :name "c4"}]
-            [{:id -1 :name "-c1"} {:id 2 :name "c3"} {:id 4 :name "c4"}])))
+            [{:id -1 :name "-c1"} {:id 2 :name "c3"} {:id 4 :name "c4"} {:name "c5"}])))
     (is (= {:to-skip   [{:god_id 10, :name "Zeus", :job "God of Thunder"}]
             :to-delete [{:id 2, :god_id 20, :name "Odin", :job "God of Thunder"}]
             :to-update [{:god_id 30, :name "Osiris", :job "God of Afterlife"}]
@@ -515,6 +503,7 @@
 #?(:clj
    (deftest ^:parallel case-enum-test
      (testing "case does not work"
+       #_{:clj-kondo/ignore [:case-symbol-test]}
        (is (= 3 (case Month/MAY
                   Month/APRIL 1
                   Month/MAY   2
@@ -529,3 +518,67 @@
                     (u/case-enum Month/JANUARY
                       Month/JANUARY    1
                       DayOfWeek/SUNDAY 2))))))
+
+(deftest ^:parallel truncate-string-to-byte-count-test
+  (letfn [(truncate-string-to-byte-count [s byte-length]
+            (let [truncated (#'u/truncate-string-to-byte-count s byte-length)]
+              (is (<= (#'u/string-byte-count truncated) byte-length))
+              (is (str/starts-with? s truncated))
+              truncated))]
+    (doseq [[s max-length->expected] {"12345"
+                                      {1  "1"
+                                       2  "12"
+                                       3  "123"
+                                       4  "1234"
+                                       5  "12345"
+                                       6  "12345"
+                                       10 "12345"}
+
+                                      "가나다라"
+                                      {1  ""
+                                       2  ""
+                                       3  "가"
+                                       4  "가"
+                                       5  "가"
+                                       6  "가나"
+                                       7  "가나"
+                                       8  "가나"
+                                       9  "가나다"
+                                       10 "가나다"
+                                       11 "가나다"
+                                       12 "가나다라"
+                                       13 "가나다라"
+                                       15 "가나다라"
+                                       20 "가나다라"}}
+            [max-length expected] max-length->expected]
+      (testing (pr-str (list `lib.util/truncate-string-to-byte-count s max-length))
+        (is (= expected
+               (truncate-string-to-byte-count s max-length)))))))
+
+(deftest ^:parallel rconcat-test
+  (is (= [2 4 6 18 16 14 12 10 8 6 4 2 0 50]
+         (transduce
+          (map (partial * 2))
+          conj
+          []
+          (u/rconcat
+           (u/rconcat
+            (eduction (map inc) (range 3))
+            (eduction (map dec) (range 10 0 -1)))
+           [25])))))
+
+(deftest ^:parallel run-count!-test
+  (testing "counts the things"
+    (is (zero? (u/run-count! inc nil)))
+    (is (zero? (u/run-count! inc [])))
+    (is (= 3 (u/run-count! inc (range 3))))
+    (is (= 3 (u/run-count! inc (eduction (map inc) (range 3))))))
+  (testing "does the stuff"
+    (let [acc (volatile! [])]
+      (u/run-count! #(vswap! acc conj %) (eduction (map inc) (range 3)))
+      (is (= [1 2 3] @acc)))))
+
+(deftest ^:parallel safe-min-test
+  (testing "safe min behaves like clojure.core/min"
+    (is (= nil (u/safe-min nil)))
+    (is (= 2 (u/safe-min nil 2 nil 3)))))

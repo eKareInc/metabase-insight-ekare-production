@@ -7,8 +7,8 @@
    [clojure.string :as str]
    [humane-are.core :as humane-are]
    [mb.hawk.core :as hawk]
-   [metabase.bootstrap]
    [metabase.config :as config]
+   [metabase.core.bootstrap]
    [metabase.test-runner.assert-exprs]
    [metabase.test.data.env :as tx.env]
    [metabase.util.date-2]
@@ -20,7 +20,7 @@
 ;;; TODO -- consider whether we should just mode all of this stuff to [[user]] instead of doing it here
 
 (comment
-  metabase.bootstrap/keep-me
+  metabase.core.bootstrap/keep-me
   ;; make sure stuff like `=?` and what not are loaded
   metabase.test-runner.assert-exprs/keep-me
 
@@ -70,7 +70,8 @@
     (hawk/find-tests directories options)))
 
 (def ^:private excluded-directories
-  ["classes"
+  [".clj-kondo/src"
+   "classes"
    "dev"
    "enterprise/backend/src"
    "local"
@@ -88,9 +89,10 @@
 
 (defn find-tests
   "Find all tests, in case you wish to run them yourself."
-  ([] (find-tests {}))
+  ([]
+   (find-tests {}))
   ([options]
-   (hawk/find-tests nil (merge (default-options) options))))
+   (hawk/find-tests-with-options (merge (default-options) options))))
 
 (defn find-and-run-tests-repl
   "Find and run tests from the REPL."

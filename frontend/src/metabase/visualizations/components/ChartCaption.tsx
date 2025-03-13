@@ -12,12 +12,13 @@ import type {
 import { ChartCaptionRoot } from "./ChartCaption.styled";
 
 interface ChartCaptionProps {
-  series: Series;
+  series: Series | null;
   settings: VisualizationSettings;
-  icon?: IconProps;
+  icon?: IconProps | null;
   actionButtons?: ReactNode;
   width?: number;
-  onChangeCardAndRun: OnChangeCardAndRun;
+  getHref?: () => string | undefined;
+  onChangeCardAndRun?: OnChangeCardAndRun | null;
 }
 
 const ChartCaption = ({
@@ -26,9 +27,10 @@ const ChartCaption = ({
   icon,
   actionButtons,
   onChangeCardAndRun,
+  getHref,
   width,
 }: ChartCaptionProps) => {
-  const title = settings["card.title"] ?? series[0].card.name;
+  const title = settings["card.title"] ?? series?.[0].card.name ?? "";
   const description = settings["card.description"];
   const data = (series as TransformedSeries)._raw || series;
   const card = data[0].card;
@@ -36,7 +38,7 @@ const ChartCaption = ({
   const canSelectTitle = cardIds.size === 1 && onChangeCardAndRun;
 
   const handleSelectTitle = useCallback(() => {
-    onChangeCardAndRun({
+    onChangeCardAndRun?.({
       nextCard: card,
     });
   }, [card, onChangeCardAndRun]);
@@ -45,6 +47,7 @@ const ChartCaption = ({
     <ChartCaptionRoot
       title={title}
       description={description}
+      getHref={getHref}
       icon={icon}
       actionButtons={actionButtons}
       onSelectTitle={canSelectTitle ? handleSelectTitle : undefined}

@@ -1,19 +1,20 @@
+const { H } = cy;
 import { ORDERS_QUESTION_ID } from "e2e/support/cypress_sample_instance_data";
-import {
-  describeEE,
-  questionInfoButton,
-  restore,
-  rightSidebar,
-  setTokenFeatures,
-  visitQuestion,
-} from "e2e/support/helpers";
 
-describeEE("scenarios > question > caching", () => {
+import { interceptPerformanceRoutes } from "../admin/performance/helpers/e2e-performance-helpers";
+import {
+  adaptiveRadioButton,
+  cacheStrategySidesheet,
+  durationRadioButton,
+  openSidebarCacheStrategyForm,
+  questionSettingsSidesheet,
+} from "../admin/performance/helpers/e2e-strategy-form-helpers";
+
+describe("scenarios > question > caching", () => {
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
-    setTokenFeatures("all");
-    cy.request("PUT", "/api/setting/enable-query-caching", { value: true });
+    H.setTokenFeatures("all");
   });
 
   /**
@@ -21,40 +22,64 @@ describeEE("scenarios > question > caching", () => {
    * It's in the Cypress describe block labeled "scenarios > dashboard > caching"
    */
   it("can configure cache for a question, on an enterprise instance", () => {
-    cy.intercept("PUT", "/api/cache").as("putCacheConfig");
-    visitQuestion(ORDERS_QUESTION_ID);
+    interceptPerformanceRoutes();
+    H.visitQuestion(ORDERS_QUESTION_ID);
 
-    questionInfoButton().click();
+    openSidebarCacheStrategyForm("question");
 
-    rightSidebar().within(() => {
-      cy.findByText(/Caching policy/).within(() => {
-        cy.findByRole("button", { name: /Use default/ }).click();
-      });
-      cy.findByRole("heading", { name: /Caching settings/ }).click();
-      cy.findByRole("radio", { name: /Duration/ }).click();
+    cacheStrategySidesheet().within(() => {
+      cy.findByText(/Caching settings/).should("be.visible");
+      durationRadioButton().click();
       cy.findByLabelText("Cache results for this many hours").type("48");
       cy.findByRole("button", { name: /Save/ }).click();
-      cy.wait("@putCacheConfig");
-      cy.findByText(/Caching policy/).within(() => {
-        cy.log(
-          "Check that the newly chosen cache invalidation policy - Duration - is now visible in the sidebar",
-        );
-        const durationButton = cy.findByRole("button", { name: /Duration/ });
-        durationButton.should("be.visible");
-        cy.log("Open the cache invalidation policy configuration form again");
-        durationButton.click();
-      });
-      cy.findByRole("radio", { name: /Adaptive/ }).click();
+    });
+    cy.wait("@putCacheConfig");
+
+    questionSettingsSidesheet().within(() => {
+      cy.log(
+        "Check that the newly chosen cache invalidation policy - Duration - is now visible in the sidebar",
+      );
+      cy.findByLabelText(/When to get new results/).should(
+        "contain",
+        "Duration",
+      );
+      cy.findByLabelText(/When to get new results/).click();
+    });
+
+    cacheStrategySidesheet().within(() => {
+      adaptiveRadioButton().click();
       cy.findByLabelText(/Minimum query duration/).type("999");
       cy.findByRole("button", { name: /Save/ }).click();
       cy.wait("@putCacheConfig");
-      cy.findByText(/Caching policy/).within(() => {
-        cy.log(
-          "Check that the newly chosen cache invalidation policy - Adaptive - is now visible in the sidebar",
-        );
-        const policyToken = cy.findByRole("button", { name: /Adaptive/ });
-        policyToken.should("be.visible");
-      });
     });
+
+    questionSettingsSidesheet().within(() => {
+      cy.log(
+        "Check that the newly chosen cache invalidation policy - Adaptive - is now visible in the sidebar",
+      );
+      cy.findByLabelText(/When to get new results/).should(
+        "contain",
+        "Adaptive",
+      );
+    });
+  });
+
+  it("can click 'Clear cache' for a question", () => {
+    interceptPerformanceRoutes();
+    H.visitQuestion(ORDERS_QUESTION_ID);
+
+    openSidebarCacheStrategyForm("question");
+
+    cacheStrategySidesheet().within(() => {
+      cy.findByText(/Caching settings/).should("be.visible");
+      cy.findByRole("button", {
+        name: /Clear cache for this question/,
+      }).click();
+    });
+
+    cy.findByTestId("confirm-modal").button("Clear cache").click();
+    cy.wait("@invalidateCache");
+
+    cacheStrategySidesheet().findByText("Cache cleared").should("be.visible");
   });
 });

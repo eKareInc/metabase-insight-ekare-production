@@ -1,16 +1,17 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { t } from "ttag";
 
 import { useListApiKeysQuery } from "metabase/api";
-import { StyledTable } from "metabase/common/components/Table";
-import Breadcrumbs from "metabase/components/Breadcrumbs";
+import { ClientSortableTable } from "metabase/common/components/Table";
 import { DelayedLoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper/DelayedLoadingAndErrorWrapper";
 import { Ellipsified } from "metabase/core/components/Ellipsified";
 import CS from "metabase/css/core/index.css";
 import { formatDateTimeWithUnit } from "metabase/lib/formatting/date";
-import { Stack, Title, Text, Button, Group, Icon } from "metabase/ui";
+import { Button, Group, Icon, Stack, Text, Title } from "metabase/ui";
 import { getThemeOverrides } from "metabase/ui/theme";
 import type { ApiKey } from "metabase-types/api";
+
+import { AuthTabs } from "../AuthTabs";
 
 import { CreateApiKeyModal } from "./CreateApiKeyModal";
 import { DeleteApiKeyModal } from "./DeleteApiKeyModal";
@@ -28,7 +29,7 @@ function EmptyTableWarning({ onCreate }: { onCreate: () => void }) {
       mt="xl"
       align="center"
       justify="center"
-      spacing="sm"
+      gap="sm"
       data-testid="empty-table-warning"
     >
       <Title>{t`No API keys here yet`}</Title>
@@ -48,7 +49,7 @@ const columns = [
   { key: "masked_key", name: t`Key` },
   { key: "updated_by_name", name: t`Last modified by` },
   { key: "updated_at", name: t`Last modified on` },
-  { key: "actions", name: "" },
+  { key: "actions", name: "", sortable: false },
 ];
 
 function ApiKeysTable({
@@ -75,7 +76,7 @@ function ApiKeysTable({
   }
 
   return (
-    <StyledTable
+    <ClientSortableTable
       data-testid="api-keys-table"
       columns={columns}
       rows={flatApiKeys}
@@ -112,7 +113,7 @@ const ApiKeyRow = ({
     <td>{apiKey.updated_by.common_name}</td>
     <td>{formatDateTimeWithUnit(apiKey.updated_at, "minute")}</td>
     <td>
-      <Group spacing="md" py="md">
+      <Group gap="md" py="md">
         <Icon
           name="pencil"
           className={CS.cursorPointer}
@@ -158,16 +159,11 @@ export const ManageApiKeys = () => {
         modal={modal}
         activeApiKey={activeApiKey}
       />
-      <Stack pl="md" spacing="lg">
-        <Breadcrumbs
-          crumbs={[
-            [t`Authentication`, "/admin/settings/authentication"],
-            [t`API Keys`],
-          ]}
-        />
+      <AuthTabs activeKey="api-keys" />
+      <Stack pl="md" gap="lg">
         <Group
-          align="end"
-          position="apart"
+          align="start"
+          justify="space-between"
           data-testid="api-keys-settings-header"
         >
           <Stack>

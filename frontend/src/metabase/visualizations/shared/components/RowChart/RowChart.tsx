@@ -13,8 +13,8 @@ import RowChartView from "../RowChartView/RowChartView";
 import type { BarData, RowChartTheme, Series, StackOffset } from "./types";
 import { calculateNonStackedBars, calculateStackedBars } from "./utils/data";
 import {
-  getMaxYValuesCount,
   getChartMargin,
+  getMaxYValuesCount,
   getRowChartGoal,
 } from "./utils/layout";
 import { addSideSpacingForTicksAndLabels, getChartScales } from "./utils/scale";
@@ -202,17 +202,15 @@ export const RowChart = <TDatum,>({
 
   const paddedXScale = useMemo(
     () =>
-      xValueRange
-        ? xScale
-        : addSideSpacingForTicksAndLabels(
-            xScale,
-            measureTextWidth,
-            theme.axis.ticks,
-            xTickFormatter,
-            theme.dataLabels,
-            labelsFormatter,
-            (labelledSeries ?? []).length > 0,
-          ),
+      addSideSpacingForTicksAndLabels(
+        xScale,
+        measureTextWidth,
+        theme.axis.ticks,
+        xTickFormatter,
+        theme.dataLabels,
+        labelsFormatter,
+        (labelledSeries ?? []).length > 0,
+      ),
     [
       labelsFormatter,
       measureTextWidth,
@@ -221,7 +219,6 @@ export const RowChart = <TDatum,>({
       theme.dataLabels,
       xScale,
       xTickFormatter,
-      xValueRange,
     ],
   );
 

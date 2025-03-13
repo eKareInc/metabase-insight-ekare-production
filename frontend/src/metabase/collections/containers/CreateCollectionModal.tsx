@@ -1,9 +1,9 @@
 import type { LocationDescriptor } from "history";
 import { useCallback } from "react";
-import { connect } from "react-redux";
 import { push } from "react-router-redux";
 import { t } from "ttag";
 
+import { connect } from "metabase/lib/redux";
 import * as Urls from "metabase/lib/urls";
 import { Modal } from "metabase/ui";
 import type { Collection } from "metabase-types/api";
@@ -46,27 +46,20 @@ function CreateCollectionModal({
   );
 
   return (
-    <Modal.Root
+    <Modal
       opened
       onClose={onClose}
       size="lg"
       data-testid="new-collection-modal"
+      padding="40px"
+      title={t`New collection`}
     >
-      <Modal.Overlay />
-      <Modal.Content p="md">
-        <Modal.Header>
-          <Modal.Title>{t`New collection`}</Modal.Title>
-          <Modal.CloseButton />
-        </Modal.Header>
-        <Modal.Body>
-          <CreateCollectionForm
-            {...props}
-            onCreate={handleCreate}
-            onCancel={onClose}
-          />
-        </Modal.Body>
-      </Modal.Content>
-    </Modal.Root>
+      <CreateCollectionForm
+        {...props}
+        onCreate={handleCreate}
+        onCancel={onClose}
+      />
+    </Modal>
   );
 }
 

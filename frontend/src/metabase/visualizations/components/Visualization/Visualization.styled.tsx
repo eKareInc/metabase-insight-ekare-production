@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import LoadingSpinner from "metabase/components/LoadingSpinner";
@@ -14,7 +15,7 @@ export const VisualizationHeader = styled.div`
   flex-shrink: 0;
 `;
 
-export interface VisualizationSlowSpinnerProps {
+interface VisualizationSlowSpinnerProps {
   isUsuallySlow: boolean;
 }
 

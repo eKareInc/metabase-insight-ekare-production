@@ -1,50 +1,71 @@
 {
   "teams": [
     {
-      "name": "Querying Components",
-      "label": ".Team/QueryingComponents",
+      "name": "Querying",
+      "label": ".Team/Querying",
       "members": [
         "ranquild",
+        "romeovs",
+        "bshepherdson",
+        "metamben",
+        "appleby",
         "uladzimirdev",
+        "wzimrin",
+        "ericnormand"
+      ]
+    },
+    {
+      "name": "Semantic Layer",
+      "label": ".Team/SemanticLayer",
+      "members": [
         "kamilmielnik",
-        "nemanjaglumac",
-        "romeovs"
+        "lbrdnk"
+      ]
+    },
+    {
+      "name": "Drivers",
+      "label": ".Team/Drivers",
+      "members": [
+        "snoe",
+        "rileythomp"
       ]
     },
     {
       "name": "Embedding",
       "label": ".Team/Embedding",
-      "projectUrl": "https://github.com/orgs/metabase/projects/88/views/1",
-      "members": ["WiNloSt", "deniskaber", "oisincoveney", "npretto", "heypoom"]
-    },
-    {
-      "name": "BEC",
-      "label": ".Team/BackendComponents",
-      "projectUrl": "https://github.com/orgs/metabase/projects/50/views/1",
       "members": [
-        "tsmacdonald",
-        "qnkhuat",
-        "calherries",
-        "piranha",
-        "crisptrutski"
+        "WiNloSt",
+        "oisincoveney",
+        "npretto",
+        "heypoom",
+        "sanex3339"
       ]
     },
     {
-      "name": "Query Processor",
-      "label": ".Team/QueryProcessor",
-      "projectUrl": "https://github.com/orgs/metabase/projects/83/views/8",
-      "members": ["camsaul", "snoe", "bshepherdson", "metamben", "lbrdnk"]
+      "name": "Workflows",
+      "label": ".Team/Workflows",
+      "members": [
+        "qnkhuat",
+        "piranha",
+        "crisptrutski",
+        "deniskaber",
+        "wotbrew",
+        "spalt08",
+        "stasgavrylov"
+      ]
     },
     {
       "name": "Admin Webapp",
       "label": ".Team/AdminWebapp",
       "members": [
-        "noahmoss",
-        "escherize",
         "npfitz",
         "johnswanson",
         "rafpaf",
-        "sloansparger"
+        "sloansparger",
+        "iethree",
+        "nvoxland",
+        "fraserdrops",
+        "edpaget"
       ]
     },
     {
@@ -52,17 +73,18 @@
       "label": ".Team/DashViz",
       "members": [
         "alxnddr",
-        "EmmadUsmani",
-        "JesseSDevaney",
         "kulyk",
-        "adam-james-v"
+        "tsplude",
+        "lorem--ipsum",
+        "noahmoss"
       ]
     },
     {
       "name": "DevEx",
       "label": ".Team/DevEx",
       "members": [
-        "iethree"
+        "camsaul",
+        "escherize"
       ]
     }
   ]

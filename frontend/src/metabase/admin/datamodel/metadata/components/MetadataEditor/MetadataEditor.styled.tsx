@@ -1,10 +1,11 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import {
-  AdminMain,
   AdminContent,
-  AdminWrapper,
+  AdminMain,
   AdminSidebar,
+  AdminWrapper,
 } from "metabase/components/AdminLayout";
 
 export const MetadataWrapper = styled(AdminWrapper)`

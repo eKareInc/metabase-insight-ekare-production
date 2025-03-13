@@ -1,16 +1,40 @@
+import PropTypes from "prop-types";
+
 import { renderWithProviders, screen } from "__support__/ui";
 import { delay } from "__support__/utils";
 import { NumberColumn, StringColumn } from "__support__/visualizations";
 import { color } from "metabase/lib/colors";
+import { registerVisualization } from "metabase/visualizations";
 import Visualization from "metabase/visualizations/components/Visualization";
 import registerVisualizations from "metabase/visualizations/register";
-import { createMockCard } from "metabase-types/api/mocks";
+import {
+  createMockCard,
+  createMockVisualizationSettings,
+} from "metabase-types/api/mocks";
 
 registerVisualizations();
 
+const MockedVisualization = props => {
+  props.onRenderError("This is an error message");
+
+  return <div>Hello, I am mocked</div>;
+};
+
+MockedVisualization.propTypes = {
+  onRenderError: PropTypes.func.isRequired,
+};
+
+Object.assign(MockedVisualization, {
+  identifier: "mocked-visualization",
+  noHeader: true,
+  supportsSeries: true,
+});
+
+registerVisualization(MockedVisualization);
+
 describe("Visualization", () => {
-  const renderViz = async series => {
-    renderWithProviders(<Visualization rawSeries={series} />);
+  const renderViz = async (series, props = {}) => {
+    await renderWithProviders(<Visualization rawSeries={series} {...props} />);
     // The chart isn't rendered until the next tick. This is due to ExplicitSize
     // not setting the dimensions until after mounting.
     await delay(0);
@@ -20,6 +44,46 @@ describe("Visualization", () => {
     const container = screen.getByTestId("chart-container");
     return container.querySelectorAll(`path[fill="${color}"]`);
   };
+
+  describe("with an error", () => {
+    it("should render the error message and the proper title (metabase#49348)", async () => {
+      await renderViz(
+        [
+          {
+            data: {
+              rows: [
+                ["Doohickey", "Annetta Wyman and Sons", 1],
+                ["Doohickey", "Balistreri-Ankunding", 1],
+                ["Doohickey", "Bernhard-Grady", 1],
+              ],
+              cols: [
+                StringColumn({ name: "CATEGORY" }),
+                StringColumn({ name: "VENDOR" }),
+                NumberColumn({ name: "count" }),
+              ],
+            },
+            card: createMockCard({
+              name: "Products, Count, Grouped by Category and Vendor",
+              display: "mocked-visualization",
+              visualization_settings: createMockVisualizationSettings({
+                "graph.dimensions": ["CATEGORY", "VENDOR"],
+                "graph.metrics": ["count"],
+              }),
+            }),
+          },
+        ],
+        {
+          showTitle: true,
+          isDashboard: true,
+        },
+      );
+
+      expect(screen.getByText("This is an error message")).toBeInTheDocument();
+      expect(screen.getByTestId("legend-caption-title")).toHaveTextContent(
+        "Products, Count, Grouped by Category and Vendor",
+      );
+    });
+  });
 
   describe("scalar", () => {
     it("should render", async () => {
@@ -56,6 +120,7 @@ describe("Visualization", () => {
         expect(chartPathsWithColor(color("brand"))).toHaveLength(2);
       });
     });
+
     describe("multiseries: multiple metrics", () => {
       it("should have correct colors", async () => {
         await renderViz([
@@ -79,6 +144,7 @@ describe("Visualization", () => {
         expect(chartPathsWithColor(color("accent1"))).toHaveLength(2); // "sum"
       });
     });
+
     describe("multiseries: multiple breakouts", () => {
       it("should have correct colors", async () => {
         await renderViz([
@@ -104,6 +170,7 @@ describe("Visualization", () => {
         expect(chartPathsWithColor(color("accent2"))).toHaveLength(2); // "b"
       });
     });
+
     describe("multiseries: dashcard", () => {
       it("should have correct colors", async () => {
         await renderViz([

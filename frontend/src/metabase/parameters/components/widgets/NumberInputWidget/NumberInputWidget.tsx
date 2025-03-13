@@ -1,30 +1,35 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { t } from "ttag";
 import _ from "underscore";
 
-import TokenField from "metabase/components/TokenField";
 import NumericInput from "metabase/core/components/NumericInput";
 import CS from "metabase/css/core/index.css";
-import { parseNumberValue } from "metabase/lib/number";
+import { type NumberValue, parseNumber } from "metabase/lib/number";
+import { isNotNull } from "metabase/lib/types";
 import { UpdateFilterButton } from "metabase/parameters/components/UpdateFilterButton";
 import {
-  WidgetRoot,
-  WidgetLabel,
-  Footer,
-  TokenFieldWrapper,
-} from "metabase/parameters/components/widgets/Widget.styled";
-import type { Parameter } from "metabase-types/api";
+  deserializeNumberParameterValue,
+  serializeNumberParameterValue,
+} from "metabase/querying/parameters/utils/parsing";
+import { MultiAutocomplete } from "metabase/ui";
+import type {
+  Parameter,
+  ParameterValue,
+  ParameterValueOrArray,
+} from "metabase-types/api";
+
+import { Footer, TokenFieldWrapper, WidgetLabel, WidgetRoot } from "../Widget";
 
 export type NumberInputWidgetProps = {
-  value: number[] | undefined;
-  setValue: (value: number[] | undefined) => void;
+  value: ParameterValueOrArray | undefined;
+  setValue: (value: ParameterValueOrArray | undefined) => void;
   className?: string;
   arity?: "n" | number;
   infixText?: string;
   autoFocus?: boolean;
   placeholder?: string;
   label?: string;
-  parameter?: Partial<Pick<Parameter, "required" | "default">>;
+  parameter?: Parameter;
 };
 
 export function NumberInputWidget({
@@ -36,16 +41,16 @@ export function NumberInputWidget({
   autoFocus,
   placeholder = t`Enter a number`,
   label,
-  parameter = {},
+  parameter,
 }: NumberInputWidgetProps) {
-  const arrayValue = normalize(value);
+  const arrayValue = deserializeNumberParameterValue(value);
   const [unsavedArrayValue, setUnsavedArrayValue] =
-    useState<(number | undefined)[]>(arrayValue);
+    useState<(NumberValue | undefined)[]>(arrayValue);
 
   const allValuesUnset = unsavedArrayValue.every(_.isUndefined);
-  const allValuesSet = unsavedArrayValue.every(_.isNumber);
+  const allValuesSet = unsavedArrayValue.every(isNotNull);
   const isValid =
-    (arity === "n" || unsavedArrayValue.length === arity) &&
+    (arity === "n" || unsavedArrayValue.length <= arity) &&
     (allValuesUnset || allValuesSet);
 
   const onClick = () => {
@@ -53,27 +58,82 @@ export function NumberInputWidget({
       if (allValuesUnset || unsavedArrayValue.length === 0) {
         setValue(undefined);
       } else {
-        setValue(unsavedArrayValue);
+        setValue(serializeNumberParameterValue(unsavedArrayValue));
       }
     }
   };
+
+  const filteredUnsavedArrayValue = useMemo(
+    () => unsavedArrayValue.filter((x): x is number => x !== undefined),
+    [unsavedArrayValue],
+  );
+
+  const values = parameter?.values_source_config?.values ?? [];
+  const options =
+    values.map(getOption).filter((item): item is SelectItem => item !== null) ??
+    [];
+
+  const valueOptions = unsavedArrayValue
+    .map((item): SelectItem | null => {
+      const option = parameter?.values_source_config?.values?.find(
+        option => getValue(option)?.toString() === item?.toString(),
+      );
+
+      if (!option) {
+        return null;
+      }
+
+      const value = getValue(option)?.toString();
+      if (typeof value !== "string") {
+        return null;
+      }
+
+      return {
+        label: getLabel(option),
+        value,
+      };
+    })
+    .filter(isNotNull);
+
+  const customLabelOptions = options.filter(
+    option => option.label !== option.value,
+  );
+
+  function shouldCreate(value: string) {
+    const res = parseNumber(value);
+    return res !== null;
+  }
 
   return (
     <WidgetRoot className={className}>
       {label && <WidgetLabel>{label}</WidgetLabel>}
       {arity === "n" ? (
         <TokenFieldWrapper>
-          <TokenField
-            multi
-            updateOnInputChange
-            autoFocus={autoFocus}
-            value={unsavedArrayValue}
-            parseFreeformValue={parseNumberValue}
-            onChange={newValue => {
-              setUnsavedArrayValue(newValue);
-            }}
-            options={[]}
+          <MultiAutocomplete
+            onChange={(values: string[]) =>
+              setUnsavedArrayValue(
+                values.map(value => parseNumber(value)).filter(isNotNull),
+              )
+            }
+            value={filteredUnsavedArrayValue.map(value => value?.toString())}
             placeholder={placeholder}
+            shouldCreate={shouldCreate}
+            autoFocus={autoFocus}
+            data={customLabelOptions.concat(valueOptions)}
+            filter={({
+              options,
+              search,
+            }: {
+              options: any[];
+              search: string;
+            }) => {
+              return options.filter(item =>
+                Boolean(
+                  search !== "" &&
+                    item.label?.toLowerCase().startsWith(search.toLowerCase()),
+                ),
+              );
+            }}
           />
         </TokenFieldWrapper>
       ) : (
@@ -83,11 +143,11 @@ export function NumberInputWidget({
               fullWidth
               className={CS.p1}
               autoFocus={autoFocus && i === 0}
-              value={unsavedArrayValue[i]}
-              onChange={newValue => {
+              value={unsavedArrayValue[i]?.toString()}
+              onChange={(_newValue, newValueText) => {
                 setUnsavedArrayValue(unsavedArrayValue => {
                   const newUnsavedValue = [...unsavedArrayValue];
-                  newUnsavedValue[i] = newValue;
+                  newUnsavedValue[i] = parseNumber(newValueText) ?? undefined;
                   return newUnsavedValue;
                 });
               }}
@@ -103,8 +163,8 @@ export function NumberInputWidget({
         <UpdateFilterButton
           value={value}
           unsavedValue={unsavedArrayValue}
-          defaultValue={parameter.default}
-          isValueRequired={parameter.required ?? false}
+          defaultValue={parameter?.default}
+          isValueRequired={parameter?.required ?? false}
           isValid={isValid}
           onClick={onClick}
         />
@@ -113,10 +173,29 @@ export function NumberInputWidget({
   );
 }
 
-function normalize(value: number[] | undefined): number[] {
-  if (Array.isArray(value)) {
-    return value;
-  } else {
-    return [];
+type SelectItem = {
+  value: string;
+  label: string;
+};
+
+function getOption(entry: string | ParameterValue): SelectItem | null {
+  const value = getValue(entry)?.toString();
+  const label = getLabel(entry);
+
+  if (!value) {
+    return null;
   }
+
+  return { value, label };
+}
+
+function getLabel(option: string | ParameterValue): string {
+  return option[1] ?? option[0]?.toString() ?? "";
+}
+
+function getValue(option: string | ParameterValue) {
+  if (typeof option === "string") {
+    return option;
+  }
+  return option[0];
 }

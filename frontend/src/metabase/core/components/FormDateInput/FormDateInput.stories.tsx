@@ -1,15 +1,15 @@
-import type { ComponentStory } from "@storybook/react";
+import type { StoryFn } from "@storybook/react";
 
 import { Form, FormProvider } from "metabase/forms";
 
 import FormDateInput from "./FormDateInput";
 
 export default {
-  title: "Core/FormDateInput",
+  title: "Components/Ask Before Using/FormDateInput",
   component: FormDateInput,
 };
 
-const Template: ComponentStory<typeof FormDateInput> = args => {
+const Template: StoryFn<typeof FormDateInput> = args => {
   const initialValues = { value: undefined };
   const handleSubmit = () => undefined;
 
@@ -22,13 +22,19 @@ const Template: ComponentStory<typeof FormDateInput> = args => {
   );
 };
 
-export const Default = Template.bind({});
-Default.args = {
-  title: "Title",
+export const Default = {
+  render: Template,
+
+  args: {
+    title: "Title",
+  },
 };
 
-export const WithDescription = Template.bind({});
-WithDescription.args = {
-  title: "Title",
-  description: "Description",
+export const WithDescription = {
+  render: Template,
+
+  args: {
+    title: "Title",
+    description: "Description",
+  },
 };

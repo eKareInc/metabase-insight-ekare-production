@@ -1,28 +1,35 @@
 import { createSelector } from "@reduxjs/toolkit";
 import { t } from "ttag";
+import _ from "underscore";
 
-import { collectionApi } from "metabase/api";
 import {
-  isRootTrashCollection,
+  collectionApi,
+  skipToken,
+  useGetCollectionQuery,
+  useListCollectionsQuery,
+  useListCollectionsTreeQuery,
+} from "metabase/api";
+import {
   canonicalCollectionId,
+  isRootTrashCollection,
 } from "metabase/collections/utils";
 import {
   createEntity,
-  undo,
   entityCompatibleQuery,
+  undo,
 } from "metabase/lib/entities";
 import * as Urls from "metabase/lib/urls/collections";
 import { CollectionSchema } from "metabase/schema";
 import { getUserPersonalCollectionId } from "metabase/selectors/user";
 import type {
-  ListCollectionsRequest,
-  ListCollectionsTreeRequest,
   Collection,
   CreateCollectionRequest,
-  UpdateCollectionRequest,
   DeleteCollectionRequest,
+  ListCollectionsRequest,
+  ListCollectionsTreeRequest,
+  UpdateCollectionRequest,
 } from "metabase-types/api";
-import type { GetState, ReduxAction, Dispatch } from "metabase-types/store";
+import type { Dispatch, GetState, ReduxAction } from "metabase-types/store";
 
 import getExpandedCollectionsById from "./getExpandedCollectionsById";
 import getInitialCollectionId from "./getInitialCollectionId";
@@ -67,6 +74,13 @@ const Collections = createEntity({
   displayNameOne: t`collection`,
   displayNameMany: t`collections`,
 
+  rtk: {
+    getUseGetQuery: () => ({
+      useGetQuery: useGetCollectionQuery,
+    }),
+    useListQuery,
+  },
+
   api: {
     list: async (params: ListParams, dispatch: Dispatch) => {
       const { tree, ...entityQuery } = params;
@@ -76,7 +90,7 @@ const Collections = createEntity({
     },
     get: (entityQuery: { id: number }, options: unknown, dispatch: Dispatch) =>
       entityCompatibleQuery(
-        entityQuery.id,
+        entityQuery,
         dispatch,
         collectionApi.endpoints.getCollection,
       ),
@@ -167,7 +181,26 @@ const Collections = createEntity({
   },
 });
 
-export { getExpandedCollectionsById };
+function useListQuery(
+  params: ListParams | undefined,
+  options: Parameters<
+    typeof useListCollectionsTreeQuery | typeof useListCollectionsQuery
+  >[1],
+) {
+  const collectionsTree = useListCollectionsTreeQuery(
+    params?.tree ? _.omit(params, "tree") : skipToken,
+    options,
+  );
+
+  const collections = useListCollectionsQuery(
+    params?.tree ? skipToken : params,
+    options,
+  );
+
+  return params?.tree ? collectionsTree : collections;
+}
+
+export { getExpandedCollectionsById, useListQuery };
 
 // eslint-disable-next-line import/no-default-export -- deprecated usage
 export default Collections;

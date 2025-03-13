@@ -1,29 +1,28 @@
 (ns metabase.query-processor.card-test
   "There are more e2e tests in [[metabase.api.card-test]]."
   (:require
-   [cheshire.core :as json]
    [clojure.test :refer :all]
-   [metabase.api.common :as api]
-   [metabase.models :refer [Card]]
    [metabase.models.interface :as mi]
-   [metabase.models.permissions :as perms]
-   [metabase.models.permissions-group :as perms-group]
+   [metabase.permissions.models.data-permissions :as data-perms]
+   [metabase.permissions.models.permissions :as perms]
+   [metabase.permissions.models.permissions-group :as perms-group]
    [metabase.query-processor :as qp]
    [metabase.query-processor.card :as qp.card]
    [metabase.test :as mt]
    [metabase.util :as u]
-   [toucan2.tools.with-temp :as t2.with-temp]))
+   [metabase.util.json :as json]))
 
 (defn run-query-for-card
   "Run query for Card synchronously."
   [card-id]
   ;; TODO -- we shouldn't do the perms checks if there is no current User context. It seems like API-level perms check
   ;; stuff doesn't belong in the Dashboard QP namespace
-  (binding [api/*current-user-permissions-set* (atom #{"/"})]
+  (mt/as-admin
     (qp.card/process-query-for-card
      card-id :api
-     :run (fn [query info]
-            (qp/process-query (assoc query :info info))))))
+     :make-run (constantly
+                (fn [query info]
+                  (qp/process-query (assoc query :info info)))))))
 
 (defn field-filter-query
   "A query with a Field Filter parameter"
@@ -73,19 +72,19 @@
 
 (deftest ^:parallel card-template-tag-parameters-test
   (testing "Card with a Field filter parameter"
-    (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query (field-filter-query)}]
+    (mt/with-temp [:model/Card {card-id :id} {:dataset_query (field-filter-query)}]
       (is (= {"date" :date/all-options}
              (#'qp.card/card-template-tag-parameters card-id))))))
 
 (deftest ^:parallel card-template-tag-parameters-test-2
   (testing "Card with a non-Field-filter parameter"
-    (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query (non-field-filter-query)}]
+    (mt/with-temp [:model/Card {card-id :id} {:dataset_query (non-field-filter-query)}]
       (is (= {"id" :number}
              (#'qp.card/card-template-tag-parameters card-id))))))
 
 (deftest ^:parallel card-template-tag-parameters-test-3
   (testing "Should ignore native query snippets and source card IDs"
-    (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query (non-parameter-template-tag-query)}]
+    (mt/with-temp [:model/Card {card-id :id} {:dataset_query (non-parameter-template-tag-query)}]
       (is (= {"id" :number}
              (#'qp.card/card-template-tag-parameters card-id))))))
 
@@ -98,7 +97,7 @@
          (#'qp.card/infer-parameter-name {:target [:field 1000 nil]}))))
 
 (deftest ^:parallel validate-card-parameters-test
-  (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query (field-filter-query)}]
+  (mt/with-temp [:model/Card {card-id :id} {:dataset_query (field-filter-query)}]
     (testing "Should disallow parameters that aren't actually part of the Card"
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
@@ -109,7 +108,7 @@
                                                          :value "2016-01-01"}]))))))
 
 (deftest ^:parallel validate-card-parameters-test-2
-  (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query (field-filter-query)}]
+  (mt/with-temp [:model/Card {card-id :id} {:dataset_query (field-filter-query)}]
     (testing "Should disallow parameters that aren't actually part of the Card"
       (testing "As an API request"
         (is (=? {:message            #"Invalid parameter: Card [\d,]+ does not have a template tag named \"fake\".+"
@@ -122,7 +121,7 @@
                                                      :value "2016-01-01"}]})))))))
 
 (deftest ^:parallel validate-card-parameters-test-3
-  (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query (field-filter-query)}]
+  (mt/with-temp [:model/Card {card-id :id} {:dataset_query (field-filter-query)}]
     (testing "Should disallow parameters with types not allowed for the widget type"
       (letfn [(validate [param-type]
                 (#'qp.card/validate-card-parameters card-id [{:id    "_DATE_"
@@ -147,7 +146,7 @@
                          (validate disallowed-type))))))))))))
 
 (deftest ^:parallel validate-card-parameters-test-4
-  (t2.with-temp/with-temp [Card {card-id :id} {:dataset_query (field-filter-query)}]
+  (mt/with-temp [:model/Card {card-id :id} {:dataset_query (field-filter-query)}]
     (testing "Happy path -- API request should succeed if parameter is valid"
       (is (= [1000]
              (mt/first-row (mt/user-http-request :rasta :post (format "card/%d/query" card-id)
@@ -158,17 +157,28 @@
 
 (deftest ^:parallel bad-viz-settings-should-still-work-test
   (testing "We should still be able to run a query that has Card bad viz settings referencing a column not in the query (#34950)"
-    (t2.with-temp/with-temp [:model/Card {card-id :id} {:dataset_query
-                                                        (mt/mbql-query venues
-                                                          {:aggregation [[:count]]})
+    (mt/with-temp [:model/Card {card-id :id} {:dataset_query
+                                              (mt/mbql-query venues
+                                                {:aggregation [[:count]]})
 
-                                                        :visualization_settings
-                                                        {:column_settings {(json/generate-string
-                                                                            [:ref [:field Integer/MAX_VALUE {:base-type :type/DateTime, :temporal-unit :month}]])
-                                                                           {:date_abbreviate true
-                                                                            :some_other_key  [:ref [:field Integer/MAX_VALUE {:base-type :type/DateTime, :temporal-unit :month}]]}}}}]
+                                              :visualization_settings
+                                              {:column_settings {(json/encode
+                                                                  [:ref [:field Integer/MAX_VALUE {:base-type :type/DateTime, :temporal-unit :month}]])
+                                                                 {:date_abbreviate true
+                                                                  :some_other_key  [:ref [:field Integer/MAX_VALUE {:base-type :type/DateTime, :temporal-unit :month}]]}}}}]
       (is (= [[100]]
              (mt/rows (run-query-for-card card-id)))))))
+
+(deftest ^:parallel pivot-tables-should-not-override-the-run-function
+  (testing "Pivot tables should not override the run function (#44160)"
+    (mt/with-temp [:model/Card {card-id :id} {:dataset_query
+                                              (mt/mbql-query venues
+                                                {:aggregation [[:count]]})
+                                              :display :pivot}]
+      (let [result (run-query-for-card card-id)]
+        (is (=? {:status :completed}
+                result))
+        (is (= [[100]] (mt/rows result)))))))
 
 (deftest nested-query-permissions-test
   (testing "Should be able to run a Card with another Card as its source query with just perms for the former (#15131)"
@@ -186,13 +196,16 @@
                                                                                 :query    {:source-table (format "card__%d" (u/the-id parent-card))}}
                                                                 :collection_id (u/the-id allowed-collection)}]
           (perms/grant-collection-read-permissions! (perms-group/all-users) allowed-collection)
+          (data-perms/set-database-permission! (perms-group/all-users) (mt/id) :perms/create-queries :query-builder-and-native)
+          (data-perms/set-database-permission! (perms-group/all-users) (mt/id) :perms/view-data :unrestricted)
           (mt/with-test-user :rasta
             (letfn [(process-query-for-card [card]
                       (qp.card/process-query-for-card
                        (u/the-id card) :api
-                       :run (fn [query info]
-                              (let [info (assoc info :query-hash (byte-array 0))]
-                                (qp/process-query (assoc query :info info))))))]
+                       :make-run (constantly
+                                  (fn [query info]
+                                    (let [info (assoc info :query-hash (byte-array 0))]
+                                      (qp/process-query (assoc query :info info)))))))]
               (testing "Should not be able to run the parent Card"
                 (is (not (mi/can-read? disallowed-collection)))
                 (is (not (mi/can-read? parent-card)))

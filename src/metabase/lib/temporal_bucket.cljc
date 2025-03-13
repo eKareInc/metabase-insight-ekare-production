@@ -1,17 +1,19 @@
 (ns metabase.lib.temporal-bucket
   (:require
    [clojure.string :as str]
+   [medley.core :as m]
    [metabase.lib.dispatch :as lib.dispatch]
    [metabase.lib.hierarchy :as lib.hierarchy]
    [metabase.lib.metadata.calculation :as lib.metadata.calculation]
    [metabase.lib.schema :as lib.schema]
    [metabase.lib.schema.common :as lib.schema.common]
-   [metabase.lib.schema.temporal-bucketing
-    :as lib.schema.temporal-bucketing]
-   [metabase.shared.util.i18n :as i18n]
-   [metabase.shared.util.time :as shared.ut]
+   [metabase.lib.schema.temporal-bucketing :as lib.schema.temporal-bucketing]
+   [metabase.lib.temporal-bucket.util :as lib.temporal-bucket.util]
+   [metabase.lib.util :as lib.util]
    [metabase.util :as u]
-   [metabase.util.malli :as mu]))
+   [metabase.util.i18n :as i18n]
+   [metabase.util.malli :as mu]
+   [metabase.util.time :as u.time]))
 
 (mu/defn describe-temporal-unit :- :string
   "Get a translated description of a temporal bucketing unit."
@@ -67,22 +69,22 @@
    unit :- [:maybe :keyword]]
   (let [n    (interval-n->int n)
         unit (or unit :day)]
-    (cond
-      (zero? n) (if (= unit :day)
-                  (i18n/tru "Today")
-                  (i18n/tru "This {0}" (describe-temporal-unit unit)))
-      (= n 1)   (if (= unit :day)
-                  (i18n/tru "Tomorrow")
-                  (i18n/tru "Next {0}" (describe-temporal-unit unit)))
-      (= n -1)  (if (= unit :day)
-                  (i18n/tru "Yesterday")
-                  (i18n/tru "Previous {0}" (describe-temporal-unit unit)))
-      (neg? n)  (i18n/tru "Previous {0} {1}" (abs n) (describe-temporal-unit (abs n) unit))
-      (pos? n)  (i18n/tru "Next {0} {1}" n (describe-temporal-unit n unit)))))
+    (case (keyword unit)
+      :default         (lib.temporal-bucket.util/temporal-interval-tru n "default period")
+      :millisecond     (lib.temporal-bucket.util/temporal-interval-tru n "millisecond")
+      :second          (lib.temporal-bucket.util/temporal-interval-tru n "second")
+      :minute          (lib.temporal-bucket.util/temporal-interval-tru n "minute")
+      :hour            (lib.temporal-bucket.util/temporal-interval-tru n "hour")
+      :day             (lib.temporal-bucket.util/temporal-interval-tru n "day" "Today" "Yesterday" "Tomorrow")
+      :week            (lib.temporal-bucket.util/temporal-interval-tru n "week")
+      :month           (lib.temporal-bucket.util/temporal-interval-tru n "month")
+      :quarter         (lib.temporal-bucket.util/temporal-interval-tru n "quarter")
+      :year            (lib.temporal-bucket.util/temporal-interval-tru n "year")
+      ;; else
+      (lib.temporal-bucket.util/temporal-interval-tru n "unknown unit"))))
 
 (mu/defn describe-relative-datetime :- ::lib.schema.common/non-blank-string
-  "Get a translated description of a relative datetime interval, ported from
- `frontend/src/metabase-lib/queries/utils/query-time.js`.
+  "Get a translated description of the offset part of a relative datetime interval.
 
   e.g. if the relative interval is `-1 days`, then `n` = `-1` and `unit` = `:day`.
 
@@ -91,19 +93,19 @@
    unit :- [:maybe :keyword]]
   (let [n    (interval-n->int n)
         unit (or unit :day)]
-    (cond
-      (zero? n)
-      (i18n/tru "Now")
-
-      (neg? n)
-      ;; this should legitimately be lowercasing in the user locale. I know system locale isn't necessarily the same
-      ;; thing, but it might be. This will have to do until we have some sort of user-locale lower-case functionality
-      #_ {:clj-kondo/ignore [:discouraged-var]}
-      (i18n/tru "{0} {1} ago" (abs n) (str/lower-case (describe-temporal-unit (abs n) unit)))
-
-      :else
-      #_ {:clj-kondo/ignore [:discouraged-var]}
-      (i18n/tru "{0} {1} from now" n (str/lower-case (describe-temporal-unit n unit))))))
+    (case (keyword unit)
+      :default     (lib.temporal-bucket.util/relative-datetime-tru n "default period")
+      :millisecond (lib.temporal-bucket.util/relative-datetime-tru n "millisecond")
+      :second      (lib.temporal-bucket.util/relative-datetime-tru n "second")
+      :minute      (lib.temporal-bucket.util/relative-datetime-tru n "minute")
+      :hour        (lib.temporal-bucket.util/relative-datetime-tru n "hour")
+      :day         (lib.temporal-bucket.util/relative-datetime-tru n "day")
+      :week        (lib.temporal-bucket.util/relative-datetime-tru n "week")
+      :month       (lib.temporal-bucket.util/relative-datetime-tru n "month")
+      :quarter     (lib.temporal-bucket.util/relative-datetime-tru n "quarter")
+      :year        (lib.temporal-bucket.util/relative-datetime-tru n "year")
+      ;; else
+      (lib.temporal-bucket.util/relative-datetime-tru n "unknown unit"))))
 
 (defmulti with-temporal-bucket-method
   "Implementation for [[temporal-bucket]]. Implement this to tell [[temporal-bucket]] how to add a bucket to a
@@ -227,6 +229,31 @@
   [_query _stage-number _x]
   #{})
 
+(defn- mark-unit [options option-key unit]
+  (cond->> options
+    (some #(= (:unit %) unit) options)
+    (mapv (fn [option]
+            (cond-> option
+              (contains? option option-key) (dissoc option option-key)
+              (= (:unit option) unit)       (assoc option-key true))))))
+
+(defn available-temporal-buckets-for-type
+  "Given the type of this column and nillable `default-unit` and `selected-unit`s, return the correct list of buckets."
+  [column-type default-unit selected-unit]
+  (let [options       (cond
+                        (isa? column-type :type/DateTime) datetime-bucket-options
+                        (isa? column-type :type/Date)     date-bucket-options
+                        (isa? column-type :type/Time)     time-bucket-options
+                        :else                             [])
+        fallback-unit (if (isa? column-type :type/Time)
+                        :hour
+                        :month)
+        default-unit  (or default-unit fallback-unit)]
+    (cond-> options
+      (= :inherited default-unit) (->> (mapv #(dissoc % :default)))
+      default-unit  (mark-unit :default  default-unit)
+      selected-unit (mark-unit :selected selected-unit))))
+
 (mu/defn available-temporal-buckets :- [:sequential [:ref ::lib.schema.temporal-bucketing/option]]
   "Get a set of available temporal bucketing units for `x`. Returns nil if no units are available."
   ([query x]
@@ -242,4 +269,65 @@
    Used when comparing temporal values like `[:!= ... [:field {:temporal-unit :day-of-week} ...] \"2022-01-01\"]`"
   [temporal-column
    temporal-value :- [:or :int :string]]
-  (shared.ut/format-unit temporal-value (:unit (temporal-bucket temporal-column))))
+  (u.time/format-unit temporal-value (:unit (temporal-bucket temporal-column))))
+
+(defn add-temporal-bucket-to-ref
+  "Internal helper shared between a few implementations of [[with-temporal-bucket-method]].
+
+  Not intended to be called otherwise."
+  [[tag options id-or-name] unit]
+  ;; if `unit` is an extraction unit like `:month-of-year`, then the `:effective-type` of the ref changes to
+  ;; `:type/Integer` (month of year returns an int). We need to record the ORIGINAL effective type somewhere in case
+  ;; we need to refer back to it, e.g. to see what temporal buckets are available if we want to change the unit, or if
+  ;; we want to remove it later. We will record this with the key `::original-effective-type`. Note that changing the
+  ;; unit multiple times should keep the original first value of `::original-effective-type`.
+  (if unit
+    (let [original-temporal-unit  ((some-fn :metabase.lib.field/original-temporal-unit :temporal-unit) options)
+          extraction-unit?        (contains? lib.schema.temporal-bucketing/datetime-extraction-units unit)
+          original-effective-type ((some-fn :metabase.lib.field/original-effective-type :effective-type :base-type)
+                                   options)
+          new-effective-type      (if extraction-unit?
+                                    :type/Integer
+                                    original-effective-type)
+          options                 (-> options
+                                      (assoc :temporal-unit unit
+                                             :effective-type new-effective-type
+                                             :metabase.lib.field/original-effective-type original-effective-type)
+                                      (m/assoc-some :metabase.lib.field/original-temporal-unit original-temporal-unit))]
+      [tag options id-or-name])
+    ;; `unit` is `nil`: remove the temporal bucket and remember it :metabase.lib.field/original-temporal-unit.
+    (let [original-effective-type (:metabase.lib.field/original-effective-type options)
+          original-temporal-unit ((some-fn :metabase.lib.field/original-temporal-unit :temporal-unit) options)
+          options (cond-> (dissoc options :temporal-unit)
+                    original-effective-type
+                    (-> (assoc :effective-type original-effective-type)
+                        (dissoc :metabase.lib.field/original-effective-type))
+                    original-temporal-unit
+                    (assoc :metabase.lib.field/original-temporal-unit original-temporal-unit))]
+      [tag options id-or-name])))
+
+(defn- ends-with-temporal-unit?
+  [s temporal-unit]
+  (str/ends-with? s (str ": " (describe-temporal-unit temporal-unit))))
+
+(defn ensure-ends-with-temporal-unit
+  "Append `temporal-unit` into a string `s` if appropriate.
+
+  The `:default` temporal unit is not appended. If `temporal-unit` is already suffix of `s`, do not add it
+  for the second time. This function may be called multiple times during processing of a query stage."
+  [s temporal-unit]
+  (if (or (not (string? s)) ; ie. nil or something that definitely should not occur here
+          (= :default temporal-unit)
+          (ends-with-temporal-unit? s temporal-unit))
+    s
+    (lib.util/format "%s: %s" s (describe-temporal-unit temporal-unit))))
+
+(defn ensure-temporal-unit-in-display-name
+  "Append temporal unit into `column-metadata`'s `:display_name` when appropriate.
+
+  This is expected to be called after `:unit` is added into column metadata, ie. in terms of annotate middleware, after
+  the column metadata coming from a driver are merged with result of `column-info`."
+  [column-metadata]
+  (if-some [temporal-unit (:unit column-metadata)]
+    (update column-metadata :display_name ensure-ends-with-temporal-unit temporal-unit)
+    column-metadata))

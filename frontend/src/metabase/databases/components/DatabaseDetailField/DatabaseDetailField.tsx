@@ -4,7 +4,6 @@ import FormNumericInput from "metabase/core/components/FormNumericInput";
 import FormSelect from "metabase/core/components/FormSelect";
 import FormTextArea from "metabase/core/components/FormTextArea";
 import FormToggle from "metabase/core/components/FormToggle";
-import type { IconName } from "metabase/ui";
 import type { EngineField } from "metabase-types/api";
 
 import { FIELD_OVERRIDES } from "../../constants";
@@ -24,7 +23,7 @@ const DatabaseDetailField = ({
   const override = FIELD_OVERRIDES[field.name];
   const type = getFieldType(field, override);
   const props = {
-    autoFocus,
+    ...(autoFocus ? { autoFocus, "data-autofocus": autoFocus } : {}),
     ...getFieldProps(field, override),
   };
 
@@ -74,8 +73,7 @@ const getFieldProps = (field: EngineField, override?: EngineFieldOverride) => {
 
 const getInputProps = (field: EngineField) => {
   return {
-    infoTooltip: field["helper-text"],
-    rightIcon: (field["helper-text"] as unknown as IconName) ?? "info",
+    rightIcon: field["helper-text"] ? ("info" as const) : undefined,
     rightIconTooltip: field["helper-text"],
   };
 };

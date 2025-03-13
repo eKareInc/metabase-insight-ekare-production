@@ -1,10 +1,8 @@
+import type { FloatingPosition } from "@mantine/core/lib";
 import type { CSSProperties, ReactNode } from "react";
-import type { Placement } from "tippy.js";
 
-import Tooltip from "metabase/core/components/Tooltip";
 import { useIsTruncated } from "metabase/hooks/use-is-truncated";
-
-import { EllipsifiedRoot } from "./Ellipsified.styled";
+import { Text, type TextProps, Tooltip } from "metabase/ui";
 
 interface EllipsifiedProps {
   style?: CSSProperties;
@@ -13,9 +11,10 @@ interface EllipsifiedProps {
   alwaysShowTooltip?: boolean;
   tooltip?: ReactNode;
   children?: ReactNode;
-  tooltipMaxWidth?: CSSProperties["maxWidth"];
+  tooltipMaxWidth?: number | "auto";
   lines?: number;
-  placement?: Placement;
+  multiline?: boolean;
+  placement?: FloatingPosition;
   "data-testid"?: string;
   id?: string;
 }
@@ -28,7 +27,8 @@ export const Ellipsified = ({
   tooltip,
   children,
   tooltipMaxWidth,
-  lines,
+  lines = 1,
+  multiline = false,
   placement = "top",
   "data-testid": dataTestId,
   id,
@@ -37,24 +37,34 @@ export const Ellipsified = ({
   const { isTruncated, ref } = useIsTruncated<HTMLDivElement>({
     disabled: canSkipTooltipRendering,
   });
+  const isEnabled =
+    (showTooltip && (isTruncated || alwaysShowTooltip)) || false;
+
+  const truncatedProps: Partial<TextProps> =
+    lines > 1 ? { lineClamp: lines } : { truncate: true };
 
   return (
     <Tooltip
-      tooltip={canSkipTooltipRendering ? undefined : tooltip || children || " "}
-      isEnabled={(showTooltip && (isTruncated || alwaysShowTooltip)) || false}
-      maxWidth={tooltipMaxWidth}
-      placement={placement}
+      data-testid="ellipsified-tooltip"
+      disabled={!isEnabled}
+      label={canSkipTooltipRendering ? undefined : tooltip || children || " "}
+      position={placement}
+      w={tooltipMaxWidth}
+      multiline={multiline}
     >
-      <EllipsifiedRoot
+      <Text
+        c="inherit"
         ref={ref}
         className={className}
-        lines={lines}
         style={style}
         data-testid={dataTestId}
         id={id}
+        fz="inherit"
+        lh="inherit"
+        {...truncatedProps}
       >
         {children}
-      </EllipsifiedRoot>
+      </Text>
     </Tooltip>
   );
 };

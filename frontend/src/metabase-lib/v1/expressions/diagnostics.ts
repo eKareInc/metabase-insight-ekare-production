@@ -1,45 +1,36 @@
-import { t } from "ttag";
+import { c, t } from "ttag";
 
 import * as Lib from "metabase-lib";
-import type { Expr, Node } from "metabase-lib/v1/expressions/pratt";
+import type { Node } from "metabase-lib/v1/expressions/pratt";
 import {
-  parse,
-  lexify,
-  compile,
   ResolverError,
+  compile,
+  lexify,
+  parse,
 } from "metabase-lib/v1/expressions/pratt";
 import type Database from "metabase-lib/v1/metadata/Database";
 import type Metadata from "metabase-lib/v1/metadata/Metadata";
+import type { Expression } from "metabase-types/api";
 
+import { MBQL_CLAUSES, getMBQLName } from "./config";
+import { parseDimension, parseMetric, parseSegment } from "./identifier";
 import {
-  useShorthands,
-  adjustCase,
-  adjustOptions,
+  adjustCaseOrIf,
+  adjustMultiArgOptions,
   adjustOffset,
+  adjustOptions,
+  useShorthands,
 } from "./recursive-parser";
-import { LOGICAL_OPS, COMPARISON_OPS, resolve } from "./resolver";
-import { tokenize, TOKEN, OPERATOR } from "./tokenizer";
-import type { ErrorWithMessage } from "./types";
-
-import {
-  MBQL_CLAUSES,
-  getMBQLName,
-  parseDimension,
-  parseMetric,
-  parseSegment,
-} from "./index";
-
-type Token = {
-  type: number;
-  op: string;
-  start: number;
-  end: number;
-};
+import { resolve } from "./resolver";
+import { OPERATOR, TOKEN, tokenize } from "./tokenizer";
+import type { ErrorWithMessage, Token } from "./types";
 
 // e.g. "COUNTIF(([Total]-[Tax] <5" returns 2 (missing parentheses)
 export function countMatchingParentheses(tokens: Token[]) {
-  const isOpen = (t: Token) => t.op === OPERATOR.OpenParenthesis;
-  const isClose = (t: Token) => t.op === OPERATOR.CloseParenthesis;
+  const isOpen = (t: Token) =>
+    t.type === TOKEN.Operator && t.op === OPERATOR.OpenParenthesis;
+  const isClose = (t: Token) =>
+    t.type === TOKEN.Operator && t.op === OPERATOR.CloseParenthesis;
   const count = (c: number, token: Token) =>
     isOpen(token) ? c + 1 : isClose(token) ? c - 1 : c;
   return tokens.reduce(count, 0);
@@ -52,7 +43,7 @@ export function diagnose({
   stageIndex,
   metadata,
   name = null,
-  expressionPosition,
+  expressionIndex,
 }: {
   source: string;
   startRule: "expression" | "aggregation" | "boolean";
@@ -60,7 +51,7 @@ export function diagnose({
   stageIndex: number;
   name?: string | null;
   metadata?: Metadata;
-  expressionPosition?: number;
+  expressionIndex?: number | undefined;
 }): ErrorWithMessage | null {
   if (!source || source.length === 0) {
     return null;
@@ -79,7 +70,10 @@ export function diagnose({
       const clause = fn ? MBQL_CLAUSES[fn] : null;
       if (clause && clause.args.length > 0) {
         const next = tokens[i + 1];
-        if (next.op !== OPERATOR.OpenParenthesis) {
+        if (
+          next.type !== TOKEN.Operator ||
+          next.op !== OPERATOR.OpenParenthesis
+        ) {
           return {
             message: t`Expecting an opening parenthesis after function ${functionName}`,
           };
@@ -93,12 +87,12 @@ export function diagnose({
     mismatchedParentheses === 1
       ? t`Expecting a closing parenthesis`
       : mismatchedParentheses > 1
-      ? t`Expecting ${mismatchedParentheses} closing parentheses`
-      : mismatchedParentheses === -1
-      ? t`Expecting an opening parenthesis`
-      : mismatchedParentheses < -1
-      ? t`Expecting ${-mismatchedParentheses} opening parentheses`
-      : null;
+        ? t`Expecting ${mismatchedParentheses} closing parentheses`
+        : mismatchedParentheses === -1
+          ? t`Expecting an opening parenthesis`
+          : mismatchedParentheses < -1
+            ? t`Expecting ${-mismatchedParentheses} opening parentheses`
+            : null;
 
   if (message) {
     return { message };
@@ -107,7 +101,7 @@ export function diagnose({
   const database = getDatabase(query, metadata);
 
   // make a simple check on expression syntax correctness
-  let mbqlOrError: Expr | ErrorWithMessage;
+  let mbqlOrError: Expression | ErrorWithMessage;
   try {
     mbqlOrError = prattCompiler({
       source,
@@ -115,18 +109,12 @@ export function diagnose({
       name,
       query,
       stageIndex,
+      expressionIndex,
       database,
     });
 
     if (isErrorWithMessage(mbqlOrError)) {
       return mbqlOrError;
-    }
-
-    if (startRule === "expression" && isBooleanExpression(mbqlOrError)) {
-      throw new ResolverError(
-        t`Custom columns do not support boolean expressions`,
-        mbqlOrError.node,
-      );
     }
   } catch (err) {
     if (isErrorWithMessage(err)) {
@@ -144,22 +132,27 @@ export function diagnose({
   const expressionMode: Lib.ExpressionMode =
     startRuleToExpressionModeMapping[startRule] ?? startRule;
 
-  const possibleError = Lib.diagnoseExpression(
-    query,
-    stageIndex,
-    expressionMode,
-    mbqlOrError,
-    expressionPosition,
-  );
+  try {
+    const possibleError = Lib.diagnoseExpression(
+      query,
+      stageIndex,
+      expressionMode,
+      mbqlOrError,
+      expressionIndex,
+    );
 
-  if (possibleError) {
-    console.warn("diagnostic error", possibleError.message);
+    if (possibleError) {
+      console.warn("diagnostic error", possibleError.message);
 
-    // diagnoseExpression returns some messages which are user-friendly and some which are not.
-    // If the `friendly` flag is true, we can use the possibleError as-is; if not then use a generic message.
-    return possibleError.friendly
-      ? possibleError
-      : { message: t`Invalid expression` };
+      // diagnoseExpression returns some messages which are user-friendly and some which are not.
+      // If the `friendly` flag is true, we can use the possibleError as-is; if not then use a generic message.
+      return possibleError.friendly
+        ? possibleError
+        : { message: t`Invalid expression` };
+    }
+  } catch (error) {
+    console.warn("diagnostic error", error);
+    return { message: t`Invalid expression` };
   }
 
   return null;
@@ -171,6 +164,7 @@ function prattCompiler({
   name,
   query,
   stageIndex,
+  expressionIndex,
   database,
 }: {
   source: string;
@@ -178,10 +172,18 @@ function prattCompiler({
   name: string | null;
   query: Lib.Query;
   stageIndex: number;
+  expressionIndex?: number | undefined;
   database?: Database | null;
-}): ErrorWithMessage | Expr {
+}): ErrorWithMessage | Expression {
   const tokens = lexify(source);
-  const options = { source, startRule, name, query, stageIndex };
+  const options = {
+    source,
+    startRule,
+    name,
+    query,
+    stageIndex,
+    expressionIndex,
+  };
 
   // PARSE
   const { root, errors } = parse(tokens, {
@@ -201,6 +203,18 @@ function prattCompiler({
     if (kind === "metric") {
       const metric = parseMetric(name, options);
       if (!metric) {
+        const dimension = parseDimension(name, options);
+        const isNameKnown = Boolean(dimension);
+
+        if (isNameKnown) {
+          const error = c(
+            "{0} is an identifier of the field provided by user in a custom expression",
+          )
+            .t`No aggregation found in: ${name}. Use functions like Sum() or custom Metrics`;
+
+          throw new ResolverError(error, node);
+        }
+
         throw new ResolverError(t`Unknown Metric: ${name}`, node);
       }
 
@@ -213,10 +227,8 @@ function prattCompiler({
 
       return Lib.legacyRef(query, stageIndex, segment);
     } else {
-      const reference = options.name ?? ""; // avoid circular reference
-
       // fallback
-      const dimension = parseDimension(name, { reference, ...options });
+      const dimension = parseDimension(name, options);
       if (!dimension) {
         throw new ResolverError(t`Unknown Field: ${name}`, node);
       }
@@ -231,7 +243,8 @@ function prattCompiler({
       adjustOptions,
       useShorthands,
       adjustOffset,
-      adjustCase,
+      adjustCaseOrIf,
+      adjustMultiArgOptions,
       expression =>
         resolve({
           expression,
@@ -246,16 +259,7 @@ function prattCompiler({
   return mbql;
 }
 
-function isBooleanExpression(
-  expr: unknown,
-): expr is [string, ...Expr[]] & { node?: Node } {
-  return (
-    Array.isArray(expr) &&
-    (LOGICAL_OPS.includes(expr[0]) || COMPARISON_OPS.includes(expr[0]))
-  );
-}
-
-function isErrorWithMessage(err: unknown): err is ErrorWithMessage {
+export function isErrorWithMessage(err: unknown): err is ErrorWithMessage {
   return (
     typeof err === "object" &&
     err != null &&

@@ -1,9 +1,8 @@
-import { connect } from "react-redux";
-import { routerActions, replace } from "react-router-redux";
+import { routerActions } from "react-router-redux";
 import { connectedReduxRedirect } from "redux-auth-wrapper/history3/redirect";
 
 import { getAdminPaths } from "metabase/admin/app/selectors";
-import { getUser } from "metabase/selectors/user";
+import { MetabaseReduxContext } from "metabase/lib/redux";
 
 export const createAdminRouteGuard = (routeKey, Component) => {
   const Wrapper = connectedReduxRedirect({
@@ -13,30 +12,8 @@ export const createAdminRouteGuard = (routeKey, Component) => {
     authenticatedSelector: state =>
       getAdminPaths(state)?.find(path => path.key === routeKey) != null,
     redirectAction: routerActions.replace,
+    context: MetabaseReduxContext,
   });
 
   return Wrapper(Component ?? (({ children }) => children));
-};
-
-const mapStateToProps = state => ({
-  user: getUser(state),
-});
-
-const mapDispatchToProps = {
-  replace,
-};
-
-export const createAdminRedirect = (adminPath, nonAdminPath) => {
-  const NonAdminRedirectComponent = connect(
-    mapStateToProps,
-    mapDispatchToProps,
-  )(({ user, replace, location }) => {
-    const path = `${location.pathname}/${
-      user.is_superuser ? adminPath : nonAdminPath
-    }`;
-    replace(path);
-    return null;
-  });
-
-  return NonAdminRedirectComponent;
 };

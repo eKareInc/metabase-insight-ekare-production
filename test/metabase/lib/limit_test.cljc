@@ -1,17 +1,17 @@
 (ns metabase.lib.limit-test
   (:require
+   #?@(:cljs ([metabase.test-runner.assert-exprs.approximately-equal]))
    [clojure.test :refer [deftest is testing]]
    [metabase.lib.core :as lib]
    [metabase.lib.test-metadata :as meta]
-   [metabase.lib.test-util :as lib.tu]
-   #?@(:cljs ([metabase.test-runner.assert-exprs.approximately-equal]))))
+   [metabase.lib.test-util :as lib.tu]))
 
 #?(:cljs (comment metabase.test-runner.assert-exprs.approximately-equal/keep-me))
 
 (deftest ^:parallel limit-test
   (letfn [(limit [query]
             (get-in query [:stages 0 :limit] ::not-found))]
-    (let [query (-> lib.tu/venues-query
+    (let [query (-> (lib.tu/venues-query)
                     (lib/limit 100))]
       (is (= 100
              (limit query)))
@@ -25,7 +25,7 @@
 
 (deftest ^:parallel current-limit-test
   (testing "Last stage"
-    (let [query lib.tu/venues-query]
+    (let [query (lib.tu/venues-query)]
       (is (nil? (lib/current-limit query)))
       (is (nil? (lib/current-limit query -1)))
       (is (= 100 (lib/current-limit (lib/limit query 100))))

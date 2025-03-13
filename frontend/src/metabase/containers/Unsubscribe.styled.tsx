@@ -1,7 +1,8 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import MetabotLogo from "metabase/core/components/MetabotLogo";
-import { color, hueRotate, alpha } from "metabase/lib/colors";
+import { alpha, color, hueRotate } from "metabase/lib/colors";
 import { breakpointMinSmall } from "metabase/styled-components/theme";
 import { Icon } from "metabase/ui";
 
@@ -44,7 +45,7 @@ export const LayoutCard = styled.div`
   width: 100%;
   margin-top: 1.5rem;
   padding: 2.5rem 1.5rem;
-  background-color: ${color("white")};
+  background-color: var(--mb-color-bg-white);
   box-shadow: 0 1px 15px var(--mb-color-shadow);
   border-radius: 6px;
   min-height: 20rem;

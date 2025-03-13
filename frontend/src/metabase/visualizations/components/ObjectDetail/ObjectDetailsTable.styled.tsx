@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 export const ObjectDetailsTable = styled.div`
@@ -14,7 +15,7 @@ export const GridContainer = styled.div<GridContainerProps>`
   gap: 1rem;
 `;
 
-export interface GridItemProps {
+interface GridItemProps {
   colSpan?: number;
 }
 

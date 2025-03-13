@@ -1,7 +1,5 @@
-import { render } from "@testing-library/react";
-
 import { createMockEntitiesState } from "__support__/store";
-import { renderWithProviders, screen } from "__support__/ui";
+import { render, renderWithProviders, screen } from "__support__/ui";
 import { checkNotNull } from "metabase/lib/types";
 import { getMetadata } from "metabase/selectors/metadata";
 import { createMockDatabase, createMockSchema } from "metabase-types/api/mocks";
@@ -34,7 +32,7 @@ describe("DataSelectorDatabaseSchemaPicker", () => {
   it("displays loading message when it has no databases", () => {
     render(<DataSelectorDatabaseSchemaPicker databases={[]} />);
 
-    expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
+    expect(screen.getByTestId("loading-indicator")).toBeInTheDocument();
   });
 
   describe("displays picker when it has databases", () => {
@@ -100,8 +98,8 @@ describe("DataSelectorDatabaseSchemaPicker", () => {
       ],
     });
     setup({ database });
-    // There should only be one loading-spinner next to the database name, and not the schema names
-    expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
+    // There should only be one loading-indicator next to the database name, and not the schema names
+    expect(screen.getByTestId("loading-indicator")).toBeInTheDocument();
     expect(screen.getByText("Schema 1")).toBeInTheDocument();
     expect(screen.getByText("Schema 2")).toBeInTheDocument();
   });

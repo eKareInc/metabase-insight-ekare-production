@@ -1,17 +1,26 @@
-import type { MultiSelectProps, SelectItem } from "@mantine/core";
-import { MultiSelect, Tooltip } from "@mantine/core";
+import {
+  type ComboboxItem,
+  type TagsInputProps,
+  Text,
+  Tooltip,
+} from "@mantine/core";
 import { useUncontrolled } from "@mantine/hooks";
 import type { ClipboardEvent, FocusEvent } from "react";
-import { useMemo, useState } from "react";
+import type React from "react";
+import { useMemo, useRef, useState } from "react";
 import { t } from "ttag";
 
 import { color } from "metabase/lib/colors";
-import { Icon } from "metabase/ui";
+import { Icon, SpecialTagsInput } from "metabase/ui";
 
+import Styles from "./MultiAutocomplete.module.css";
 import { parseValues, unique } from "./utils";
 
-export type MultiAutocompleteProps = Omit<MultiSelectProps, "shouldCreate"> & {
+export type MultiAutocompleteProps = Omit<TagsInputProps, "shouldCreate"> & {
   shouldCreate?: (query: string, selectedValues: string[]) => boolean;
+  showInfoIcon?: boolean;
+  data: ComboboxItem[];
+  nothingFoundMessage?: React.ReactNode;
 };
 
 export function MultiAutocomplete({
@@ -22,40 +31,51 @@ export function MultiAutocomplete({
   placeholder,
   autoFocus,
   shouldCreate = defaultShouldCreate,
+  showInfoIcon = true,
+  rightSection,
   onChange,
   onSearchChange,
   onFocus,
   onBlur,
+  nothingFoundMessage,
   ...props
 }: MultiAutocompleteProps) {
   const [selectedValues, setSelectedValues] = useUncontrolled({
     value: controlledValue,
     defaultValue,
     finalValue: [],
-    onChange,
+    onChange: val => {
+      onChange?.(val);
+    },
   });
   const [searchValue, setSearchValue] = useUncontrolled({
     value: controlledSearchValue,
     finalValue: "",
     onChange: onSearchChange,
   });
+
+  const stupidRef = useRef<string[]>([]);
   const [lastSelectedValues, setLastSelectedValues] = useState(selectedValues);
   const [isFocused, setIsFocused] = useState(false);
-  const visibleValues = isFocused ? lastSelectedValues : [...selectedValues];
-
+  // const visibleValues = isFocused ? lastSelectedValues : [...selectedValues];
   const items = useMemo(
     () => getAvailableSelectItems(data, lastSelectedValues),
     [data, lastSelectedValues],
   );
 
   const handleChange = (newValues: string[]) => {
-    const values = unique(newValues);
-    setSelectedValues(values);
+    const values = unique(newValues)
+      .map(parseValues)
+      .flat()
+      .filter(val => shouldCreate(val, []));
+    stupidRef.current = values;
     setLastSelectedValues(values);
+    setSelectedValues(values);
   };
 
   const handleFocus = (event: FocusEvent<HTMLInputElement>) => {
     setIsFocused(true);
+    stupidRef.current = selectedValues;
     setLastSelectedValues(selectedValues);
     onFocus?.(event);
   };
@@ -64,27 +84,9 @@ export function MultiAutocomplete({
     return value !== "" && shouldCreate?.(value, lastSelectedValues);
   }
 
-  const handleBlur = (event: FocusEvent<HTMLInputElement>) => {
-    setIsFocused(false);
-
-    const values = parseValues(searchValue);
-    const validValues = values.filter(isValid);
-
-    setSearchValue("");
-
-    if (validValues.length > 0) {
-      const newValues = unique([...lastSelectedValues, ...validValues]);
-      setSelectedValues(newValues);
-      setLastSelectedValues(newValues);
-    } else {
-      setSelectedValues(lastSelectedValues);
-    }
-
-    onBlur?.(event);
-  };
-
   const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
     event.preventDefault();
+    event.stopPropagation();
 
     const input = event.target as HTMLInputElement;
     const value = input.value;
@@ -100,6 +102,7 @@ export function MultiAutocomplete({
     if (values.length > 0) {
       const newValues = unique([...lastSelectedValues, ...validValues]);
       setSelectedValues(newValues);
+      stupidRef.current = newValues;
       setLastSelectedValues(newValues);
       setSearchValue("");
     } else {
@@ -107,98 +110,96 @@ export function MultiAutocomplete({
     }
   };
 
-  const handleSearchChange = (newSearchValue: string) => {
-    const first = newSearchValue.at(0);
-    const last = newSearchValue.at(-1);
-
-    setSearchValue(newSearchValue);
-
-    if (newSearchValue !== "") {
-      const values = parseValues(newSearchValue);
-      if (values.length >= 1) {
-        const value = values[0] ?? newSearchValue;
-        if (isValid(value)) {
-          setSelectedValues(unique([...lastSelectedValues, value]));
-        }
-      }
-    }
-    if (newSearchValue === "") {
-      setSelectedValues(unique([...lastSelectedValues]));
-    }
-
-    const quotes = Array.from(newSearchValue).filter(ch => ch === '"').length;
-
-    if (
-      (last === "," && quotes % 2 === 0) ||
-      last === "\t" ||
-      last === "\n" ||
-      (first === '"' && last === '"')
-    ) {
-      const values = parseValues(newSearchValue);
-      const validValues = values.filter(isValid);
-
-      if (values.length > 0) {
-        setSearchValue("");
-      }
-
-      if (validValues.length > 0) {
-        const newValues = unique([...lastSelectedValues, ...validValues]);
-        setSelectedValues(newValues);
-        setLastSelectedValues(newValues);
-        setSearchValue("");
-      }
-    }
-  };
-
-  const info = isFocused ? (
+  const infoIcon = isFocused ? (
     <Tooltip
       label={
-        <>
-          {t`Separate values with commas, tabs or newlines.`}
-          <br />
-          {t` Use double quotes for values containing commas.`}
-        </>
+        <Text c="inherit" maw="20rem">
+          {t`Separate values with commas, tabs, or newlines. Use double quotes if what you’re searching for has commas — and if it itself includes quotes, use backslashes like this: “searching, you see, is a \\“simple\\” thing.”`}
+        </Text>
       }
     >
       <Icon name="info_filled" fill={color("text-light")} />
     </Tooltip>
-  ) : (
-    <span />
-  );
+  ) : null;
+
+  const handleSearchChange = (newSearchValue: string) => {
+    setSearchValue(newSearchValue);
+    if (newSearchValue !== "") {
+      const values = parseValues(newSearchValue);
+      if (values.length >= 1) {
+        const value = values[0];
+        if (shouldCreate(value, [])) {
+          setSelectedValues(unique([...stupidRef.current, value]));
+        }
+      }
+    }
+    if (newSearchValue === "") {
+      setSelectedValues(unique([...stupidRef.current]));
+    }
+  };
 
   return (
-    <MultiSelect
+    <SpecialTagsInput
       {...props}
+      classNames={{
+        pill: Styles.pill,
+        pillsList: Styles.pillList,
+        input: Styles.input,
+        empty: Styles.empty,
+        option: Styles.option,
+        options: Styles.optionList,
+      }}
       data={items}
-      value={visibleValues}
+      value={lastSelectedValues}
       searchValue={searchValue}
       placeholder={placeholder}
-      searchable
+      splitChars={[",", "\t", "\n"]}
       autoFocus={autoFocus}
       onChange={handleChange}
       onFocus={handleFocus}
-      onBlur={handleBlur}
       onSearchChange={handleSearchChange}
-      onPaste={handlePaste}
-      rightSection={info}
+      onPasteCapture={handlePaste}
+      onBlur={e => {
+        setIsFocused(false);
+        onBlur?.(e);
+      }}
+      rightSection={rightSection ?? (showInfoIcon ? infoIcon : undefined)}
+      acceptValueOnBlur
+      role="combobox"
+      nothingFoundMessage={nothingFoundMessage}
+      comboboxProps={{
+        withinPortal: false,
+        floatingStrategy: "fixed",
+        styles: {
+          empty: {
+            padding: "1.5rem 0.5rem",
+            color: "var(--mb-color-text-light)",
+          },
+        },
+        ...props.comboboxProps,
+      }}
     />
   );
 }
 
-function getSelectItem(item: string | SelectItem): SelectItem {
+function defaultShouldCreate(query: string) {
+  return query.trim().length > 0;
+}
+
+function getSelectItem(item: string | ComboboxItem): ComboboxItem {
   if (typeof item === "string") {
     return { value: item, label: item };
   }
 
   if (!item.label) {
-    return { value: item.value, label: item.value };
+    return { value: item.value, label: item.value?.toString() ?? "" };
   }
 
   return item;
 }
 
 function getAvailableSelectItems(
-  data: ReadonlyArray<string | SelectItem>,
+  data: ReadonlyArray<string | ComboboxItem>,
   selectedValues: string[],
 ) {
   const all = [...data, ...selectedValues].map(getSelectItem);
@@ -212,10 +213,4 @@ function getAvailableSelectItems(
     seen.add(option.value);
     return true;
   });
-}
-
-function defaultShouldCreate(query: string, selectedValues: string[]) {
-  return (
-    query.trim().length > 0 && !selectedValues.some(value => value === query)
-  );
 }

@@ -1,16 +1,15 @@
-(ns ^:mb/once metabase.api.api-key-test
+(ns metabase.api.api-key-test
   "Tests for /api/api-key endpoints"
   (:require
    [clojure.test :refer [deftest testing is]]
    [metabase.http-client :as client]
    [metabase.models.api-key :as api-key]
-   [metabase.models.permissions-group :as perms-group]
+   [metabase.permissions.models.permissions-group :as perms-group]
    [metabase.test :as mt]
-   [toucan2.core :as t2]
-   [toucan2.tools.with-temp :as t2.with-temp]))
+   [toucan2.core :as t2]))
 
 (deftest api-key-creation-test
-  (t2.with-temp/with-temp [:model/PermissionsGroup {group-id :id} {:name "Cool Friends"}]
+  (mt/with-temp [:model/PermissionsGroup {group-id :id} {:name "Cool Friends"}]
     (testing "POST /api/api-key works"
       (let [name (str (random-uuid))
             resp (mt/user-http-request :crowberto :post 200 "api-key"
@@ -45,11 +44,11 @@
                                                     (swap! generated-keys next)
                                                     next-val))]
           ;; put an API Key in the database with that key.
-          (t2.with-temp/with-temp [:model/ApiKey _ {:unhashed_key  generated-key
-                                                    :name          "my cool name"
-                                                    :user_id       (mt/user->id :crowberto)
-                                                    :creator_id (mt/user->id :crowberto)
-                                                    :updated_by_id (mt/user->id :crowberto)}]
+          (mt/with-temp [:model/ApiKey _ {:unhashed_key  generated-key
+                                          :name          "my cool name"
+                                          :user_id       (mt/user->id :crowberto)
+                                          :creator_id (mt/user->id :crowberto)
+                                          :updated_by_id (mt/user->id :crowberto)}]
             ;; this will try to generate a new API key
             (mt/user-http-request :crowberto :post 200 "api-key"
                                   {:group_id group-id
@@ -59,11 +58,11 @@
     (testing "We don't retry forever if prefix collision keeps happening"
       (let [generated-key (api-key/generate-key)]
         (with-redefs [api-key/generate-key (constantly generated-key)]
-          (t2.with-temp/with-temp [:model/ApiKey _ {:unhashed_key  generated-key
-                                                    :name          "my cool name"
-                                                    :user_id       (mt/user->id :crowberto)
-                                                    :creator_id (mt/user->id :crowberto)
-                                                    :updated_by_id (mt/user->id :crowberto)}]
+          (mt/with-temp [:model/ApiKey _ {:unhashed_key  generated-key
+                                          :name          "my cool name"
+                                          :user_id       (mt/user->id :crowberto)
+                                          :creator_id (mt/user->id :crowberto)
+                                          :updated_by_id (mt/user->id :crowberto)}]
             (is (= "could not generate key with unique prefix"
                    (:message (mt/user-http-request :crowberto :post 500 "api-key"
                                                    {:group_id group-id
@@ -85,7 +84,7 @@
                      [:group :name]))))
     (testing "A non-empty name is required"
       (is (= {:errors          {:name "value must be a non-blank string."}
-              :specific-errors {:name ["should be at least 1 characters, received: \"\"" "non-blank string, received: \"\""]}}
+              :specific-errors {:name ["should be at least 1 character, received: \"\"" "non-blank string, received: \"\""]}}
              (mt/user-http-request :crowberto :post 400 "api-key"
                                    {:group_id group-id
                                     :name     ""}))))
@@ -99,18 +98,27 @@
 (deftest api-count-works
   (mt/with-empty-h2-app-db
     (is (zero? (mt/user-http-request :crowberto :get 200 "api-key/count")))
-    (t2.with-temp/with-temp [:model/ApiKey _ {:unhashed_key  (api-key/generate-key)
-                                              :name          "my cool name"
-                                              :user_id       (mt/user->id :crowberto)
-                                              :creator_id    (mt/user->id :crowberto)
-                                              :updated_by_id (mt/user->id :crowberto)}]
+    (mt/with-temp [:model/ApiKey _ {:unhashed_key  (api-key/generate-key)
+                                    :name          "my cool name"
+                                    :user_id       (mt/user->id :crowberto)
+                                    :creator_id    (mt/user->id :crowberto)
+                                    :updated_by_id (mt/user->id :crowberto)}]
       (is (= 1 (mt/user-http-request :crowberto :get 200 "api-key/count")))
-      (t2.with-temp/with-temp [:model/ApiKey _ {:unhashed_key  (api-key/generate-key)
-                                                :name          "my cool OTHER name"
-                                                :user_id       (mt/user->id :crowberto)
-                                                :creator_id    (mt/user->id :crowberto)
-                                                :updated_by_id (mt/user->id :crowberto)}]
-        (is (= 2 (mt/user-http-request :crowberto :get 200 "api-key/count")))))))
+      (mt/with-temp [:model/ApiKey _ {:unhashed_key  (api-key/generate-key)
+                                      :name          "my cool OTHER name"
+                                      :user_id       (mt/user->id :crowberto)
+                                      :creator_id    (mt/user->id :crowberto)
+                                      :updated_by_id (mt/user->id :crowberto)}]
+        (is (= 2 (mt/user-http-request :crowberto :get 200 "api-key/count"))))
+
+      (testing "API keys with non-default scopes, like SCIM, are excluded"
+        (mt/with-temp [:model/ApiKey _ {:unhashed_key  (api-key/generate-key)
+                                        :name          "my cool OTHER name"
+                                        :user_id       (mt/user->id :crowberto)
+                                        :creator_id    (mt/user->id :crowberto)
+                                        :updated_by_id (mt/user->id :crowberto)
+                                        :scope         "scim"}]
+          (is (= 1 (mt/user-http-request :crowberto :get 200 "api-key/count"))))))))
 
 (deftest api-keys-work-e2e
   (testing "We can create a new API key and then use it for authentication"
@@ -122,14 +130,16 @@
       (is (client/client :get 200 "user/current" {:request-options {:headers {"x-api-key" api-key}}}))
       (is (= "Unauthenticated"
              (client/client :get 401 "user/current" {:request-options {:headers {"x-api-key" "mb_not_an_api_key"}}})))
+      (let [user-id (:id (client/client :get 200 "user/current" {:request-options {:headers {"x-api-key" api-key}}}))]
+        (is (not (t2/exists? :model/Collection :personal_owner_id user-id))))
       (testing "A deleted API Key can no longer be used"
         (mt/user-http-request :crowberto :delete 204 (format "api-key/%s" id))
         (is (= "Unauthenticated"
                (client/client :get 401 "user/current" {:request-options {:headers {"x-api-key" api-key}}})))))))
 
 (deftest api-keys-can-be-updated
-  (t2.with-temp/with-temp [:model/PermissionsGroup {group-id-1 :id} {:name "Cool Friends"}
-                           :model/PermissionsGroup {group-id-2 :id} {:name "Uncool Friends"}]
+  (mt/with-temp [:model/PermissionsGroup {group-id-1 :id} {:name "Cool Friends"}
+                 :model/PermissionsGroup {group-id-2 :id} {:name "Uncool Friends"}]
     ;; create the API Key
     (let [{id :id :as create-resp}
           (mt/user-http-request :crowberto
@@ -155,9 +165,9 @@
       (let [name-1      (str "My First Name" (random-uuid))
             name-2      (str "My Second Name" (random-uuid))
             {id :id}    (mt/user-http-request :crowberto
-                                           :post 200 "api-key"
-                                           {:group_id group-id-1
-                                            :name     name-1})
+                                              :post 200 "api-key"
+                                              {:group_id group-id-1
+                                               :name     name-1})
             api-user-id (-> (t2/select-one :model/ApiKey :id id) (t2/hydrate :user) :user :id)]
 
         (testing "before the change..."
@@ -176,7 +186,7 @@
 
 (deftest api-keys-can-be-regenerated
   (testing "You can regenerate an API key"
-    (t2.with-temp/with-temp [:model/PermissionsGroup {group-id :id} {:name "Cool Friends"}]
+    (mt/with-temp [:model/PermissionsGroup {group-id :id} {:name "Cool Friends"}]
       (let [{id :id old-key :unmasked_key}
             (mt/user-http-request :crowberto
                                   :post 200 "api-key"
@@ -196,7 +206,7 @@
 
 (deftest api-keys-can-be-listed
   (mt/with-empty-h2-app-db
-    (t2.with-temp/with-temp [:model/PermissionsGroup {group-id :id} {:name "Cool Friends"}]
+    (mt/with-temp [:model/PermissionsGroup {group-id :id} {:name "Cool Friends"}]
       (is (= [] (mt/user-http-request :crowberto :get 200 "api-key")))
 
       (mt/user-http-request :crowberto
@@ -222,7 +232,16 @@
                :group {:name "All Users"
                        :id (:id (perms-group/all-users))}}]
              (map #(select-keys % [:name :group])
-                  (mt/user-http-request :crowberto :get 200 "api-key")))))))
+                  (mt/user-http-request :crowberto :get 200 "api-key"))))
+
+      (testing "API keys with non-default scopes, like SCIM, are excluded"
+        (mt/with-temp [:model/ApiKey _ {:unhashed_key  (api-key/generate-key)
+                                        :name          "SCIM API key"
+                                        :user_id       (mt/user->id :crowberto)
+                                        :creator_id    (mt/user->id :crowberto)
+                                        :updated_by_id (mt/user->id :crowberto)
+                                        :scope         "scim"}]
+          (is (= 2 (count (mt/user-http-request :crowberto :get 200 "api-key")))))))))
 
 (deftest api-keys-can-be-deleted
   (mt/with-empty-h2-app-db
@@ -243,8 +262,8 @@
 (deftest api-key-operations-are-audit-logged
   (mt/with-premium-features #{:audit-app}
     (mt/with-empty-h2-app-db
-      (t2.with-temp/with-temp [:model/PermissionsGroup {group-id-1 :id} {:name "Cool Friends"}
-                               :model/PermissionsGroup {group-id-2 :id} {:name "Less Cool Friends"}]
+      (mt/with-temp [:model/PermissionsGroup {group-id-1 :id} {:name "Cool Friends"}
+                     :model/PermissionsGroup {group-id-2 :id} {:name "Less Cool Friends"}]
         ;; create the API key
         (let [{id           :id
                unmasked-key :unmasked_key} (mt/user-http-request :crowberto

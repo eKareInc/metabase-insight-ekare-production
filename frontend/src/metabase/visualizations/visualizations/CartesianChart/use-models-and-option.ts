@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 
+import { isReducedMotionPreferred } from "metabase/lib/dom";
 import { extractRemappings } from "metabase/visualizations";
 import { getChartMeasurements } from "metabase/visualizations/echarts/cartesian/chart-measurements";
 import { getCartesianChartModel } from "metabase/visualizations/echarts/cartesian/model";
@@ -9,6 +10,7 @@ import type {
   WaterfallChartModel,
 } from "metabase/visualizations/echarts/cartesian/model/types";
 import { getCartesianChartOption } from "metabase/visualizations/echarts/cartesian/option";
+import { getTooltipOption } from "metabase/visualizations/echarts/cartesian/option/tooltip";
 import { getScatterPlotModel } from "metabase/visualizations/echarts/cartesian/scatter/model";
 import { getScatterPlotOption } from "metabase/visualizations/echarts/cartesian/scatter/option";
 import { getTimelineEventsModel } from "metabase/visualizations/echarts/cartesian/timeline-events/model";
@@ -16,23 +18,26 @@ import { getWaterfallChartModel } from "metabase/visualizations/echarts/cartesia
 import { getWaterfallChartOption } from "metabase/visualizations/echarts/cartesian/waterfall/option";
 import { useBrowserRenderingContext } from "metabase/visualizations/hooks/use-browser-rendering-context";
 import type { VisualizationProps } from "metabase/visualizations/types";
+import type { CardDisplayType } from "metabase-types/api";
 
-import { getHoveredSeriesDataKey } from "./utils";
-
-export function useModelsAndOption({
-  rawSeries,
-  series: transformedSeries,
-  isPlaceholder,
-  settings,
-  card,
-  fontFamily,
-  width,
-  height,
-  timelineEvents,
-  selectedTimelineEventIds,
-  onRender,
-  hovered,
-}: VisualizationProps) {
+export function useModelsAndOption(
+  {
+    rawSeries,
+    series: transformedSeries,
+    isPlaceholder,
+    settings,
+    card,
+    fontFamily,
+    width,
+    height,
+    hiddenSeries = new Set(),
+    timelineEvents,
+    selectedTimelineEventIds,
+    onRender,
+    hovered,
+  }: VisualizationProps,
+  containerRef: React.RefObject<HTMLDivElement>,
+) {
   const renderingContext = useBrowserRenderingContext({ fontFamily });
 
   const rawSeriesWithRemappings = useMemo(
@@ -64,8 +69,21 @@ export function useModelsAndOption({
       getModel = getScatterPlotModel;
     }
 
-    return getModel(seriesToRender, settings, renderingContext, showWarning);
-  }, [card.display, seriesToRender, settings, renderingContext, showWarning]);
+    return getModel(
+      seriesToRender,
+      settings,
+      Array.from(hiddenSeries),
+      renderingContext,
+      showWarning,
+    );
+  }, [
+    card.display,
+    seriesToRender,
+    settings,
+    hiddenSeries,
+    renderingContext,
+    showWarning,
+  ]);
 
   const chartMeasurements = useMemo(
     () =>
@@ -91,11 +109,6 @@ export function useModelsAndOption({
     [chartModel, chartMeasurements, timelineEvents, renderingContext],
   );
 
-  const hoveredSeriesDataKey = useMemo(
-    () => getHoveredSeriesDataKey(chartModel.seriesModels, hovered),
-    [chartModel.seriesModels, hovered],
-  );
-
   const selectedOrHoveredTimelineEventIds = useMemo(() => {
     const ids = [];
 
@@ -109,59 +122,77 @@ export function useModelsAndOption({
     return ids;
   }, [selectedTimelineEventIds, hovered?.timelineEvents]);
 
+  const tooltipOption = useMemo(() => {
+    return getTooltipOption(
+      chartModel,
+      settings,
+      card.display as CardDisplayType,
+      containerRef,
+    );
+  }, [chartModel, settings, card.display, containerRef]);
+
   const option = useMemo(() => {
     if (width === 0 || height === 0) {
       return {};
     }
 
+    const shouldAnimate = !isPlaceholder && !isReducedMotionPreferred();
+
+    let baseOption;
     switch (card.display) {
       case "waterfall":
-        return getWaterfallChartOption(
+        baseOption = getWaterfallChartOption(
           chartModel as WaterfallChartModel,
           width,
           chartMeasurements,
           timelineEventsModel,
           selectedOrHoveredTimelineEventIds,
           settings,
-          isPlaceholder ?? false,
+          shouldAnimate,
           renderingContext,
         );
+        break;
       case "scatter":
-        return getScatterPlotOption(
+        baseOption = getScatterPlotOption(
           chartModel as ScatterPlotModel,
           chartMeasurements,
           timelineEventsModel,
           selectedOrHoveredTimelineEventIds,
           settings,
           width,
-          isPlaceholder ?? false,
+          shouldAnimate,
           renderingContext,
         );
+        break;
       default:
-        return getCartesianChartOption(
+        baseOption = getCartesianChartOption(
           chartModel as CartesianChartModel,
           chartMeasurements,
           timelineEventsModel,
           selectedOrHoveredTimelineEventIds,
           settings,
           width,
-          isPlaceholder ?? false,
-          hoveredSeriesDataKey,
+          shouldAnimate,
           renderingContext,
         );
     }
+
+    return {
+      ...baseOption,
+      tooltip: tooltipOption,
+    };
   }, [
-    card.display,
-    chartModel,
-    chartMeasurements,
-    renderingContext,
-    settings,
-    timelineEventsModel,
-    hoveredSeriesDataKey,
     width,
     height,
     isPlaceholder,
+    card.display,
+    tooltipOption,
+    chartModel,
+    chartMeasurements,
+    timelineEventsModel,
     selectedOrHoveredTimelineEventIds,
+    settings,
+    renderingContext,
   ]);
 
   return { chartModel, timelineEventsModel, option };

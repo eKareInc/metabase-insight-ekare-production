@@ -1,12 +1,37 @@
 // @ts-check
+
+const esmPackages = [
+  "ccount",
+  "character-entities-html4",
+  "comma-separated-tokens",
+  "d3-*",
+  "d3",
+  "devlop",
+  "echarts",
+  "hast.*",
+  "html-void-elements",
+  "is-absolute-url",
+  "property-information",
+  "rehype-external-links",
+  "screenfull",
+  "space-separated-tokens",
+  "stringify-entities",
+  "unist-util-visit-parents",
+  "unist-util-visit",
+  "vfile-location",
+  "vfile-message",
+  "vfile",
+  "web-namespaces",
+  "zrender",
+  "zwitch",
+];
+
 /** @type {import('jest').Config} */
 const config = {
   moduleNameMapper: {
     "\\.(css|less)$": "<rootDir>/frontend/test/__mocks__/styleMock.js",
     "\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$":
       "<rootDir>/frontend/test/__mocks__/fileMock.js",
-    "ace/ext-searchbox":
-      "<rootDir>/frontend/test/__mocks__/aceSearchBoxExtMock.js",
     "^cljs/(.*)$": "<rootDir>/target/cljs_dev/$1",
     "^d3-(.*)$": "<rootDir>/node_modules/d3-$1/dist/d3-$1",
     "react-markdown":
@@ -15,12 +40,21 @@ const config = {
       "<rootDir>/frontend/test/__mocks__/svgMock.jsx",
     "csv-parse/browser/esm/sync":
       "<rootDir>/node_modules/csv-parse/dist/cjs/sync",
+    "csv-stringify/browser/esm/sync":
+      "<rootDir>/node_modules/csv-stringify/dist/cjs/sync",
+    /**
+     * SDK components import root SDK folder (`embedding-sdk`) that contains the ee plugins.
+     * This isn't a problem in the core app because we seem to not import to entry file directly
+     * for any component under tests.
+     */
+    "ee-plugins": "<rootDir>/frontend/src/metabase/lib/noop.js",
   },
   transformIgnorePatterns: [
-    "<rootDir>/node_modules/(?!(screenfull|echarts|zrender|rehype-external-links|hast.*|devlop|property-information|comma-separated-tokens|space-separated-tokens|vfile|vfile-message|html-void-elements|stringify-entities|character-entities-html4)/)",
+    `<rootDir>/node_modules/(?!(${esmPackages.join("|")})/)`,
   ],
   testPathIgnorePatterns: [
     "<rootDir>/frontend/.*/.*.tz.unit.spec.{js,jsx,ts,tsx}",
+    "<rootDir>/release/.*",
   ],
   testMatch: [
     "<rootDir>/**/*.unit.spec.js",
@@ -34,18 +68,15 @@ const config = {
   modulePathIgnorePatterns: [
     "<rootDir>/target/cljs_release/.*",
     "<rootDir>/resources/frontend_client",
+    "<rootDir>/.*/__mocks__",
   ],
   setupFiles: [
     "<rootDir>/frontend/test/jest-setup.js",
     "<rootDir>/frontend/test/metabase-bootstrap.js",
     "<rootDir>/frontend/test/register-visualizations.js",
   ],
-  setupFilesAfterEnv: [
-    "@testing-library/jest-dom",
-    "<rootDir>/frontend/test/jest-setup-env.js",
-  ],
+  setupFilesAfterEnv: ["<rootDir>/frontend/test/jest-setup-env.js"],
   globals: {
-    ace: {},
     ga: {},
   },
   reporters: ["default", "jest-junit"],

@@ -1,13 +1,11 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import Card from "metabase/components/Card";
 import { alpha, color } from "metabase/lib/colors";
 import { NAV_SIDEBAR_WIDTH } from "metabase/nav/constants";
 import { space } from "metabase/styled-components/theme";
-import { Button, DEFAULT_POPOVER_Z_INDEX } from "metabase/ui";
-
-// needed to put this over popovers (z-index: 300)
-export const BULK_ACTIONS_Z_INDEX = DEFAULT_POPOVER_Z_INDEX + 1;
+import { Button } from "metabase/ui";
 
 export const BulkActionsToast = styled.div<{ isNavbarOpen: boolean }>`
   position: fixed;
@@ -16,12 +14,11 @@ export const BulkActionsToast = styled.div<{ isNavbarOpen: boolean }>`
   margin-left: ${props =>
     props.isNavbarOpen ? `${parseInt(NAV_SIDEBAR_WIDTH) / 2}px` : "0"};
   margin-bottom: ${space(2)};
-  z-index: ${BULK_ACTIONS_Z_INDEX};
+  transform: translateX(-50%);
 `;
 
 export const ToastCard = styled(Card)`
-  color: ${color("white")};
-
+  color: var(--mb-color-text-white);
   padding: 0.75rem ${space(2)};
   display: flex;
   align-items: center;
@@ -30,29 +27,25 @@ export const ToastCard = styled(Card)`
 `;
 
 export const BulkActionButton = styled(Button)`
-  color: ${color("white")};
+  color: var(--mb-color-text-white);
+  border-color: ${() => alpha(color("bg-white"), 0)};
+  background-color: ${() => alpha(color("bg-white"), 0.1)};
 
-  border-color: ${({ theme }) => alpha(theme.fn.themeColor("bg-white"), 0)};
-  background-color: ${({ theme }) =>
-    alpha(theme.fn.themeColor("bg-white"), 0.1)};
   :hover {
-    color: ${color("white")};
-    border-color: ${({ theme }) => alpha(theme.fn.themeColor("bg-white"), 0)};
-    background-color: ${({ theme }) =>
-      alpha(theme.fn.themeColor("bg-white"), 0.3)};
+    color: var(--mb-color-text-white);
+    border-color: ${() => alpha(color("bg-white"), 0)};
+    background-color: ${() => alpha(color("bg-white"), 0.3)};
   }
+
   :disabled {
-    border-color: ${({ theme }) => alpha(theme.fn.themeColor("bg-white"), 0)};
-    background-color: ${({ theme }) =>
-      alpha(theme.fn.themeColor("bg-white"), 0.1)};
+    border-color: ${() => alpha(color("bg-white"), 0)};
+    background-color: ${() => alpha(color("bg-white"), 0.1)};
   }
 ` as unknown as typeof Button;
 
 export const BulkActionDangerButton = styled(BulkActionButton)`
-  color: var(--mb-color-danger);
-
   :hover {
-    color: ${color("white")};
-    background-color: var(--mb-color-bg-error);
+    color: var(--mb-color-text-white);
+    background-color: var(--mb-color-error);
   }
 ` as unknown as typeof Button;

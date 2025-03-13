@@ -5,7 +5,7 @@ import {
   setupCollectionByIdEndpoint,
   setupCollectionItemsEndpoint,
   setupCollectionsEndpoints,
-  setupRecentViewsEndpoints,
+  setupRecentViewsAndSelectionsEndpoints,
   setupSearchEndpoints,
 } from "__support__/server-mocks";
 import {
@@ -91,8 +91,8 @@ function setup({
   mockGetBoundingClientRect();
   setupCollectionsEndpoints({ collections: COLLECTIONS });
 
-  setupCollectionByIdEndpoint({ collections: COLLECTIONS }),
-    setupSearchEndpoints(searchResults);
+  setupCollectionByIdEndpoint({ collections: COLLECTIONS });
+  setupSearchEndpoints(searchResults);
   setupCollectionItemsEndpoint({
     collection: ROOT_COLLECTION,
     collectionItems,
@@ -105,7 +105,7 @@ function setup({
     collection: PUBLIC_COLLECTION,
     collectionItems: [],
   });
-  setupRecentViewsEndpoints([]);
+  setupRecentViewsAndSelectionsEndpoints([]);
 
   fetchMock.get("path:/api/user/recipients", { data: [] });
 
@@ -330,6 +330,7 @@ describe("LinkedEntityPicker", () => {
             await screen.findByPlaceholderText(/search/i),
             typedText,
           );
+          await userEvent.click(screen.getByText("Everywhere"));
 
           expect(
             await screen.findByText(questionSearchResult.name),
@@ -393,6 +394,7 @@ describe("LinkedEntityPicker", () => {
             await screen.findByPlaceholderText(/search/i),
             typedText,
           );
+          await userEvent.click(screen.getByText("Everywhere"));
 
           expect(
             await screen.findByText(questionSearchResult.name),

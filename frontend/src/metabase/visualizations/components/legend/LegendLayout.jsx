@@ -1,7 +1,4 @@
 import PropTypes from "prop-types";
-import _ from "underscore";
-
-import ExplicitSize from "metabase/components/ExplicitSize";
 
 import Legend from "./Legend";
 import LegendActions from "./LegendActions";
@@ -30,12 +27,13 @@ const propTypes = {
   children: PropTypes.node,
   onHoverChange: PropTypes.func,
   onSelectSeries: PropTypes.func,
+  onToggleSeriesVisibility: PropTypes.func,
   onRemoveSeries: PropTypes.func,
   isReversed: PropTypes.bool,
   canRemoveSeries: PropTypes.func,
 };
 
-const LegendLayout = ({
+export const LegendLayout = ({
   className,
   items,
   hovered,
@@ -48,6 +46,7 @@ const LegendLayout = ({
   children,
   onHoverChange,
   onSelectSeries,
+  onToggleSeriesVisibility,
   onRemoveSeries,
   isReversed,
   canRemoveSeries,
@@ -78,6 +77,7 @@ const LegendLayout = ({
             isVertical={isVertical}
             onHoverChange={onHoverChange}
             onSelectSeries={onSelectSeries}
+            onToggleSeriesVisibility={onToggleSeriesVisibility}
             onRemoveSeries={onRemoveSeries}
             isReversed={isReversed}
             canRemoveSeries={canRemoveSeries}
@@ -98,5 +98,3 @@ const LegendLayout = ({
 };
 
 LegendLayout.propTypes = propTypes;
-
-export default _.compose(ExplicitSize())(LegendLayout);

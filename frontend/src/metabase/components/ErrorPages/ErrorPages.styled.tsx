@@ -1,4 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 export const ErrorPageRoot = styled.div<{ bordered?: boolean }>`
@@ -14,9 +16,5 @@ export const ErrorPageRoot = styled.div<{ bordered?: boolean }>`
       border: 1px solid var(--mb-color-border);
     `}
   border-radius: 0.5rem;
-  overflow: hidden;
-`;
-
-export const ResponsiveSpan = styled.span`
   overflow: hidden;
 `;

@@ -2,13 +2,13 @@
 import cx from "classnames";
 import { useFormik } from "formik";
 import PropTypes from "prop-types";
-import { connect } from "react-redux";
 import { push } from "react-router-redux";
 import { t } from "ttag";
 
 import List from "metabase/components/List";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import CS from "metabase/css/core/index.css";
+import { connect } from "metabase/lib/redux";
 import * as metadataActions from "metabase/redux/metadata";
 import S from "metabase/reference/Reference.module.css";
 import Detail from "metabase/reference/components/Detail";
@@ -19,15 +19,15 @@ import * as actions from "metabase/reference/reference";
 import { getMetadata } from "metabase/selectors/metadata";
 
 import {
-  getTable,
-  getFields,
   getError,
-  getLoading,
-  getUser,
-  getIsEditing,
-  getHasSingleSchema,
-  getIsFormulaExpanded,
+  getFields,
   getForeignKeys,
+  getHasSingleSchema,
+  getIsEditing,
+  getIsFormulaExpanded,
+  getLoading,
+  getTable,
+  getUser,
 } from "../selectors";
 import { getQuestionUrl } from "../utils";
 

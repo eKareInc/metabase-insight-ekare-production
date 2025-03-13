@@ -1,11 +1,12 @@
+import cx from "classnames";
 import type { ButtonHTMLAttributes, Ref } from "react";
 import { forwardRef, useCallback, useMemo } from "react";
 import * as React from "react";
 
 import {
-  SelectButtonRoot,
-  SelectButtonIcon,
   SelectButtonContent,
+  SelectButtonIcon,
+  SelectButtonRoot,
 } from "./SelectButton.styled";
 
 export interface SelectButtonProps
@@ -21,6 +22,10 @@ export interface SelectButtonProps
   onClick?: () => void;
   onClear?: () => void;
   dataTestId?: string;
+  classNames?: {
+    root?: string;
+    icon?: string;
+  };
 }
 
 const SelectButton = forwardRef(function SelectButton(
@@ -36,6 +41,7 @@ const SelectButton = forwardRef(function SelectButton(
     onClick,
     onClear,
     dataTestId,
+    classNames = {},
     ...rest
   }: SelectButtonProps,
   ref: Ref<HTMLButtonElement>,
@@ -63,7 +69,7 @@ const SelectButton = forwardRef(function SelectButton(
       type="button"
       data-testid={`${dataTestId ? `${dataTestId}-` : ""}select-button`}
       ref={ref}
-      className={className}
+      className={cx(classNames.root, className)}
       style={style}
       hasValue={hasValue}
       disabled={disabled}
@@ -77,11 +83,13 @@ const SelectButton = forwardRef(function SelectButton(
         {children}
       </SelectButtonContent>
       <SelectButtonIcon
+        className={classNames.icon}
         name={rightIcon}
         size={12}
         hasValue={hasValue}
         highlighted={highlighted}
         onClick={rightIcon === "close" ? handleClear : undefined}
+        style={{ flexShrink: 0 }}
       />
     </SelectButtonRoot>
   );

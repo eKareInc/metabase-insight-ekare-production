@@ -1,12 +1,12 @@
 import { useCallback } from "react";
 
+import { useListCollectionsTreeQuery } from "metabase/api";
 import {
   useBookmarkListQuery,
-  useCollectionListQuery,
   useCollectionQuery,
   useDatabaseListQuery,
 } from "metabase/common/hooks";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import Bookmark from "metabase/entities/bookmarks";
 import Databases from "metabase/entities/databases";
 import { useDispatch, useSelector } from "metabase/lib/redux";
@@ -29,15 +29,13 @@ export function CollectionContent({
 }) {
   const { data: bookmarks, error: bookmarksError } = useBookmarkListQuery();
   const { data: databases, error: databasesError } = useDatabaseListQuery();
-  const { data: collections, error: collectionsError } = useCollectionListQuery(
-    {
-      query: {
-        tree: true,
-        "exclude-other-user-collections": true,
-        "exclude-archived": true,
-      },
-    },
-  );
+
+  const { data: collections, error: collectionsError } =
+    useListCollectionsTreeQuery({
+      "exclude-other-user-collections": true,
+      "exclude-archived": true,
+    });
+
   const { data: collection, error: collectionError } = useCollectionQuery({
     id: collectionId,
   });

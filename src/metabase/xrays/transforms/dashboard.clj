@@ -2,7 +2,6 @@
   (:require
    [medley.core :as m]
    [metabase.api.common :as api]
-   [metabase.models.table :refer [Table]]
    [metabase.util :as u]
    [metabase.xrays.automagic-dashboards.populate :as populate]
    [metabase.xrays.transforms.materialize :as tf.materialize]
@@ -19,13 +18,13 @@
   [group cards]
   (mapcat (fn [{:keys [name description display] :as card}]
             (cond-> [(assoc card
-                       :group         group
-                       :width         width
-                       :height        height
-                       :card-score    100
-                       :title         name
-                       :visualization [display]
-                       :position      0)]
+                            :group         group
+                            :width         width
+                            :height        height
+                            :card-score    100
+                            :title         name
+                            :visualization [display]
+                            :position      0)]
               description (conj {:text       description
                                  :group      group
                                  :width      (- total-width width)
@@ -51,7 +50,7 @@
                             (map (comp :source-table :query :dataset_query))
                             (filter number?)
                             not-empty)]
-    (let [table-id->table (t2/select-pk->fn t2.realize/realize Table :id [:in (set table-ids)])]
+    (let [table-id->table (t2/select-pk->fn t2.realize/realize :model/Table :id [:in (set table-ids)])]
       (mapv (fn [table-id]
               (let [table (get table-id->table table-id)]
                 (card-for-source-table table)))

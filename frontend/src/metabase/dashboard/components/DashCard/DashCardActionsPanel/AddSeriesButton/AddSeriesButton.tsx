@@ -1,16 +1,12 @@
 import { t } from "ttag";
 
-import { Icon } from "metabase/ui";
+import { Box, Icon } from "metabase/ui";
 import visualizations from "metabase/visualizations";
 import type { Series } from "metabase-types/api";
 
 import { DashCardActionButton } from "../DashCardActionButton/DashCardActionButton";
 
-import {
-  ActionButton,
-  IconContainer,
-  PlusIcon,
-} from "./AddSeriesButton.styled";
+import S from "./AddSeriesButton.module.css";
 
 const { ICON_SIZE } = DashCardActionButton;
 
@@ -29,17 +25,24 @@ export function AddSeriesButton({
   series: Series;
   onClick: () => void;
 }) {
+  const label = series.length > 1 ? t`Edit series` : t`Add series`;
   return (
-    <ActionButton
+    <DashCardActionButton
+      className={S.ActionButton}
       onClick={onClick}
-      tooltip={series.length > 1 ? t`Edit series` : t`Add series`}
-      analyticsEvent="Dashboard;Edit Series Modal;open"
+      tooltip={label}
+      aria-label={label}
       data-testid="add-series-button"
     >
-      <IconContainer>
-        <PlusIcon name="add" size={ICON_SIZE / 2} />
+      <Box component="span" display="flex">
+        <DashCardActionButton.Icon
+          top={0}
+          left={1}
+          name="add"
+          size={ICON_SIZE / 2}
+        />
         <Icon name={getSeriesIconName(series)} size={ICON_SIZE - 2} />
-      </IconContainer>
-    </ActionButton>
+      </Box>
+    </DashCardActionButton>
   );
 }

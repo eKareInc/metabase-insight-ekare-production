@@ -1,24 +1,25 @@
 (ns metabase.lib.metadata.jvm
   "Implementation(s) of [[metabase.lib.metadata.protocols/MetadataProvider]] only for the JVM."
   (:require
+   [clojure.core.cache :as cache]
+   [clojure.core.cache.wrapped :as cache.wrapped]
    [clojure.string :as str]
-   #_{:clj-kondo/ignore [:discouraged-namespace]}
-   [metabase.driver :as driver]
    [metabase.lib.metadata.cached-provider :as lib.metadata.cached-provider]
    [metabase.lib.metadata.invocation-tracker :as lib.metadata.invocation-tracker]
    [metabase.lib.metadata.protocols :as lib.metadata.protocols]
    [metabase.lib.schema.id :as lib.schema.id]
    [metabase.lib.schema.metadata :as lib.schema.metadata]
    [metabase.models.interface :as mi]
+   [metabase.models.serialization :as serdes]
    [metabase.models.setting :as setting]
-   [metabase.plugins.classloader :as classloader]
    [metabase.util :as u]
    [metabase.util.malli :as mu]
+   [metabase.util.memoize :as u.memo]
    [metabase.util.snake-hating-map :as u.snake-hating-map]
    [methodical.core :as methodical]
    [potemkin :as p]
    [pretty.core :as pretty]
-   #_{:clj-kondo/ignore [:discouraged-namespace]}
+   ^{:clj-kondo/ignore [:discouraged-namespace]}
    [toucan2.core :as t2]
    [toucan2.model :as t2.model]
    [toucan2.pipeline :as t2.pipeline]
@@ -30,18 +31,12 @@
   (or (qualified-keyword? k)
       (str/includes? k ".")))
 
-(def ^:private ^{:arglists '([k])} memoized-kebab-key
-  "Calculating the kebab-case version of a key every time is pretty slow (even with the LRU
-  caching [[u/->kebab-case-en]] has), since the keys here are static and finite we can just memoize them forever and
+(def ^{:private true
+       :arglists '([k])} memoized-kebab-key
+  "Calculating the kebab-case version of a key every time is pretty slow (even with the LRU caching
+  [[u/->kebab-case-en]] has), since the keys here are static and finite we can just memoize them forever and
   get a nice performance boost."
-  ;; we spent a lot of time messing around with different ways of doing this and this seems to be the fastest. See
-  ;; https://metaboat.slack.com/archives/C04CYTEL9N2/p1702671632956539 -- Cam
-  (let [cache      (java.util.concurrent.ConcurrentHashMap.)
-        mapping-fn (reify java.util.function.Function
-                     (apply [_this k]
-                       (u/->kebab-case-en k)))]
-    (fn [k]
-      (.computeIfAbsent cache k mapping-fn))))
+  (u.memo/fast-memo u/->kebab-case-en))
 
 (defn instance->metadata
   "Convert a (presumably) Toucan 2 instance of an application database model with `snake_case` keys to a MLv2 style
@@ -60,7 +55,7 @@
 
 (methodical/defmethod t2.model/resolve-model :metadata/database
   [model]
-  (classloader/require 'metabase.models.database)
+  (t2/resolve-model :model/Database) ; for side-effects
   model)
 
 (methodical/defmethod t2.pipeline/build [#_query-type     :toucan.query-type/select.*
@@ -74,8 +69,7 @@
   [database]
   ;; ignore encrypted details that we cannot decrypt, because that breaks schema
   ;; validation
-  (let [database (instance->metadata database :metadata/database)
-        database (assoc database :lib/methods {:escape-alias (partial driver/escape-alias (:engine database))})]
+  (let [database (instance->metadata database :metadata/database)]
     (cond-> database
       (not (map? (:details database))) (dissoc :details))))
 
@@ -87,7 +81,7 @@
 
 (methodical/defmethod t2.model/resolve-model :metadata/table
   [model]
-  (classloader/require 'metabase.models.table)
+  (t2/resolve-model :model/Table)
   model)
 
 (methodical/defmethod t2.pipeline/build [#_query-type     :toucan.query-type/select.*
@@ -109,10 +103,10 @@
 
 (methodical/defmethod t2.model/resolve-model :metadata/column
   [model]
-  (classloader/require 'metabase.models.dimension
-                       'metabase.models.field
-                       'metabase.models.field-values
-                       'metabase.models.table)
+  (t2/resolve-model :model/Dimension) ; for side-effects
+  (t2/resolve-model :model/Field)
+  (t2/resolve-model :model/FieldValues)
+  (t2/resolve-model :model/Table)
   model)
 
 (methodical/defmethod t2.model/model->namespace :metadata/column
@@ -138,7 +132,8 @@
   [query-type model parsed-args honeysql]
   (merge
    (next-method query-type model parsed-args honeysql)
-   {:select    [:field/base_type
+   {:select    [:field/active
+                :field/base_type
                 :field/coercion_strategy
                 :field/database_type
                 :field/description
@@ -175,12 +170,15 @@
 
 (t2/define-after-select :metadata/column
   [field]
-  (let [field          (instance->metadata field :metadata/column)
+  (let [entity-id      (serdes/backfill-entity-id field)
+        field          (instance->metadata field :metadata/column)
         dimension-type (some-> (:dimension/type field) keyword)]
     (merge
      (dissoc field
+             :table
              :dimension/human-readable-field-id :dimension/id :dimension/name :dimension/type
              :values/human-readable-values :values/values)
+     {:ident entity-id}
      (when (and (= dimension-type :external)
                 (:dimension/human-readable-field-id field))
        {:lib/external-remap {:lib/type :metadata.column.remapping/external
@@ -206,8 +204,8 @@
 
 (methodical/defmethod t2.model/resolve-model :metadata/card
   [model]
-  (classloader/require 'metabase.models.card
-                       'metabase.models.persisted-info)
+  (t2/resolve-model :model/Card)
+  (t2/resolve-model :model/PersistedInfo)
   model)
 
 (methodical/defmethod t2.model/model->namespace :metadata/card
@@ -231,9 +229,11 @@
   (merge
    (next-method query-type model parsed-args honeysql)
    {:select    [:card/collection_id
+                :card/created_at   ; Needed for backfilling :entity_id on demand; see [[metabase.models.card]].
                 :card/database_id
                 :card/dataset_query
                 :card/id
+                :card/entity_id
                 :card/name
                 :card/result_metadata
                 :card/table_id
@@ -281,8 +281,8 @@
 
 (methodical/defmethod t2.model/resolve-model :metadata/segment
   [model]
-  (classloader/require 'metabase.models.segment
-                       'metabase.models.table)
+  (t2.model/resolve-model :model/Segment)
+  (t2.model/resolve-model :model/Table)
   model)
 
 (methodical/defmethod t2.query/apply-kv-arg [#_model          :metadata/segment
@@ -338,9 +338,12 @@
 
 (defn- tables [database-id]
   (t2/select :metadata/table
-             :db_id           database-id
-             :active          true
-             :visibility_type [:not-in #{"hidden" "technical" "cruft"}]))
+             {:where [:and
+                      [:= :db_id database-id]
+                      [:= :active true]
+                      [:or
+                       [:is :visibility_type nil]
+                       [:not-in :visibility_type #{"hidden" "technical" "cruft"}]]]}))
 
 (defn- metadatas-for-table [metadata-type table-id]
   (case metadata-type
@@ -350,12 +353,16 @@
                :active          true
                :visibility_type [:not-in #{"sensitive" "retired"}])
 
-
     :metadata/metric
-    (t2/select :metadata/metric :table_id table-id, :type :metric, :archived false)
+    (t2/select :metadata/metric :table_id table-id, :source_card_id [:= nil], :type :metric, :archived false)
 
     :metadata/segment
     (t2/select :metadata/segment :table_id table-id, :archived false)))
+
+(defn- metadatas-for-card [metadata-type card-id]
+  (case metadata-type
+    :metadata/metric
+    (t2/select :metadata/metric :source_card_id card-id, :type :metric, :archived false)))
 
 (p/deftype+ UncachedApplicationDatabaseMetadataProvider [database-id]
   lib.metadata.protocols/MetadataProvider
@@ -367,23 +374,57 @@
     (tables database-id))
   (metadatas-for-table [_this metadata-type table-id]
     (metadatas-for-table metadata-type table-id))
+  (metadatas-for-card [_this metadata-type card-id]
+    (metadatas-for-card metadata-type card-id))
   (setting [_this setting-name]
-           (setting/get setting-name))
+    (setting/get setting-name))
 
   pretty/PrettyPrintable
   (pretty [_this]
-          (list `->UncachedApplicationDatabaseMetadataProvider database-id))
+    (list `->UncachedApplicationDatabaseMetadataProvider database-id))
 
   Object
   (equals [_this another]
-          (and (instance? UncachedApplicationDatabaseMetadataProvider another)
-               (= database-id (.database-id ^UncachedApplicationDatabaseMetadataProvider another)))))
+    (and (instance? UncachedApplicationDatabaseMetadataProvider another)
+         (= database-id (.database-id ^UncachedApplicationDatabaseMetadataProvider another)))))
+
+(defn- application-database-metadata-provider-factory
+  "Inner function that constructs a new `MetadataProvider`.
+  I couldn't resist the Java naming, `foo-provider-factory-strategy-bean`.
+
+  Call [[application-database-metadata-provider]] instead, which wraps this inner function with optional, dynamically
+  scoped caching, to allow reuse of `MetadataProvider`s across the life of an API request."
+  [database-id]
+  (-> (->UncachedApplicationDatabaseMetadataProvider database-id)
+      lib.metadata.cached-provider/cached-metadata-provider
+      lib.metadata.invocation-tracker/invocation-tracker-provider))
+
+(def ^:dynamic *metadata-provider-cache*
+  "Bind this to a `(atom (clojure.core.cache/basic-cache-factory {}))` or similar cache-atom, and
+  [[application-database-metadata-provider]] will use it for caching the `MetadataProvider` for each `database-id`
+  over the lifespan of this binding.
+
+  This is useful for an API request, or group fo API requests like a dashboard load, to reduce appdb traffic."
+  nil)
+
+(defmacro with-metadata-provider-cache
+  "Wrapper to create a [[*metadata-provider-cache*]] for the duration of the `body`.
+
+  If there is already a [[*metadata-provider-cache*]], this leaves it in place."
+  [& body]
+  `(binding [*metadata-provider-cache* (or *metadata-provider-cache*
+                                           (atom (cache/basic-cache-factory {})))]
+     ~@body))
 
 (mu/defn application-database-metadata-provider :- ::lib.schema.metadata/metadata-provider
   "An implementation of [[metabase.lib.metadata.protocols/MetadataProvider]] for the application database.
 
-  All operations are cached; so you can use the bulk operations to pre-warm the cache if you need to."
+  Supports caching over a dynamic scope (eg. an API request or group of API requests like a dashboard load) via
+  [[*metadata-provider-cache*]]. Outside such a scope, this creates a new `MetadataProvider` for each call.
+
+  On the returned `MetadataProvider`, all operations are cached. You can use the bulk operations to pre-warm the cache
+  if you need to."
   [database-id :- ::lib.schema.id/database]
-  (-> (->UncachedApplicationDatabaseMetadataProvider database-id)
-      lib.metadata.cached-provider/cached-metadata-provider
-      lib.metadata.invocation-tracker/invocation-tracker-provider))
+  (if-let [cache-atom *metadata-provider-cache*]
+    (cache.wrapped/lookup-or-miss cache-atom database-id application-database-metadata-provider-factory)
+    (application-database-metadata-provider-factory database-id)))

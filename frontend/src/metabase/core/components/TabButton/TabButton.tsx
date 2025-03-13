@@ -1,21 +1,22 @@
 import type { UniqueIdentifier } from "@dnd-kit/core";
-import { useSortable } from "@dnd-kit/sortable";
-import { css, type Theme } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
+import { type Theme, css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 import type {
-  HTMLAttributes,
   ChangeEventHandler,
+  HTMLAttributes,
   KeyboardEventHandler,
   MouseEventHandler,
   Ref,
 } from "react";
 import {
-  useEffect,
-  useContext,
+  forwardRef,
   useCallback,
+  useContext,
+  useEffect,
   useRef,
   useState,
-  forwardRef,
 } from "react";
 import { t } from "ttag";
 
@@ -24,18 +25,18 @@ import { lighten } from "metabase/lib/colors";
 
 import type { TabContextType } from "../Tab";
 import {
+  TabContext,
   getTabButtonInputId,
   getTabId,
   getTabPanelId,
-  TabContext,
 } from "../Tab";
 
 import {
-  TabButtonInput,
-  TabButtonRoot,
   MenuButton,
-  TabButtonInputWrapper,
+  TabButtonInput,
   TabButtonInputResizer,
+  TabButtonInputWrapper,
+  TabButtonRoot,
 } from "./TabButton.styled";
 import { TabButtonMenu } from "./TabButtonMenu";
 
@@ -235,11 +236,13 @@ export function RenameableTabButton({
   }, [isRenaming]);
 
   const onFinishEditing = () => {
-    if (label.length === 0) {
+    const trimmedLabel = label.trim();
+
+    if (trimmedLabel.length === 0) {
       setLabel(prevLabel);
-    } else if (label !== prevLabel) {
-      setPrevLabel(label);
-      onRename(label);
+    } else if (trimmedLabel !== prevLabel) {
+      setPrevLabel(trimmedLabel);
+      onRename(trimmedLabel);
     }
     setIsRenaming(false);
   };
@@ -259,19 +262,9 @@ export function RenameableTabButton({
     ];
   }
 
-  const dragLabel = (s: string) => {
-    if (s.length < 20) {
-      return s;
-    } else {
-      return `${s.slice(0, 17)}...`;
-    }
-  };
-
-  const { isDragging } = useSortable({ id: props.value });
-
   return (
     <RenameableTabButtonStyled
-      label={isDragging ? dragLabel(label) : label}
+      label={label}
       isSelected={isSelected}
       isRenaming={canRename && isRenaming}
       canRename={canRename}

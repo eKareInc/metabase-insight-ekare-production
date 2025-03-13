@@ -1,16 +1,12 @@
 import { useState } from "react";
 import { t } from "ttag";
-import { isString, isEmpty } from "underscore";
+import { isEmpty, isString } from "underscore";
 
 import TokenField, { parseStringValue } from "metabase/components/TokenField";
 import { UpdateFilterButton } from "metabase/parameters/components/UpdateFilterButton";
-import {
-  WidgetRoot,
-  WidgetLabel,
-  Footer,
-  TokenFieldWrapper,
-} from "metabase/parameters/components/widgets/Widget.styled";
 import type { Parameter } from "metabase-types/api";
+
+import { Footer, TokenFieldWrapper, WidgetLabel, WidgetRoot } from "../Widget";
 
 type StringInputWidgetProps = {
   value: string[] | undefined;
@@ -78,7 +74,7 @@ export function StringInputWidget({
 
 function normalize(value: string[] | undefined): string[] {
   if (Array.isArray(value)) {
-    return value;
+    return value.filter(x => x !== undefined);
   } else {
     return [];
   }

@@ -1,15 +1,15 @@
 import type {
-  Revision,
   ListRevisionRequest,
   RevertRevisionRequest,
+  Revision,
 } from "metabase-types/api";
 
 import { Api } from "./api";
-import { listTag, invalidateTags, provideRevisionListTags } from "./tags";
+import { invalidateTags, listTag, provideRevisionListTags } from "./tags";
 
 export const revisionApi = Api.injectEndpoints({
   endpoints: builder => ({
-    listRevision: builder.query<Revision[], ListRevisionRequest>({
+    listRevisions: builder.query<Revision[], ListRevisionRequest>({
       query: params => ({
         method: "GET",
         url: "/api/revision",
@@ -29,4 +29,4 @@ export const revisionApi = Api.injectEndpoints({
   }),
 });
 
-export const { useListRevisionQuery, useRevertRevisionMutation } = revisionApi;
+export const { useListRevisionsQuery, useRevertRevisionMutation } = revisionApi;

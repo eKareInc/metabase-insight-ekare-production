@@ -7,6 +7,7 @@
    [metabase.legacy-mbql.schema :as mbql.s]
    [metabase.lib.util.match :as lib.util.match]
    [metabase.util :as u]
+   [metabase.util.malli.registry :as mr]
    [metabase.util.yaml :as yaml]
    [metabase.xrays.domain-entities.specs :refer [MBQL]]))
 
@@ -25,7 +26,7 @@
   [:sequential
    {:decode/transform-spec (fn [breakouts]
                              (for [breakout (u/one-or-many breakouts)]
-                               (if-not (mc/validate MBQL breakout)
+                               (if-not (mr/validate MBQL breakout)
                                  [:dimension breakout]
                                  breakout)))}
    MBQL])
@@ -41,8 +42,8 @@
   [:map-of
    ;; Since `Aggregation` and `Expressions` are structurally the same, we can't use them directly
    {:decode/transform-spec
-      (comp (partial u/topological-sort extract-dimensions)
-            stringify-keys)}
+    (comp (partial u/topological-sort extract-dimensions)
+          stringify-keys)}
    Dimension
    MBQL])
 
@@ -119,8 +120,8 @@
   [spec]
   (update spec :steps (partial m/map-kv-vals (fn [step-name step]
                                                (assoc step
-                                                 :name      step-name
-                                                 :transform (:name spec))))))
+                                                      :name      step-name
+                                                      :transform (:name spec))))))
 
 (defn- coerce-to-transform-spec [spec]
   (mc/coerce TransformSpec

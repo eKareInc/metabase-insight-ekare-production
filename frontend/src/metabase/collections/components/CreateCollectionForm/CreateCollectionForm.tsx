@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from "react";
-import { connect } from "react-redux";
 import { withRouter } from "react-router";
 import { t } from "ttag";
 import _ from "underscore";
@@ -9,7 +8,7 @@ import FormCollectionPicker from "metabase/collections/containers/FormCollection
 import type { FilterItemsInPersonalCollection } from "metabase/common/components/EntityPicker";
 import Button from "metabase/core/components/Button";
 import FormErrorMessage from "metabase/core/components/FormErrorMessage";
-import FormFooter from "metabase/core/components/FormFooter";
+import { FormFooter } from "metabase/core/components/FormFooter";
 import FormInput from "metabase/core/components/FormInput";
 import FormSubmitButton from "metabase/core/components/FormSubmitButton";
 import FormTextArea from "metabase/core/components/FormTextArea";
@@ -19,10 +18,11 @@ import Collections, {
 import { Form, FormProvider } from "metabase/forms";
 import { color } from "metabase/lib/colors";
 import * as Errors from "metabase/lib/errors";
+import { connect } from "metabase/lib/redux";
 import type { Collection } from "metabase-types/api";
 import type { State } from "metabase-types/store";
 
-import FormAuthorityLevelFieldContainer from "../../containers/FormAuthorityLevelFieldContainer";
+import { FormAuthorityLevelField } from "../../containers/FormAuthorityLevelFieldContainer";
 
 const COLLECTION_SCHEMA = Yup.object({
   name: Yup.string()
@@ -111,7 +111,7 @@ function CreateCollectionForm({
       validationSchema={COLLECTION_SCHEMA}
       onSubmit={handleCreate}
     >
-      {({ dirty, values }) => (
+      {({ dirty }) => (
         <Form>
           <FormInput
             name="name"
@@ -131,9 +131,7 @@ function CreateCollectionForm({
             title={t`Collection it's saved in`}
             filterPersonalCollections={filterPersonalCollections}
           />
-          <FormAuthorityLevelFieldContainer
-            collectionParentId={values.parent_id}
-          />
+          <FormAuthorityLevelField />
           <FormFooter>
             <FormErrorMessage inline />
             {!!onCancel && (

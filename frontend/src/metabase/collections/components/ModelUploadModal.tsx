@@ -1,18 +1,18 @@
-import { useState, useMemo, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { t } from "ttag";
 
-import { useSearchListQuery } from "metabase/common/hooks";
+import { useListCollectionItemsQuery } from "metabase/api";
 import {
-  Modal,
   Button,
   Flex,
-  Stack,
-  Select,
-  Radio,
-  Text,
   Icon,
+  Modal,
+  Radio,
+  Select,
+  Stack,
+  Text,
 } from "metabase/ui";
-import type { CollectionId, TableId, CardId } from "metabase-types/api";
+import type { CardId, CollectionId, TableId } from "metabase-types/api";
 import { UploadMode } from "metabase-types/store/upload";
 
 import type { OnFileUpload } from "../types";
@@ -45,17 +45,17 @@ export function ModelUploadModal({
 }) {
   const [uploadMode, setUploadMode] = useState<UploadMode>(UploadMode.create);
   const [tableId, setTableId] = useState<TableId | null>(null);
-  const models = useSearchListQuery({
-    query: {
-      collection: collectionId,
-      models: ["dataset"],
-    },
+
+  const { data, isLoading } = useListCollectionItemsQuery({
+    id: collectionId,
+    models: ["dataset"],
   });
 
   const uploadableModels = useMemo(
-    () => models.data?.filter(model => !!model.based_on_upload) ?? [],
-    [models.data],
+    () => data?.data?.filter(model => !!model.based_on_upload),
+    [data],
   );
+  const hasNoUploadableModels = !isLoading && uploadableModels?.length === 0;
 
   useEffect(
     function setDefaultTableId() {
@@ -71,12 +71,13 @@ export function ModelUploadModal({
 
   const handleUpload = () => {
     if (uploadMode !== UploadMode.create && tableId) {
-      const modelForTableId = uploadableModels.find(
+      const modelForTableId = uploadableModels?.find(
         model => model.based_on_upload === Number(tableId),
       );
+
       return onUpload({
         tableId: Number(tableId),
-        modelId: modelForTableId?.id,
+        modelId: modelForTableId?.id as number,
         uploadMode: uploadMode,
       });
     }
@@ -87,11 +88,12 @@ export function ModelUploadModal({
   useEffect(() => {
     // if we trigger the modal, and there's no uploadable models, just
     // automatically upload a new one
-    if (opened && uploadableModels.length === 0) {
+
+    if (opened && hasNoUploadableModels) {
       onUpload({ collectionId, uploadMode: UploadMode.create });
       onClose();
     }
-  }, [onUpload, onClose, collectionId, uploadableModels, opened]);
+  }, [onUpload, onClose, collectionId, opened, hasNoUploadableModels]);
 
   if (!uploadableModels?.length) {
     return null;
@@ -122,7 +124,7 @@ export function ModelUploadModal({
         </Text>
         <Radio.Group
           value={uploadMode}
-          onChange={(val: UploadMode) => setUploadMode(val)}
+          onChange={val => setUploadMode(val as UploadMode)}
           pl="1px"
         >
           <Radio label={t`Create a new model`} value={UploadMode.create} />
@@ -139,7 +141,8 @@ export function ModelUploadModal({
         </Radio.Group>
         {uploadMode !== UploadMode.create && (
           <Select
-            icon={<Icon name="model" />}
+            aria-label="Select a model"
+            leftSection={<Icon name="model" />}
             placeholder="Select a model"
             value={tableId ? String(tableId) : ""}
             data={

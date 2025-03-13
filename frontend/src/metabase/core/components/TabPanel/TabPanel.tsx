@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode, Ref } from "react";
 import { forwardRef, useContext } from "react";
 
-import { getTabId, getTabPanelId, TabContext } from "../Tab";
+import { TabContext, getTabId, getTabPanelId } from "../Tab";
 
 export interface TabPanelProps<T> extends HTMLAttributes<HTMLDivElement> {
   value?: T;
@@ -24,7 +24,6 @@ const TabPanel = forwardRef(function TabPanel<T>(
       id={panelId}
       role="tabpanel"
       hidden={!isSelected}
-      aria-expanded={isSelected}
       aria-labelledby={tabId}
     >
       {isSelected && children}

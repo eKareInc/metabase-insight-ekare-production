@@ -1,8 +1,7 @@
 import styled from "@emotion/styled";
 import { t } from "ttag";
 
-import { color } from "metabase/lib/colors";
-import { Text, Anchor } from "metabase/ui";
+import { Anchor, Text } from "metabase/ui";
 
 const Container = styled.div`
   background: var(--mb-color-bg-light);
@@ -12,7 +11,7 @@ const Container = styled.div`
 `;
 
 const Title = styled.div`
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
   font-weight: bold;
   text-transform: uppercase;
   margin-bottom: 0.5rem;

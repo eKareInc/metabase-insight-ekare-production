@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 import type { ComponentPropsWithRef } from "react";
 
@@ -29,7 +30,7 @@ export const SelectButtonRoot = styled.button<SelectButtonRootProps>`
     ${({ hasValue, highlighted }) =>
       hasValue && highlighted ? color("brand") : color("border")};
   background-color: ${({ hasValue, highlighted }) =>
-    hasValue && highlighted ? color("brand") : color("white")};
+    hasValue && highlighted ? color("brand") : color("bg-white")};
   border-radius: ${space(1)};
   font-weight: 700;
   min-width: 104px;
@@ -47,7 +48,7 @@ export const SelectButtonRoot = styled.button<SelectButtonRootProps>`
 
   &:disabled {
     background-color: var(--mb-color-bg-light);
-    color: ${color("text-medium")};
+    color: var(--mb-color-text-medium);
     pointer-events: none;
   }
 `;

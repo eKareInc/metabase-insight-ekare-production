@@ -1,18 +1,18 @@
 (ns metabase.lib.table-test
   (:require
+   #?@(:cljs ([metabase.test-runner.assert-exprs.approximately-equal]))
    [clojure.test :refer [deftest is testing]]
    [metabase.lib.core :as lib]
    [metabase.lib.metadata.protocols :as metadata.protocols]
    [metabase.lib.test-metadata :as meta]
    [metabase.lib.test-util :as lib.tu]
-   [metabase.util.malli :as mu]
-   #?@(:cljs ([metabase.test-runner.assert-exprs.approximately-equal]))))
+   [metabase.util.malli :as mu]))
 
 #?(:cljs (comment metabase.test-runner.assert-exprs.approximately-equal/keep-me))
 
 (deftest ^:parallel join-table-metadata-test
   (testing "You should be able to pass :metadata/table to lib/join INDIRECTLY VIA join-clause"
-    (let [query (-> lib.tu/venues-query
+    (let [query (-> (lib.tu/venues-query)
                     (lib/join (-> (lib/join-clause (meta/table-metadata :categories))
                                   (lib/with-join-alias "Cat")
                                   (lib/with-join-fields :all)
@@ -51,4 +51,4 @@
               nil))
           query (lib/query metadata-provider (meta/table-metadata :venues))]
       (mu/disable-enforcement
-       (is (sequential? (lib/visible-columns query)))))))
+        (is (sequential? (lib/visible-columns query)))))))

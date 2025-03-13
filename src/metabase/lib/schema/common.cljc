@@ -52,7 +52,8 @@
 ;;; Schema for a string that cannot be blank.
 (mr/def ::non-blank-string
   [:and
-   {:error/message "non-blank string"}
+   {:error/message "non-blank string"
+    :json-schema   {:type "string" :minLength 1}}
    [:string {:min 1}]
    [:fn
     {:error/message "non-blank string"}
@@ -106,7 +107,7 @@
 
 (mr/def ::semantic-or-relation-type
   [:and
-   {:doc/message "valid semantic or relation type"}
+   {:description "valid semantic or relation type"}
    [:keyword
     {:decode/normalize normalize-keyword}]
    [:fn

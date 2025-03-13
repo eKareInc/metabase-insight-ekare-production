@@ -1,15 +1,16 @@
+import cx from "classnames";
 import type { MouseEvent } from "react";
-import { useCallback, useState, memo } from "react";
+import { memo, useCallback, useState } from "react";
 import { t } from "ttag";
 
 import { isActionDashCard } from "metabase/actions/utils";
 import { isLinkDashCard, isVirtualDashCard } from "metabase/dashboard/utils";
-import { Icon } from "metabase/ui";
+import { Box, Icon } from "metabase/ui";
 import { getVisualizationRaw } from "metabase/visualizations";
 import type {
+  DashCardId,
   Dashboard,
   DashboardCard,
-  DashCardId,
   Series,
   VisualizationSettings,
 } from "metabase-types/api";
@@ -18,10 +19,7 @@ import { ActionSettingsButtonConnected } from "./ActionSettingsButton/ActionSett
 import { AddSeriesButton } from "./AddSeriesButton/AddSeriesButton";
 import { ChartSettingsButton } from "./ChartSettingsButton/ChartSettingsButton";
 import { DashCardActionButton } from "./DashCardActionButton/DashCardActionButton";
-import {
-  DashCardActionButtonsContainer,
-  DashCardActionsPanelContainer,
-} from "./DashCardActionsPanel.styled";
+import S from "./DashCardActionsPanel.module.css";
 import { DashCardTabMenu } from "./DashCardTabMenu/DashCardTabMenu";
 import { LinkCardEditButton } from "./LinkCardEditButton/LinkCardEditButton";
 import { useDuplicateDashCard } from "./use-duplicate-dashcard";
@@ -33,10 +31,11 @@ interface Props {
   isLoading: boolean;
   isPreviewing: boolean;
   hasError: boolean;
+  isTrashedOnRemove: boolean;
   onRemove: (dashcard: DashboardCard) => void;
   onAddSeries: (dashcard: DashboardCard) => void;
   onReplaceCard: (dashcard: DashboardCard) => void;
-  onReplaceAllVisualizationSettings: (
+  onReplaceAllDashCardVisualizationSettings: (
     dashcardId: DashCardId,
     settings: VisualizationSettings,
   ) => void;
@@ -48,6 +47,7 @@ interface Props {
   onPreviewToggle: () => void;
   onLeftEdge: boolean;
   onMouseDown: (event: MouseEvent) => void;
+  className?: string;
 }
 
 function DashCardActionsPanelInner({
@@ -57,15 +57,17 @@ function DashCardActionsPanelInner({
   isLoading,
   isPreviewing,
   hasError,
+  isTrashedOnRemove,
   onRemove,
   onAddSeries,
   onReplaceCard,
-  onReplaceAllVisualizationSettings,
+  onReplaceAllDashCardVisualizationSettings,
   onUpdateVisualizationSettings,
   showClickBehaviorSidebar,
   onPreviewToggle,
   onLeftEdge,
   onMouseDown,
+  className,
 }: Props) {
   const {
     disableSettingsConfig,
@@ -95,9 +97,9 @@ function DashCardActionsPanelInner({
         return;
       }
 
-      onReplaceAllVisualizationSettings(dashcard.id, settings);
+      onReplaceAllDashCardVisualizationSettings(dashcard.id, settings);
     },
-    [dashcard, onReplaceAllVisualizationSettings],
+    [dashcard, onReplaceAllDashCardVisualizationSettings],
   );
 
   const handleReplaceCard = useCallback(() => {
@@ -135,20 +137,15 @@ function DashCardActionsPanelInner({
     );
   }
 
-  if (supportPreviewing) {
+  if (supportPreviewing && isPreviewing) {
     buttons.push(
       <DashCardActionButton
         key="preview"
         onClick={onPreviewToggle}
-        tooltip={isPreviewing ? t`Edit` : t`Preview`}
-        aria-label={isPreviewing ? t`Edit card` : t`Preview card`}
-        analyticsEvent="Dashboard;Text;edit"
+        tooltip={t`Edit`}
+        aria-label={t`Edit card`}
       >
-        {isPreviewing ? (
-          <DashCardActionButton.Icon name="edit_document" />
-        ) : (
-          <DashCardActionButton.Icon name="eye" size={18} />
-        )}
+        {isPreviewing ? <DashCardActionButton.Icon name="pencil" /> : null}
       </DashCardActionButton>,
     );
   }
@@ -174,7 +171,6 @@ function DashCardActionsPanelInner({
           key="click-behavior-tooltip"
           aria-label={t`Click behavior`}
           tooltip={t`Click behavior`}
-          analyticsEvent="Dashboard;Open Click Behavior Sidebar"
           onClick={showClickBehaviorSidebar}
         >
           <Icon name="click" />
@@ -242,24 +238,48 @@ function DashCardActionsPanelInner({
     }
   }
 
+  if (isTrashedOnRemove) {
+    buttons.push(
+      <DashCardActionButton
+        onClick={handleRemoveCard}
+        tooltip={t`Remove and trash`}
+        key="remove"
+      >
+        <DashCardActionButton.Icon name="trash" />
+      </DashCardActionButton>,
+    );
+  } else {
+    buttons.push(
+      <DashCardActionButton
+        onClick={handleRemoveCard}
+        tooltip={t`Remove`}
+        key="remove"
+      >
+        <DashCardActionButton.Icon name="close" />
+      </DashCardActionButton>,
+    );
+  }
+
   return (
-    <DashCardActionsPanelContainer
+    <Box
+      className={cx(
+        S.DashCardActionsPanelContainer,
+        {
+          [S.isDashCardTabMenuOpen]: isDashCardTabMenuOpen,
+          [S.onLeftEdge]: onLeftEdge,
+        },
+        className,
+      )}
+      pos="absolute"
+      top={0}
+      right="20px"
       data-testid="dashboardcard-actions-panel"
       onMouseDown={onMouseDown}
-      isDashCardTabMenuOpen={isDashCardTabMenuOpen}
-      onLeftEdge={onLeftEdge}
     >
-      <DashCardActionButtonsContainer>
+      <Box className={S.DashCardActionButtonsContainer} component="span">
         {buttons}
-        <DashCardActionButton
-          onClick={handleRemoveCard}
-          tooltip={t`Remove`}
-          analyticsEvent="Dashboard;Remove Card Modal"
-        >
-          <DashCardActionButton.Icon name="close" />
-        </DashCardActionButton>
-      </DashCardActionButtonsContainer>
-    </DashCardActionsPanelContainer>
+      </Box>
+    </Box>
   );
 }
 

@@ -1,6 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import { color } from "metabase/lib/colors";
 import { APP_BAR_HEIGHT } from "metabase/nav/constants";
 
 interface AppBarRootProps {
@@ -33,10 +33,10 @@ export const AppBarRightContainer = styled.div`
   align-items: center;
   gap: 1rem;
   max-width: 32.5rem;
-  justify-content: end;
+  justify-content: flex-end;
 `;
 
-export interface AppBarInfoContainerProps {
+interface AppBarInfoContainerProps {
   isVisible?: boolean;
 }
 
@@ -50,5 +50,5 @@ export const AppBarInfoContainer = styled.div<AppBarInfoContainerProps>`
 `;
 
 export const AppBarProfileLinkContainer = styled.div`
-  color: ${color("text-light")};
+  color: var(--mb-color-text-light);
 `;

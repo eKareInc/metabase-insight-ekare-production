@@ -2,13 +2,19 @@ import userEvent from "@testing-library/user-event";
 
 import {
   setupDatabasesEndpoints,
+  setupParameterValuesEndpoints,
   setupSearchEndpoints,
 } from "__support__/server-mocks";
 import { createMockEntitiesState } from "__support__/store";
-import { renderWithProviders, screen } from "__support__/ui";
+import {
+  mockScrollIntoView,
+  renderWithProviders,
+  screen,
+  waitFor,
+} from "__support__/ui";
 import { checkNotNull } from "metabase/lib/types";
 import { getMetadata } from "metabase/selectors/metadata";
-import type { TemplateTag } from "metabase-types/api";
+import type { Card, TemplateTag } from "metabase-types/api";
 import {
   createMockCard,
   createMockNativeDatasetQuery,
@@ -16,10 +22,10 @@ import {
   createMockTemplateTag,
 } from "metabase-types/api/mocks";
 import {
-  createSampleDatabase,
   ORDERS,
   PEOPLE,
   REVIEWS,
+  createSampleDatabase,
 } from "metabase-types/api/mocks/presets";
 import {
   createMockQueryBuilderState,
@@ -30,15 +36,21 @@ import { TagEditorParam } from "./TagEditorParam";
 
 interface SetupOpts {
   tag?: TemplateTag;
+  originalCard?: Card;
 }
 
-const setup = ({ tag = createMockTemplateTag() }: SetupOpts = {}) => {
+const setup = ({
+  tag = createMockTemplateTag(),
+  originalCard,
+}: SetupOpts = {}) => {
+  mockScrollIntoView();
   const database = createSampleDatabase();
   const state = createMockState({
     qb: createMockQueryBuilderState({
       card: createMockCard({
         dataset_query: createMockNativeDatasetQuery(),
       }),
+      originalCard,
     }),
     entities: createMockEntitiesState({
       databases: [database],
@@ -51,6 +63,10 @@ const setup = ({ tag = createMockTemplateTag() }: SetupOpts = {}) => {
 
   setupDatabasesEndpoints([database]);
   setupSearchEndpoints([]);
+  setupParameterValuesEndpoints({
+    values: [],
+    has_more_values: false,
+  });
 
   const setTemplateTag = jest.fn();
   const setTemplateTagConfig = jest.fn();
@@ -114,6 +130,29 @@ describe("TagEditorParam", () => {
         "widget-type": undefined,
       });
     });
+
+    it("should not throw when the original question is an mbql query (metabase#50662)", async () => {
+      const tag = createMockTemplateTag({
+        type: "dimension",
+        dimension: ["field", PEOPLE.NAME, null],
+        "widget-type": "string/starts-with",
+      });
+      const originalCard = createMockCard();
+      const { setTemplateTag } = setup({ tag, originalCard });
+
+      await userEvent.click(screen.getByTestId("variable-type-select"));
+      await userEvent.click(screen.getByText("Field Filter"));
+      await userEvent.click(screen.getByTestId("variable-type-select"));
+      await userEvent.click(screen.getByText("Number"));
+
+      expect(setTemplateTag).toHaveBeenCalledWith({
+        ...tag,
+        type: "number",
+        default: undefined,
+        dimension: undefined,
+        "widget-type": undefined,
+      });
+    });
   });
 
   describe("tag dimension", () => {
@@ -125,6 +164,8 @@ describe("TagEditorParam", () => {
       });
       const { setTemplateTag } = setup({ tag });
 
+      await waitForElementsToLoad("People");
+
       await userEvent.click(await screen.findByText("People"));
       await userEvent.click(await screen.findByText("Source"));
 
@@ -134,7 +175,7 @@ describe("TagEditorParam", () => {
         "widget-type": "string/=",
         options: undefined,
       });
-    });
+    }, 40000);
 
     it("should default to string/contains for a new high cardinality string field filter", async () => {
       const tag = createMockTemplateTag({
@@ -143,6 +184,8 @@ describe("TagEditorParam", () => {
         "widget-type": undefined,
       });
       const { setTemplateTag } = setup({ tag });
+
+      await waitForElementsToLoad("People");
 
       await userEvent.click(await screen.findByText("People"));
       await userEvent.click(await screen.findByText("Name"));
@@ -153,7 +196,7 @@ describe("TagEditorParam", () => {
         "widget-type": "string/contains",
         options: { "case-sensitive": false },
       });
-    });
+    }, 40000);
 
     it("should default to number/= for a new numeric field filter", async () => {
       const tag = createMockTemplateTag({
@@ -162,6 +205,8 @@ describe("TagEditorParam", () => {
         "widget-type": undefined,
       });
       const { setTemplateTag } = setup({ tag });
+
+      await waitForElementsToLoad("Orders");
 
       await userEvent.click(await screen.findByText("Orders"));
       await userEvent.click(await screen.findByText("Quantity"));
@@ -172,7 +217,7 @@ describe("TagEditorParam", () => {
         "widget-type": "number/=",
         options: undefined,
       });
-    });
+    }, 40000);
 
     it("should default to number/= for a new reviews->rating field filter (metabase#16151)", async () => {
       const tag = createMockTemplateTag({
@@ -181,6 +226,8 @@ describe("TagEditorParam", () => {
         "widget-type": undefined,
       });
       const { setTemplateTag } = setup({ tag });
+
+      await waitForElementsToLoad("Reviews");
 
       await userEvent.click(await screen.findByText("Reviews"));
       await userEvent.click(await screen.findByText("Rating"));
@@ -191,7 +238,7 @@ describe("TagEditorParam", () => {
         "widget-type": "number/=",
         options: undefined,
       });
-    });
+    }, 40000);
 
     it("should allow to change the field for a field filter", async () => {
       const tag = createMockTemplateTag({
@@ -201,14 +248,16 @@ describe("TagEditorParam", () => {
       });
       const { setTemplateTag } = setup({ tag });
 
-      await userEvent.click(await screen.findByText("Name"));
+      await waitForElementsToLoad("Name");
+
+      await userEvent.click(screen.getByText("Name"));
       await userEvent.click(await screen.findByText("Address"));
 
       expect(setTemplateTag).toHaveBeenCalledWith({
         ...tag,
         dimension: ["field", PEOPLE.ADDRESS, null],
       });
-    });
+    }, 40000);
   });
 
   describe("tag widget type", () => {
@@ -307,3 +356,12 @@ describe("TagEditorParam", () => {
     });
   });
 });
+
+async function waitForElementsToLoad(text: string) {
+  await waitFor(
+    () => {
+      expect(screen.getByText(text)).toBeInTheDocument();
+    },
+    { timeout: 20000 },
+  );
+}

@@ -22,21 +22,26 @@
 (defmulti sso-get
   "Multi-method for supporting the first part of an SSO signin request. An implementation of this method will usually
   result in a redirect to an SSO backend"
+  {:arglists '([request])}
   sso-backend)
 
 (defmulti sso-post
   "Multi-method for supporting a POST-back from an SSO signin request. An implementation of this method will need to
   validate the POST from the SSO backend and successfully log the user into Metabase."
+  {:arglists '([request])}
   sso-backend)
 
 (defmulti sso-handle-slo
   "Multi-method for handling a SLO request from an SSO backend. An implementation of this method will need to validate
   the SLO request and log the user out of Metabase."
+  {:arglists '([request])}
   sso-backend)
 
 (defn- throw-not-configured-error []
-  (throw (ex-info (str (tru "SSO has not been enabled and/or configured"))
-                  {:status-code 400})))
+  (throw
+   (ex-info (tru "SSO has not been enabled and/or configured")
+            {:status-code 400
+             :status      "error-sso-disabled"})))
 
 (defmethod sso-get :default
   [_]

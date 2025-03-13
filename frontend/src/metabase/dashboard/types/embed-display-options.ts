@@ -1,55 +1,32 @@
+import type { DashboardNightModeControls } from "metabase/dashboard/types/display-options";
 import type { DisplayTheme } from "metabase/public/lib/types";
+import type { ClickActionModeGetter } from "metabase/visualizations/types";
 
-export type EmbedTitle = boolean;
-export type EmbedTitledControls = {
-  titled: EmbedTitle;
-  setTitled: (titled: EmbedTitle) => void;
-};
+type EmbedBackground = boolean;
 
-export type EmbedHideDownloadButton = boolean | null;
-export type EmbedHideDownloadButtonControls = {
-  hideDownloadButton: EmbedHideDownloadButton;
-  setHideDownloadButton: (hideDownloadButton: EmbedHideDownloadButton) => void;
-};
+type EmbedTitle = boolean;
 
 export type EmbedHideParameters = string | null;
 export type EmbedHideParametersControls = {
   hideParameters: EmbedHideParameters;
-  setHideParameters: (hideParameters: EmbedHideParameters) => void;
 };
+
+export type EmbedFont = string | null;
 
 export type EmbedThemeControls = {
   theme: DisplayTheme;
   setTheme: (theme: DisplayTheme) => void;
-  hasNightModeToggle: boolean;
-  onNightModeChange: (isNightMode: boolean) => void;
-  isNightMode: boolean;
-};
-
-export type EmbedFont = string | null;
-export type EmbedFontControls = {
-  font: EmbedFont;
-  setFont: (font: EmbedFont) => void;
-};
-
-export type EmbedBordered = boolean;
-export type EmbedBorderControls = {
-  bordered: EmbedBordered;
-  setBordered: (bordered: EmbedBordered) => void;
-};
+} & DashboardNightModeControls;
 
 export type EmbedDisplayParams = {
-  bordered: EmbedBordered;
+  background: EmbedBackground;
+  bordered: boolean;
   titled: EmbedTitle;
-  hideDownloadButton: EmbedHideDownloadButton;
+  cardTitled: EmbedTitle;
   hideParameters: EmbedHideParameters;
   font: EmbedFont;
   theme: DisplayTheme;
+  getClickActionMode?: ClickActionModeGetter;
+  downloadsEnabled: boolean;
+  withFooter: boolean;
 };
-
-export type EmbedDisplayControls = EmbedThemeControls &
-  EmbedBorderControls &
-  EmbedTitledControls &
-  EmbedHideDownloadButtonControls &
-  EmbedHideParametersControls &
-  EmbedFontControls;

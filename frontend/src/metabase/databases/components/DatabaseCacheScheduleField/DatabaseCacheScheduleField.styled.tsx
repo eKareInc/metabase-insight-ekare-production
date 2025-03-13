@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { color } from "metabase/lib/colors";
@@ -68,7 +69,7 @@ export const ScheduleOptionContent = styled.div`
 `;
 
 export const ScheduleOptionText = styled.div`
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
   font-size: 1rem;
   line-height: 1.5rem;
   max-width: 38.75rem;

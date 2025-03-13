@@ -1,10 +1,12 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
+import { forwardRef } from "react";
 
 import FormField from "metabase/core/components/FormField";
 import Radio from "metabase/core/components/Radio";
-import { color, darken } from "metabase/lib/colors";
+import { darken } from "metabase/lib/colors";
 import { space } from "metabase/styled-components/theme";
-import { Icon } from "metabase/ui";
+import { Icon, type IconProps } from "metabase/ui";
 
 const DRAG_HANDLE_SIZE = 12;
 
@@ -38,7 +40,6 @@ export const Column = styled.div<{ full?: boolean }>`
   display: flex;
   flex-direction: column;
   flex: ${props => (props.full ? 1 : "unset")};
-
   min-width: ${DRAG_HANDLE_SIZE}px;
 `;
 
@@ -49,29 +50,29 @@ export const Header = styled.div`
 `;
 
 export const Title = styled.div`
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-dark);
   font-weight: 700;
 `;
 
 export const Subtitle = styled.div`
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
   font-size: 0.85rem;
   font-weight: 700;
-
   margin-top: 1.2rem;
 `;
 
-export const DragHandle = styled(Icon)`
-  color: ${color("text-medium")};
+export const DragHandle = styled(
+  forwardRef<SVGSVGElement, IconProps>(function DragHandle(props, ref) {
+    return <Icon {...props} size={props.size ?? DRAG_HANDLE_SIZE} ref={ref} />;
+  }),
+)`
+  color: var(--mb-color-text-medium);
   margin-top: 4px;
 `;
-
-DragHandle.defaultProps = { size: DRAG_HANDLE_SIZE };
 
 export const PreviewContainer = styled(ContentContainer)`
   background-color: var(--mb-color-bg-light);
   border-top: 1px solid ${() => darken("bg-light", 0.1)};
-
   padding: 1rem 1rem 2rem 1rem;
 
   ${FormField.Root} {
@@ -79,7 +80,7 @@ export const PreviewContainer = styled(ContentContainer)`
   }
 
   ${FormField.Label} {
-    color: ${color("text-dark")};
+    color: var(--mb-color-text-dark);
   }
 `;
 

@@ -1,7 +1,6 @@
 import cx from "classnames";
 import type { StyleHTMLAttributes } from "react";
-import { useState, useRef, useEffect } from "react";
-import { connect } from "react-redux";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import { useMount, usePrevious, useUnmount } from "react-use";
 import { jt, t } from "ttag";
 import _ from "underscore";
@@ -15,9 +14,9 @@ import type { LayoutRendererArgs } from "metabase/components/TokenField/TokenFie
 import ValueComponent from "metabase/components/Value";
 import CS from "metabase/css/core/index.css";
 import Fields from "metabase/entities/fields";
-import { parseNumberValue } from "metabase/lib/number";
+import { parseNumber } from "metabase/lib/number";
 import { defer } from "metabase/lib/promise";
-import { useDispatch } from "metabase/lib/redux";
+import { connect, useDispatch } from "metabase/lib/redux";
 import { isNotNull } from "metabase/lib/types";
 import {
   fetchCardParameterValues,
@@ -29,8 +28,8 @@ import type Question from "metabase-lib/v1/Question";
 import type Field from "metabase-lib/v1/metadata/Field";
 import type {
   Dashboard,
-  Parameter,
   FieldValue,
+  Parameter,
   RowValue,
 } from "metabase-types/api";
 import type { State } from "metabase-types/store";
@@ -38,22 +37,23 @@ import type { State } from "metabase-types/store";
 import ExplicitSize from "../ExplicitSize";
 
 import { OptionsMessage, StyledEllipsified } from "./FieldValuesWidget.styled";
-import type { ValuesMode, LoadingStateType } from "./types";
+import type { LoadingStateType, ValuesMode } from "./types";
 import {
-  canUseParameterEndpoints,
-  isNumeric,
-  hasList,
-  isSearchable,
-  isExtensionOfPreviousSearch,
-  showRemapping,
-  getNonVirtualFields,
-  dedupeValues,
-  searchFieldValues,
-  getValuesMode,
-  shouldList,
-  canUseDashboardEndpoints,
   canUseCardEndpoints,
+  canUseDashboardEndpoints,
+  canUseParameterEndpoints,
+  dedupeValues,
+  getNonVirtualFields,
   getTokenFieldPlaceholder,
+  getValue,
+  getValuesMode,
+  hasList,
+  isExtensionOfPreviousSearch,
+  isNumeric,
+  isSearchable,
+  searchFieldValues,
+  shouldList,
+  showRemapping,
 } from "./utils";
 
 const MAX_SEARCH_RESULTS = 100;
@@ -87,11 +87,11 @@ export interface IFieldValuesWidgetProps {
   parameter?: Parameter;
   parameters?: Parameter[];
   fields: Field[];
-  dashboard?: Dashboard;
+  dashboard?: Dashboard | null;
   question?: Question;
 
-  value: string[];
-  onChange: (value: string[]) => void;
+  value: RowValue[];
+  onChange: (value: RowValue[]) => void;
 
   multi?: boolean;
   autoFocus?: boolean;
@@ -105,37 +105,43 @@ export interface IFieldValuesWidgetProps {
   layoutRenderer?: (props: LayoutRendererArgs) => JSX.Element;
 }
 
-export function FieldValuesWidgetInner({
-  color,
-  maxResults = MAX_SEARCH_RESULTS,
-  alwaysShowOptions = true,
-  style = {},
-  formatOptions = {},
-  containerWidth,
-  maxWidth = 500,
-  minWidth,
-  width,
-  disableList = false,
-  disableSearch = false,
-  disablePKRemappingForSearch,
-  showOptionsInPopover = false,
-  parameter,
-  parameters,
-  fields,
-  dashboard,
-  question,
-  value,
-  onChange,
-  multi,
-  autoFocus,
-  className,
-  prefix,
-  placeholder,
-  checkedColor,
-  valueRenderer,
-  optionRenderer,
-  layoutRenderer,
-}: IFieldValuesWidgetProps) {
+export const FieldValuesWidgetInner = forwardRef<
+  HTMLDivElement,
+  IFieldValuesWidgetProps
+>(function FieldValuesWidgetInner(
+  {
+    color,
+    maxResults = MAX_SEARCH_RESULTS,
+    alwaysShowOptions = true,
+    style = {},
+    formatOptions = {},
+    containerWidth,
+    maxWidth = 500,
+    minWidth,
+    width,
+    disableList = false,
+    disableSearch = false,
+    disablePKRemappingForSearch,
+    showOptionsInPopover = false,
+    parameter,
+    parameters,
+    fields,
+    dashboard,
+    question,
+    value,
+    onChange,
+    multi,
+    autoFocus,
+    className,
+    prefix,
+    placeholder,
+    checkedColor,
+    valueRenderer,
+    optionRenderer,
+    layoutRenderer,
+  },
+  ref,
+) {
   const [options, setOptions] = useState<FieldValue[]>([]);
   const [loadingState, setLoadingState] = useState<LoadingStateType>("INIT");
   const [lastValue, setLastValue] = useState<string>("");
@@ -192,9 +198,8 @@ export function FieldValuesWidgetInner({
         newOptions = values;
         newValuesMode = has_more_values ? "search" : newValuesMode;
       } else if (canUseParameterEndpoints(parameter)) {
-        const { values, has_more_values } = await dispatchFetchParameterValues(
-          query,
-        );
+        const { values, has_more_values } =
+          await dispatchFetchParameterValues(query);
         newOptions = values;
         newValuesMode = has_more_values ? "search" : newValuesMode;
       } else {
@@ -361,19 +366,28 @@ export function FieldValuesWidgetInner({
   };
 
   if (!valueRenderer) {
-    valueRenderer = (value: string | number) =>
-      renderValue({
+    valueRenderer = (value: string | number) => {
+      const option = options.find(option => getValue(option) === value);
+      return renderValue({
         fields,
         formatOptions,
         value,
         autoLoad: true,
         compact: false,
+        displayValue: option?.[1],
       });
+    };
   }
 
   if (!optionRenderer) {
     optionRenderer = (option: FieldValue) =>
-      renderValue({ fields, formatOptions, value: option[0], autoLoad: false });
+      renderValue({
+        fields,
+        formatOptions,
+        value: option[0],
+        autoLoad: false,
+        displayValue: option[1],
+      });
   }
 
   if (!layoutRenderer) {
@@ -428,14 +442,16 @@ export function FieldValuesWidgetInner({
     options,
   });
 
-  const parseFreeformValue = (value: string | number) => {
-    return isNumeric(fields[0], parameter)
-      ? parseNumberValue(value)
-      : parseStringValue(value);
+  const parseFreeformValue = (value: string | undefined) => {
+    if (isNumeric(fields[0], parameter)) {
+      const number = typeof value === "string" ? parseNumber(value) : null;
+      return typeof number === "bigint" ? String(number) : number;
+    }
+    return parseStringValue(value);
   };
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary ref={ref}>
       <div
         data-testid="field-values-widget"
         style={{
@@ -443,6 +459,7 @@ export function FieldValuesWidgetInner({
           minWidth: minWidth ?? undefined,
           maxWidth: maxWidth ?? undefined,
         }}
+        ref={ref}
       >
         {isListMode && isLoading ? (
           <LoadingState />
@@ -450,7 +467,7 @@ export function FieldValuesWidgetInner({
           <ListField
             isDashboardFilter={!!parameter}
             placeholder={tokenFieldPlaceholder}
-            value={value?.filter((v: string) => v != null)}
+            value={value?.filter((v: RowValue) => v != null)}
             onChange={onChange}
             options={options}
             optionRenderer={optionRenderer}
@@ -504,10 +521,15 @@ export function FieldValuesWidgetInner({
       </div>
     </ErrorBoundary>
   );
-}
+});
 
 export const FieldValuesWidget = ExplicitSize<IFieldValuesWidgetProps>()(
   FieldValuesWidgetInner,
+);
+
+// eslint-disable-next-line import/no-default-export
+export default connect(mapStateToProps, null, null, { forwardRef: true })(
+  FieldValuesWidget,
 );
 
 const LoadingState = () => (
@@ -515,7 +537,7 @@ const LoadingState = () => (
     className={cx(CS.flex, CS.layoutCentered, CS.alignCenter)}
     style={{ minHeight: 82 }}
   >
-    <LoadingSpinner size={32} />
+    <LoadingSpinner size={16} />
   </div>
 );
 
@@ -541,9 +563,6 @@ const EveryOptionState = () => (
   <OptionsMessage>{t`Including every option in your filter probably won’t do much…`}</OptionsMessage>
 );
 
-// eslint-disable-next-line import/no-default-export
-export default connect(mapStateToProps)(FieldValuesWidget);
-
 interface RenderOptionsProps {
   alwaysShowOptions: boolean;
   parameter?: Parameter;
@@ -558,7 +577,6 @@ interface RenderOptionsProps {
   isAllSelected: boolean;
   isFiltered: boolean;
 }
-
 function renderOptions({
   alwaysShowOptions,
   parameter,
@@ -619,19 +637,22 @@ function renderValue({
   value,
   autoLoad,
   compact,
+  displayValue,
 }: {
   fields: Field[];
   formatOptions: Record<string, any>;
   value: RowValue;
   autoLoad?: boolean;
   compact?: boolean;
+  displayValue?: string;
 }) {
   return (
     <ValueComponent
       value={value}
       column={fields[0]}
       maximumFractionDigits={20}
-      remap={showRemapping(fields)}
+      remap={displayValue || showRemapping(fields)}
+      displayValue={displayValue}
       {...formatOptions}
       autoLoad={autoLoad}
       compact={compact}

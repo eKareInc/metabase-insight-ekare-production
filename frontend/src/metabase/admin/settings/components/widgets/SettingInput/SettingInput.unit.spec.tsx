@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
+import { render, screen } from "__support__/ui";
 
 import { SettingInput } from "./SettingInput";
 
@@ -67,6 +68,7 @@ describe("SettingInput", () => {
 
       return value;
     }
+
     it("should render the input", () => {
       const value = "/";
       setup({ setting, value, type: "text", normalize });

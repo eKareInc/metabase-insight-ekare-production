@@ -49,6 +49,8 @@ const ResetAllToDefaultButtonFormBody = () => {
             }}
             label={
               <Text
+                // Prevents the label from getting cut off vertically
+                h="1rem"
                 lh="1"
                 fw="normal"
                 color="error"
@@ -57,7 +59,7 @@ const ResetAllToDefaultButtonFormBody = () => {
             activeLabel={<Loader size="xs" />}
             successLabel={
               <Text fw="bold" lh="1" color="success">
-                <Group spacing="xs">
+                <Group gap="xs">
                   <Icon name="check" /> {t`Success`}
                 </Group>
               </Text>

@@ -90,7 +90,7 @@
    ;;
    ;; TODO FIXME -- actually, it turns out the the FE client passes parameter type `:category` for parameters in
    ;; public Cards. Who knows why! For now, we'll continue allowing it. But we should fix it soon. See
-   ;; [[metabase.api.public-test/execute-public-card-with-parameters-test]]
+   ;; [[metabase.public-sharing.api-test/execute-public-card-with-parameters-test]]
    :id       {:allowed-for #{:id}}
    :category {:allowed-for #{:category #_FIXME :number :text :date :boolean}}
 
@@ -192,11 +192,16 @@
    [:expression   [:ref ::legacy-expression-ref]]
    [:template-tag [:ref ::template-tag]]])
 
-(mr/def ::dimension
-  [:tuple
-   #_tag    [:= {:decode/normalize lib.schema.common/normalize-keyword} :dimension]
-   #_target [:ref ::dimension.target]])
+(mr/def ::DimensionOptions
+  [:map
+   {:error/message "dimension options"}
+   [:stage-number {:optional true} :int]])
 
+(mr/def ::dimension
+  [:catn
+   [:tag     [:= {:decode/normalize lib.schema.common/normalize-keyword} :dimension]]
+   [:target  ::dimension.target]
+   [:options [:? [:maybe ::DimensionOptions]]]])
 ;;; this is the reference like [:template-tag <whatever>], not the schema for native query template tags -- that lives
 ;;; in [[metabase.lib.schema.template-tag]]
 (mr/def ::template-tag

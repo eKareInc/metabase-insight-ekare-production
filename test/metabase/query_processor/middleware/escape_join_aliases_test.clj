@@ -22,7 +22,7 @@
     (thunk)
     (qp.store/with-metadata-provider (lib.tu/merged-mock-metadata-provider
                                       meta/metadata-provider
-                                      {:database {:lib/methods {:escape-alias #(driver/escape-alias driver/*driver* %)}}})
+                                      {:database {}})
       (thunk))))
 
 ;;; the tests below are tests for the individual sub-steps of the middleware.
@@ -75,6 +75,7 @@
                       actual))
           (recur expected more))))))
 
+#_{:clj-kondo/ignore [:metabase/i-like-making-cams-eyes-bleed-with-horrifically-long-tests]}
 (deftest ^:parallel steps-test-1
   (test-steps
    (ordered-map/ordered-map
@@ -479,7 +480,6 @@
                                                :temporal-unit :month}]
                                     [:field 6 {:join-alias    "Q2"
                                                :temporal-unit :month}]]}]})))
-
 
 ;;; these are e2e tests
 

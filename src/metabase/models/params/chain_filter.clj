@@ -71,8 +71,8 @@
    [metabase.db.query :as mdb.query]
    [metabase.driver.common.parameters.dates :as params.dates]
    [metabase.legacy-mbql.util :as mbql.u]
+   [metabase.lib.ident :as lib.ident]
    [metabase.lib.util.match :as lib.util.match]
-   [metabase.models :refer [Field FieldValues Table]]
    [metabase.models.database :as database]
    [metabase.models.field :as field]
    [metabase.models.field-values :as field-values]
@@ -80,6 +80,7 @@
    [metabase.models.params.chain-filter.dedupe-joins :as dedupe]
    [metabase.models.params.field-values :as params.field-values]
    [metabase.query-processor :as qp]
+   [metabase.query-processor.compile :as qp.compile]
    [metabase.query-processor.middleware.permissions :as qp.perms]
    [metabase.query-processor.preprocess :as qp.preprocess]
    [metabase.query-processor.setup :as qp.setup]
@@ -123,10 +124,10 @@
    ^{::memoize/args-fn (fn [[field-id]]
                          [(mdb/unique-identifier) field-id])}
    (fn [field-id]
-     (types/temporal-field? (t2/select-one [Field :base_type :semantic_type] :id field-id)))
+     (types/temporal-field? (t2/select-one [:model/Field :base_type :semantic_type] :id field-id)))
    :ttl/threshold (u/minutes->ms 10)))
 
-(mu/defn ^:private filter-clause
+(mu/defn- filter-clause
   "Generate a single MBQL `:filter` clause for a Field and `value` (or multiple values, if `value` is a collection)."
   [source-table-id
    {:keys [field-id op value options]} :- Constraint]
@@ -147,10 +148,10 @@
 
 (defn- format-join-for-logging [join]
   (format "%s %s -> %s %s"
-          (name-for-logging Table (-> join :lhs :table))
-          (name-for-logging Field (-> join :lhs :field))
-          (name-for-logging Table (-> join :rhs :table))
-          (name-for-logging Field (-> join :rhs :field))))
+          (name-for-logging :model/Table (-> join :lhs :table))
+          (name-for-logging :model/Field (-> join :lhs :field))
+          (name-for-logging :model/Table (-> join :rhs :table))
+          (name-for-logging :model/Field (-> join :rhs :field))))
 
 (defn- format-joins-for-logging [joins]
   (str/join "\n"
@@ -169,14 +170,14 @@
                (contains? joined-table-ids field-table-id))
          (let [clause (filter-clause source-table-id constraint)]
            (log/tracef "Added filter clause for %s %s: %s"
-                       (name-for-logging Table field-table-id)
-                       (name-for-logging Field field-id)
+                       (name-for-logging :model/Table field-table-id)
+                       (name-for-logging :model/Field field-id)
                        clause)
            (update query :filter mbql.u/combine-filter-clauses clause))
          (do
            (log/tracef "Not adding filter clause for %s %s because we did not join against its Table"
-                       (name-for-logging Table field-table-id)
-                       (name-for-logging Field field-id))
+                       (name-for-logging :model/Table field-table-id)
+                       (name-for-logging :model/Field field-id))
            query))))
    query
    constraints))
@@ -195,10 +196,10 @@
                                            [:pk-field.table_id :t2]]
                                :from      [[:metabase_field :fk-field]]
                                :left-join [[:metabase_table :fk-table]    [:and [:= :fk-field.table_id :fk-table.id]
-                                                                                :fk-table.active]
+                                                                           :fk-table.active]
                                            [:metabase_database :database] [:= :fk-table.db_id :database.id]
                                            [:metabase_field :pk-field]    [:and [:= :fk-field.fk_target_field_id :pk-field.id]
-                                                                                :pk-field.active]]
+                                                                           :pk-field.active]]
                                :where     [:and
                                            [:= :database.id database-id]
                                            [:not= :fk-field.fk_target_field_id nil]
@@ -321,8 +322,8 @@
                              other-table-ids)]
        (when (seq all-joins)
          (log/tracef "Deduplicating for source %s; Tables to keep: %s\n%s"
-                     (name-for-logging Table source-table-id)
-                     (str/join ", " (map (partial name-for-logging Table)
+                     (name-for-logging :model/Table source-table-id)
+                     (str/join ", " (map (partial name-for-logging :model/Table)
                                          other-table-ids))
                      (format-joins-for-logging all-joins))
          (u/prog1 (vec (dedupe/dedupe-joins source-table-id all-joins other-table-ids))
@@ -361,9 +362,10 @@
                                 [:field lhs-field-id (when-not (= lhs-table-id source-table-id)
                                                        {:join-alias (joined-table-alias lhs-table-id)})]
                                 [:field rhs-field-id {:join-alias (joined-table-alias rhs-table-id)}]]
+                 :ident        (lib.ident/random-ident)
                  :alias        (joined-table-alias rhs-table-id)}]
        (log/tracef "Adding join against %s\n%s"
-                   (name-for-logging Table rhs-table-id) (u/pprint-to-str join))
+                   (name-for-logging :model/Table rhs-table-id) (u/pprint-to-str join))
        (update query :joins concat [join])))
    query
    joins))
@@ -377,7 +379,7 @@
 
 (def ^:private max-results 1000)
 
-(mu/defn ^:private chain-filter-mbql-query
+(mu/defn- chain-filter-mbql-query
   "Generate the MBQL query powering `chain-filter`."
   [field-id                          :- ms/PositiveInt
    constraints                       :- [:maybe Constraints]
@@ -396,23 +398,18 @@
                                                 {:join-alias (joined-table-alias original-table-id)})]))]
                (when original-field-id
                  (log/tracef "Finding values of %s, remapped from %s."
-                             (name-for-logging Field field-id)
-                             (name-for-logging Field original-field-id))
+                             (name-for-logging :model/Field field-id)
+                             (name-for-logging :model/Field original-field-id))
                  (log/tracef "MBQL clause for %s is %s"
-                             (name-for-logging Field original-field-id) (pr-str original-field-clause)))
+                             (name-for-logging :model/Field original-field-id) (pr-str original-field-clause)))
                (when (seq joins)
                  (log/tracef "Generating joins and filters for source %s with joins info\n%s"
-                             (name-for-logging Table source-table-id) (pr-str joins)))
+                             (name-for-logging :model/Table source-table-id) (pr-str joins)))
                (-> (merge {:source-table source-table-id
-                           ;; original-field-id is used to power Field->Field breakouts. We include both remapped and
-                           ;; original
-                           :breakout     (if original-field-clause
-                                           [original-field-clause [:field field-id nil]]
-                                           [[:field field-id nil]])
                            ;; return the lesser of limit (if set) or max results
                            :limit        ((fnil min Integer/MAX_VALUE) limit max-results)}
-                          (when original-field-clause
-                            { ;; don't return rows that don't have values for the original Field. e.g. if
+                          (if original-field-clause
+                            {;; don't return rows that don't have values for the original Field. e.g. if
                              ;; venues.category_id is remapped to categories.name and we do a search with query 's',
                              ;; we only want to return [category_id name] tuples where [category_id] is not nil
                              ;;
@@ -422,7 +419,13 @@
                              :filter   [:not-null original-field-clause]
                              ;; for Field->Field remapping we want to return pairs of [original-value remapped-value],
                              ;; but sort by [remapped-value]
-                             :order-by [[:asc [:field field-id nil]]]}))
+                             :order-by [[:asc [:field field-id nil]]]
+                             ;; original-field-id is used to power Field->Field breakouts.
+                             ;; We include both remapped and original
+                             :breakout    [original-field-clause [:field field-id nil]]
+                             :breakout-idents (lib.ident/indexed-idents 2)}
+                            {:breakout    [[:field field-id nil]]
+                             :breakout-idents (lib.ident/indexed-idents 1)}))
                    (add-joins source-table-id joins)
                    (add-filters source-table-id joined-table-ids constraints)
                    metadata-queries/add-required-filters-if-needed))
@@ -430,7 +433,7 @@
 
 ;;; ------------------------ Chain filter (powers GET /api/dashboard/:id/params/:key/values) -------------------------
 
-(mu/defn ^:private unremapped-chain-filter :- ms/FieldValuesResult
+(mu/defn- unremapped-chain-filter :- ms/FieldValuesResult
   "Chain filtering without all the fancy remapping stuff on top of it."
   [field-id    :- ms/PositiveInt
    constraints :- [:maybe Constraints]
@@ -439,7 +442,14 @@
     (log/debugf "Chain filter MBQL query:\n%s" (u/pprint-to-str 'magenta mbql-query))
     (try
       (let [query-limit (get-in mbql-query [:query :limit])
+            ;; FIXME: this can OOM for text column if each value are too large. See #46411
+            ;; Consider using the [[field-values/distinct-text-field-rff] rff]
             values      (qp/process-query mbql-query (constantly conj))]
+        (try ; Feature issue #46888: log chain filter query.
+          (log/debugf "Chain filter native query: `%s`."
+                      (:query (qp.compile/compile mbql-query)))
+          (catch Throwable _
+            (log/error "Chain filter log failed!")))
         {:values          values
          ;; It's unlikely that we don't have a query-limit, but better safe than sorry and default it true
          ;; so that calling chain-filter-search on the same field will search from DB.
@@ -458,9 +468,9 @@
   "Schema for the map of actual value -> human-readable value. Cannot be empty."
   [:map-of {:min 1} :any [:maybe :string]])
 
-(mu/defn ^:private human-readable-remapping-map :- [:maybe HumanReadableRemappingMap]
+(mu/defn- human-readable-remapping-map :- [:maybe HumanReadableRemappingMap]
   [field-id :- ms/PositiveInt]
-  (when-let [{orig :values, remapped :human_readable_values} (t2/select-one [FieldValues :values :human_readable_values]
+  (when-let [{orig :values, remapped :human_readable_values} (t2/select-one [:model/FieldValues :values :human_readable_values]
                                                                             {:where [:and
                                                                                      [:= :type "full"]
                                                                                      [:= :field_id field-id]
@@ -469,7 +479,7 @@
     (when (seq remapped)
       (zipmap orig remapped))))
 
-(mu/defn ^:private add-human-readable-values
+(mu/defn- add-human-readable-values
   "Convert result `values` (a sequence of 1-tuples) to a sequence of `[v human-readable]` pairs by finding the
   matching remapped values from `v->human-readable`."
   [values            :- [:sequential ms/NonRemappedFieldValue]
@@ -523,8 +533,8 @@
   "Whether we should use cached `FieldValues` instead of running a query via the QP."
   [field-id]
   (and
-    field-id
-    (field-values/field-should-have-field-values? field-id)))
+   field-id
+   (field-values/field-should-have-field-values? field-id)))
 
 (defn- check-field-value-query-permissions
   "Check query permissions against the chain-filter-mbql-query (private #196)"
@@ -539,8 +549,8 @@
   ;; TODO: why don't we remap the human readable values here?
   (let [{:keys [values has_more_values]}
         (if (empty? constraints)
-          (params.field-values/get-or-create-field-values-for-current-user! (t2/select-one Field :id field-id))
-          (params.field-values/get-or-create-linked-filter-field-values! (t2/select-one Field :id field-id) constraints))]
+          (params.field-values/get-or-create-field-values-for-current-user! (t2/select-one :model/Field :id field-id))
+          (params.field-values/get-or-create-linked-filter-field-values! (t2/select-one :model/Field :id field-id) constraints))]
     {:values          (cond->> values
                         limit (take limit))
      :has_more_values (or (when limit
@@ -574,22 +584,22 @@
      ;; This is for fields that have human-readable values defined (e.g. you've went in and specified that enum
      ;; value `1` should be displayed as `BIRD_TYPE_TOUCAN`). `v->human-readable` is a map of actual values in the
      ;; database (e.g. `1`) to the human-readable version (`BIRD_TYPE_TOUCAN`).
-     (some? v->human-readable)
-     (-> (unremapped-chain-filter field-id constraints options)
-         (update :values add-human-readable-values v->human-readable))
+      (some? v->human-readable)
+      (-> (unremapped-chain-filter field-id constraints options)
+          (update :values add-human-readable-values v->human-readable))
 
-     (and (use-cached-field-values? field-id) (nil? @the-remapped-field-id))
-     (do
-       (check-field-value-query-permissions field-id constraints options)
-       (cached-field-values field-id constraints options))
+      (and (use-cached-field-values? field-id) (nil? @the-remapped-field-id))
+      (do
+        (check-field-value-query-permissions field-id constraints options)
+        (cached-field-values field-id constraints options))
 
      ;; This is Field->Field remapping e.g. `venue.category_id `-> `category.name `;
      ;; search by `category.name` but return tuples of `[venue.category_id category.name]`.
-     (some? @the-remapped-field-id)
-     (unremapped-chain-filter @the-remapped-field-id constraints (assoc options :original-field-id field-id))
+      (some? @the-remapped-field-id)
+      (unremapped-chain-filter @the-remapped-field-id constraints (assoc options :original-field-id field-id))
 
-     :else
-     (unremapped-chain-filter field-id constraints options))))
+      :else
+      (unremapped-chain-filter field-id constraints options))))
 
 ;;; ----------------- Chain filter search (powers GET /api/dashboard/:id/params/:key/search/:query) -----------------
 
@@ -598,19 +608,19 @@
 (defn- check-valid-search-field
   "Before running a search query, make sure the Field actually exists and that it's a Text field."
   [field-id]
-  (let [base-type (t2/select-one-fn :base_type Field :id field-id)]
+  (let [base-type (t2/select-one-fn :base_type :model/Field :id field-id)]
     (when-not base-type
       (throw (ex-info (tru "Field {0} does not exist." field-id)
                       {:field field-id, :status-code 404})))
     (when-not (isa? base-type :type/Text)
-      (let [field-name (t2/select-one-fn :name Field :id field-id)]
+      (let [field-name (t2/select-one-fn :name :model/Field :id field-id)]
         (throw (ex-info (tru "Cannot search against non-Text Field {0} {1}" field-id (pr-str field-name))
                         {:status-code 400
                          :field-id    field-id
                          :field       field-name
                          :base-type   base-type}))))))
 
-(mu/defn ^:private unremapped-chain-filter-search
+(mu/defn- unremapped-chain-filter-search
   [field-id    :- ms/PositiveInt
    constraints :- [:maybe Constraints]
    query       :- ms/NonBlankString
@@ -629,7 +639,7 @@
                                (str/includes? (u/lower-case-en remapped) query))]
       orig)))
 
-(mu/defn ^:private human-readable-values-remapped-chain-filter-search
+(mu/defn- human-readable-values-remapped-chain-filter-search
   "Chain filter search, but for Fields that have human-readable values defined (e.g. you've went in and specified that
   enum value `1` should be displayed as `BIRD_TYPE_TOUCAN`). `v->human-readable` is a map of actual values in the
   database (e.g. `1`) to the human-readable version (`BIRD_TYPE_TOUCAN`)."
@@ -650,21 +660,21 @@
 
 (defn- search-cached-field-values? [field-id constraints]
   (and (use-cached-field-values? field-id)
-       (isa? (t2/select-one-fn :base_type Field :id field-id) :type/Text)
-       (apply t2/exists? FieldValues (mapcat
-                                       identity
-                                       (merge {:field_id field-id, :values [:not= nil], :human_readable_values nil}
-                                              ;; if we are doing a search, make sure we only use field values
-                                              ;; when we're certain the fieldvalues we stored are all the possible values.
-                                              ;; otherwise, we should search directly from DB
-                                              {:has_more_values false}
-                                              (if-not (empty? constraints)
-                                                {:type     "linked-filter"
-                                                 :hash_key (params.field-values/hash-key-for-advanced-field-values :linked-filter field-id constraints)}
-                                                (if-let [hash-key (params.field-values/hash-key-for-advanced-field-values :sandbox field-id nil)]
-                                                  {:type    "sandbox"
-                                                   :hash_key hash-key}
-                                                  {:type "full"})))))))
+       (isa? (t2/select-one-fn :base_type :model/Field :id field-id) :type/Text)
+       (apply t2/exists? :model/FieldValues (mapcat
+                                             identity
+                                             (merge {:field_id field-id, :values [:not= nil], :human_readable_values nil}
+                                                      ;; if we are doing a search, make sure we only use field values
+                                                      ;; when we're certain the fieldvalues we stored are all the possible values.
+                                                      ;; otherwise, we should search directly from DB
+                                                    {:has_more_values false}
+                                                    (if-not (empty? constraints)
+                                                      {:type     "linked-filter"
+                                                       :hash_key (params.field-values/hash-key-for-advanced-field-values :linked-filter field-id constraints)}
+                                                      (if-let [hash-key (params.field-values/hash-key-for-advanced-field-values :sandbox field-id nil)]
+                                                        {:type    "sandbox"
+                                                         :hash_key hash-key}
+                                                        {:type "full"})))))))
 
 (defn- cached-field-values-search
   [field-id query constraints {:keys [limit]}]

@@ -4,9 +4,7 @@
    [metabase.api.common :as api]
    [metabase.legacy-mbql.normalize :as mbql.normalize]
    [metabase.models.interface :as mi]
-   [metabase.models.table :refer [Table]]
    [metabase.query-processor.util :as qp.util]
-   [metabase.related :as related]
    [metabase.util :as u]
    [metabase.util.i18n :refer [tru]]
    [metabase.xrays.automagic-dashboards.core
@@ -17,7 +15,8 @@
    [metabase.xrays.automagic-dashboards.filters :as filters]
    [metabase.xrays.automagic-dashboards.names :as names]
    [metabase.xrays.automagic-dashboards.populate :as populate]
-   [metabase.xrays.automagic-dashboards.util :as magic.util]))
+   [metabase.xrays.automagic-dashboards.util :as magic.util]
+   [metabase.xrays.related :as related]))
 
 (def ^:private ^{:arglists '([root])} comparison-name
   (comp capitalize-first (some-fn :comparison-name :full-name)))
@@ -28,10 +27,10 @@
        :dashcards
        (map (fn [{:keys [size_y card col row series] :as dashcard}]
               (assoc card
-                :text     (-> dashcard :visualization_settings :text)
-                :series   series
-                :height   size_y
-                :position (+ (* row populate/grid-width) col))))
+                     :text     (-> dashcard :visualization_settings :text)
+                     :series   series
+                     :height   size_y
+                     :position (+ (* row populate/grid-width) col))))
        (sort-by :position)))
 
 (defn- clone-card
@@ -92,15 +91,15 @@
                          (update :name #(format "%s (%s)" % (comparison-name right)))
                          vector)]
           (update dashboard :dashcards conj (merge (populate/card-defaults)
-                                                       {:col                    0
-                                                        :row                    row
-                                                        :size_x                 populate/grid-width
-                                                        :size_y                 height
-                                                        :card                   card
-                                                        :card_id                (:id card)
-                                                        :series                 series
-                                                        :visualization_settings {:graph.y_axis.auto_split false
-                                                                                 :graph.series_labels     [(:name card) (:name (first series))]}})))
+                                                   {:col                    0
+                                                    :row                    row
+                                                    :size_x                 populate/grid-width
+                                                    :size_y                 height
+                                                    :card                   card
+                                                    :card_id                (:id card)
+                                                    :series                 series
+                                                    :visualization_settings {:graph.y_axis.auto_split false
+                                                                             :graph.series_labels     [(:name card) (:name (first series))]}})))
         (let [width        (/ populate/grid-width 2)
               series-left  (map clone-card (:series card-left))
               series-right (map clone-card (:series card-right))
@@ -112,23 +111,23 @@
                              (assoc-in [:visualization_settings :graph.colors] [color-right]))]
           (-> dashboard
               (update :dashcards conj (merge (populate/card-defaults)
-                                                 {:col                    0
-                                                  :row                    row
-                                                  :size_x                 width
-                                                  :size_y                 height
-                                                  :card                   card-left
-                                                  :card_id                (:id card-left)
-                                                  :series                 series-left
-                                                  :visualization_settings {}}))
+                                             {:col                    0
+                                              :row                    row
+                                              :size_x                 width
+                                              :size_y                 height
+                                              :card                   card-left
+                                              :card_id                (:id card-left)
+                                              :series                 series-left
+                                              :visualization_settings {}}))
               (update :dashcards conj (merge (populate/card-defaults)
-                                                 {:col                    width
-                                                   :row                    row
-                                                   :size_x                 width
-                                                   :size_y                 height
-                                                   :card                   card-right
-                                                   :card_id                (:id card-right)
-                                                   :series                 series-right
-                                                   :visualization_settings {}}))))))
+                                             {:col                    width
+                                              :row                    row
+                                              :size_x                 width
+                                              :size_y                 height
+                                              :card                   card-right
+                                              :card_id                (:id card-right)
+                                              :series                 series-right
+                                              :visualization_settings {}}))))))
 
     (populate/add-text-card dashboard {:text                   (:text card)
                                        :width                  (/ populate/grid-width 2)
@@ -205,7 +204,7 @@
                           :description ""})
                        (when (and ((some-fn :query-filter :cell-query) left)
                                   (not= (:source left) (:entity right)))
-                         [{:url         (if (->> left :source (mi/instance-of? Table))
+                         [{:url         (if (->> left :source (mi/instance-of? :model/Table))
                                           (str (:url left) "/compare/table/"
                                                (-> left :source u/the-id))
                                           (str (:url left) "/compare/adhoc/"
@@ -219,9 +218,9 @@
                            :title       (tru "Compare with entire dataset")
                            :description ""}])))
       (as-> related
-          (if (-> related :compare empty?)
-            (dissoc related :compare)
-            related))))
+            (if (-> related :compare empty?)
+              (dissoc related :compare)
+              related))))
 
 (defn- part-vs-whole-comparison?
   [left right]
@@ -247,7 +246,7 @@
         right              (cond-> right
                              (part-vs-whole-comparison? left right)
                              (assoc :comparison-name (condp mi/instance-of? (:entity right)
-                                                       Table
+                                                       :model/Table
                                                        (tru "All {0}" (:short-name right))
 
                                                        (tru "{0}, all {1}"

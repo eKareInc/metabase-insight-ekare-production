@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ngettext, msgid } from "ttag";
+import { msgid, ngettext } from "ttag";
 
 import Search from "metabase/entities/search";
 import SidebarContent from "metabase/query_builder/components/SidebarContent";
@@ -8,16 +8,15 @@ import type { Card } from "metabase-types/api";
 import type { State } from "metabase-types/store";
 
 import {
-  NodeListItemLink,
-  NodeListItemName,
-  NodeListItemIcon,
-  NodeListTitle,
   NodeListContainer,
   NodeListIcon,
+  NodeListItemIcon,
+  NodeListItemId,
+  NodeListItemLink,
+  NodeListItemName,
+  NodeListTitle,
   NodeListTitleText,
-  QuestionId,
-} from "./NodeList.styled";
-import { PaneContent } from "./Pane.styled";
+} from "./NodeList";
 
 interface DatabaseSchemasPaneProps {
   onBack: () => void;
@@ -46,7 +45,7 @@ const DatabaseSchemasPane = ({
       onBack={onBack}
       onClose={onClose}
     >
-      <PaneContent>
+      <SidebarContent.Pane>
         <NodeListContainer>
           {sortedModels.length ? (
             <>
@@ -68,7 +67,7 @@ const DatabaseSchemasPane = ({
                     >
                       <NodeListItemIcon name="model" />
                       <NodeListItemName>{model.name}</NodeListItemName>
-                      <QuestionId>{`#${model.id}`}</QuestionId>
+                      <NodeListItemId>{`#${model.id}`}</NodeListItemId>
                     </NodeListItemLink>
                   </li>
                 ))}
@@ -97,7 +96,7 @@ const DatabaseSchemasPane = ({
             ))}
           </ul>
         </NodeListContainer>
-      </PaneContent>
+      </SidebarContent.Pane>
     </SidebarContent>
   );
 };

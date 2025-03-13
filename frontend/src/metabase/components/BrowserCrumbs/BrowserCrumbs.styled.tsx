@@ -1,7 +1,7 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import Link from "metabase/core/components/Link";
-import { color } from "metabase/lib/colors";
 import { Icon } from "metabase/ui";
 
 export const BrowserCrumbsRoot = styled.div`
@@ -24,5 +24,5 @@ export const BrowserCrumbsLink = styled(Link)`
 
 export const BrowserCrumbsIcon = styled(Icon)`
   margin: 0 0.5rem;
-  color: ${color("text-light")};
+  color: var(--mb-color-text-light);
 `;

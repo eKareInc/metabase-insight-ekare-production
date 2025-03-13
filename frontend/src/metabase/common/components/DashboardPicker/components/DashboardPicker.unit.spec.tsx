@@ -1,10 +1,11 @@
 import userEvent from "@testing-library/user-event";
 import fetchMock from "fetch-mock";
-import _ from "underscore";
+import { useState } from "react";
 
 import {
   setupCollectionItemsEndpoint,
-  setupRecentViewsEndpoints,
+  setupRecentViewsAndSelectionsEndpoints,
+  setupSearchEndpoints,
 } from "__support__/server-mocks";
 import {
   mockGetBoundingClientRect,
@@ -24,7 +25,11 @@ import {
   createMockDashboard,
 } from "metabase-types/api/mocks";
 
-import type { DashboardPickerItem, DashboardPickerValueModel } from "../types";
+import type {
+  DashboardPickerItem,
+  DashboardPickerStatePath,
+  DashboardPickerValueModel,
+} from "../types";
 
 import { DashboardPicker, defaultOptions } from "./DashboardPicker";
 import { DashboardPickerModal } from "./DashboardPickerModal";
@@ -60,6 +65,7 @@ const collectionTree: NestedCollectionItem[] = [
         name: "Collection 4",
         model: "collection",
         location: "/",
+        effective_location: "/",
         can_write: true,
         descendants: [
           {
@@ -79,6 +85,7 @@ const collectionTree: NestedCollectionItem[] = [
               },
             ],
             location: "/4/",
+            effective_location: "/4/",
             can_write: true,
             is_personal: false,
           },
@@ -90,6 +97,7 @@ const collectionTree: NestedCollectionItem[] = [
         is_personal: false,
         name: "Collection 2",
         location: "/",
+        effective_location: "/",
         can_write: true,
         descendants: [],
       },
@@ -100,6 +108,7 @@ const collectionTree: NestedCollectionItem[] = [
     id: 1,
     model: "collection",
     location: "/",
+    effective_location: "/",
     is_personal: true,
     can_write: true,
     descendants: [
@@ -107,6 +116,7 @@ const collectionTree: NestedCollectionItem[] = [
         id: 5,
         model: "collection",
         location: "/1/",
+        effective_location: "/1/",
         name: "personal sub_collection",
         is_personal: true,
         can_write: true,
@@ -160,9 +170,10 @@ interface SetupOpts {
 }
 
 const commonSetup = () => {
-  setupRecentViewsEndpoints([]);
+  setupRecentViewsAndSelectionsEndpoints([]);
   mockGetBoundingClientRect();
   mockScrollBy();
+  setupSearchEndpoints([]);
 
   const allItems = flattenCollectionTree(collectionTree).map(
     createMockCollectionItem,
@@ -185,13 +196,21 @@ const setupPicker = async ({
 }: SetupOpts = {}) => {
   commonSetup();
 
-  renderWithProviders(
-    <DashboardPicker
-      onItemSelect={onChange}
-      initialValue={initialValue}
-      options={defaultOptions}
-    />,
-  );
+  function TestComponent() {
+    const [path, setPath] = useState<DashboardPickerStatePath>();
+
+    return (
+      <DashboardPicker
+        initialValue={initialValue}
+        options={defaultOptions}
+        path={path}
+        onItemSelect={onChange}
+        onPathChange={setPath}
+      />
+    );
+  }
+
+  renderWithProviders(<TestComponent />);
 
   await waitForLoaderToBeRemoved();
 };
@@ -216,7 +235,7 @@ const setupModal = async ({
 };
 
 describe("DashboardPicker", () => {
-  afterAll(() => {
+  afterEach(() => {
     jest.restoreAllMocks();
   });
 
@@ -224,30 +243,30 @@ describe("DashboardPicker", () => {
     await setupPicker();
 
     expect(
-      await screen.findByRole("button", { name: /Our Analytics/ }),
+      await screen.findByRole("link", { name: /Our Analytics/ }),
     ).toHaveAttribute("data-active", "true");
 
     expect(
-      await screen.findByRole("button", { name: /Collection 4/ }),
+      await screen.findByRole("link", { name: /Collection 4/ }),
     ).toBeInTheDocument();
 
     expect(
-      await screen.findByRole("button", { name: /Collection 2/ }),
+      await screen.findByRole("link", { name: /Collection 2/ }),
     ).toBeInTheDocument();
   });
 
   it("should render the path to the collection provided", async () => {
     await setupPicker({ initialValue: { id: 3, model: "collection" } });
     expect(
-      await screen.findByRole("button", { name: /Our Analytics/ }),
+      await screen.findByRole("link", { name: /Our Analytics/ }),
     ).toHaveAttribute("data-active", "true");
 
     expect(
-      await screen.findByRole("button", { name: /Collection 4/ }),
+      await screen.findByRole("link", { name: /Collection 4/ }),
     ).toHaveAttribute("data-active", "true");
 
     expect(
-      await screen.findByRole("button", { name: /Collection 3/ }),
+      await screen.findByRole("link", { name: /Collection 3/ }),
     ).toHaveAttribute("data-active", "true");
   });
 
@@ -255,30 +274,30 @@ describe("DashboardPicker", () => {
     await setupPicker({ initialValue: { id: 100, model: "dashboard" } });
 
     expect(
-      await screen.findByRole("button", { name: /Our Analytics/ }),
+      await screen.findByRole("link", { name: /Our Analytics/ }),
     ).toHaveAttribute("data-active", "true");
 
     expect(
-      await screen.findByRole("button", { name: /Collection 4/ }),
+      await screen.findByRole("link", { name: /Collection 4/ }),
     ).toHaveAttribute("data-active", "true");
 
     expect(
-      await screen.findByRole("button", { name: /Collection 3/ }),
+      await screen.findByRole("link", { name: /Collection 3/ }),
     ).toHaveAttribute("data-active", "true");
 
     // dashboard itself should start selected
     expect(
-      await screen.findByRole("button", { name: /My Dashboard 1/ }),
+      await screen.findByRole("link", { name: /My Dashboard 1/ }),
     ).toHaveAttribute("data-active", "true");
 
     expect(
-      await screen.findByRole("button", { name: /My Dashboard 2/ }),
+      await screen.findByRole("link", { name: /My Dashboard 2/ }),
     ).not.toHaveAttribute("data-active", "true");
   });
 });
 
 describe("DashboardPickerModal", () => {
-  afterAll(() => {
+  afterEach(() => {
     jest.restoreAllMocks();
   });
 
@@ -287,7 +306,7 @@ describe("DashboardPickerModal", () => {
 
     expect(await screen.findByText(/choose a dashboard/i)).toBeInTheDocument();
     expect(
-      await screen.findByRole("button", { name: /Our Analytics/ }),
+      await screen.findByRole("link", { name: /Our Analytics/ }),
     ).toBeInTheDocument();
 
     expect(screen.getByRole("button", { name: /Select/ })).toBeInTheDocument();
@@ -300,7 +319,7 @@ describe("DashboardPickerModal", () => {
 
     expect(await screen.findByText(/choose a dashboard/i)).toBeInTheDocument();
     expect(
-      await screen.findByRole("button", { name: /Our Analytics/ }),
+      await screen.findByRole("link", { name: /Our Analytics/ }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Select/ }),

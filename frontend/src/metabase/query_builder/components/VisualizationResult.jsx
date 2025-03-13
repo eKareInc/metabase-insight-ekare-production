@@ -5,10 +5,9 @@ import { jt, t } from "ttag";
 import _ from "underscore";
 
 import { ErrorMessage } from "metabase/components/ErrorMessage";
-import Modal from "metabase/components/Modal";
 import ButtonsS from "metabase/css/components/buttons.module.css";
 import CS from "metabase/css/core/index.css";
-import { CreateAlertModalContent } from "metabase/query_builder/components/AlertModals";
+import { CreateOrEditQuestionAlertModal } from "metabase/notifications/modals/CreateOrEditQuestionAlertModal/CreateOrEditQuestionAlertModal";
 import Visualization from "metabase/visualizations/components/Visualization";
 import * as Lib from "metabase-lib";
 import { ALERT_TYPE_ROWS } from "metabase-lib/v1/Alert";
@@ -21,8 +20,9 @@ const ALLOWED_VISUALIZATION_PROPS = [
   "hasMetadataPopovers",
   "tableHeaderHeight",
   "scrollToColumn",
-  "renderTableHeaderWrapper",
+  "renderTableHeader",
   "mode",
+  "renderEmptyMessage",
 ];
 
 export default class VisualizationResult extends Component {
@@ -59,11 +59,13 @@ export default class VisualizationResult extends Component {
       selectedTimelineEventIds,
       onNavigateBack,
       className,
+      isRunning,
+      renderEmptyMessage,
     } = this.props;
     const { showCreateAlertModal } = this.state;
 
     const noResults = datasetContainsNoResults(result.data);
-    if (noResults) {
+    if (noResults && !isRunning && !renderEmptyMessage) {
       const supportsRowsPresentAlert = question.alertType() === ALERT_TYPE_ROWS;
 
       // successful query but there were 0 rows returned with the result
@@ -100,12 +102,10 @@ export default class VisualizationResult extends Component {
             }
           />
           {showCreateAlertModal && (
-            <Modal full onClose={this.onCloseCreateAlertModal}>
-              <CreateAlertModalContent
-                onCancel={this.onCloseCreateAlertModal}
-                onAlertCreated={this.onCloseCreateAlertModal}
-              />
-            </Modal>
+            <CreateOrEditQuestionAlertModal
+              onClose={this.onCloseCreateAlertModal}
+              onAlertCreated={this.onCloseCreateAlertModal}
+            />
           )}
         </div>
       );
@@ -129,6 +129,7 @@ export default class VisualizationResult extends Component {
             isQueryBuilder={true}
             queryBuilderMode={queryBuilderMode}
             showTitle={false}
+            canToggleSeriesVisibility
             metadata={question.metadata()}
             timelineEvents={timelineEvents}
             selectedTimelineEventIds={selectedTimelineEventIds}
@@ -137,7 +138,9 @@ export default class VisualizationResult extends Component {
             onSelectTimelineEvents={this.props.selectTimelineEvents}
             onDeselectTimelineEvents={this.props.deselectTimelineEvents}
             onOpenChartSettings={this.props.onOpenChartSettings}
+            onUpdateQuestion={this.props.onUpdateQuestion}
             onUpdateWarnings={this.props.onUpdateWarnings}
+            onHeaderColumnReorder={this.props.onHeaderColumnReorder}
             onUpdateVisualizationSettings={
               this.props.onUpdateVisualizationSettings
             }

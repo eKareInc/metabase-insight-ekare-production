@@ -1,33 +1,13 @@
+const { H } = cy;
 import { SAMPLE_DB_ID, USERS } from "e2e/support/cypress_data";
 import { SAMPLE_DATABASE } from "e2e/support/cypress_sample_database";
 import {
-  ORDERS_QUESTION_ID,
   ORDERS_COUNT_QUESTION_ID,
+  ORDERS_DASHBOARD_ID,
+  ORDERS_QUESTION_ID,
   SECOND_COLLECTION_ID,
   THIRD_COLLECTION_ID,
 } from "e2e/support/cypress_sample_instance_data";
-import {
-  openOrdersTable,
-  popover,
-  restore,
-  visualize,
-  startNewQuestion,
-  visitQuestionAdhoc,
-  saveQuestion,
-  getPersonalCollectionName,
-  visitCollection,
-  queryBuilderHeader,
-  entityPickerModal,
-  entityPickerModalItem,
-  entityPickerModalTab,
-  collectionOnTheGoModal,
-  modal,
-  pickEntity,
-  visitQuestion,
-  tableHeaderClick,
-  onlyOnOSS,
-  createQuestion,
-} from "e2e/support/helpers";
 
 const { ORDERS, ORDERS_ID } = SAMPLE_DATABASE;
 
@@ -35,7 +15,7 @@ const { ORDERS, ORDERS_ID } = SAMPLE_DATABASE;
 
 describe("scenarios > question > new", () => {
   beforeEach(() => {
-    restore();
+    H.restore();
     cy.signInAsAdmin();
   });
 
@@ -46,9 +26,9 @@ describe("scenarios > question > new", () => {
         cy.addSQLiteDatabase({ name: "Sample" + i });
       }
 
-      startNewQuestion();
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Tables").click();
+      H.startNewQuestion();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Tables").click();
         cy.findByText("Sample3").should("be.visible");
       });
     });
@@ -58,26 +38,27 @@ describe("scenarios > question > new", () => {
         "search",
       );
 
-      startNewQuestion();
+      H.startNewQuestion();
 
-      entityPickerModal().within(() => {
-        cy.findAllByRole("tab").should("have.length", 4);
-        entityPickerModalTab("Recents").should(
-          "have.attr",
-          "aria-selected",
-          "true",
+      H.entityPickerModal().within(() => {
+        H.tabsShouldBe("Tables", ["Tables", "Collections"]);
+
+        H.entityPickerModalTab("Search").should("not.exist");
+        H.entityPickerModalTab("Collections").click();
+
+        cy.findByPlaceholderText("Search this collection or everywhere…")
+          .type("  ")
+          .blur();
+        cy.findByText("Everywhere").click();
+        cy.findByPlaceholderText("Search this collection or everywhere…").type(
+          "ord",
         );
-        entityPickerModalTab("Models").should("exist");
-        entityPickerModalTab("Tables").should("exist");
-        entityPickerModalTab("Saved questions").should("exist");
-        entityPickerModalTab("Search").should("not.exist");
-
-        cy.findByPlaceholderText("Search…").type("  ").blur();
-        cy.findByPlaceholderText("Search…").type("ord");
         cy.wait("@search");
         // should not trigger search for an empty string
         cy.get("@searchQuery").should("have.been.calledOnce");
 
+        cy.findAllByTestId("result-item").should("not.exist");
+        cy.findByText("Everywhere").click();
         cy.findAllByTestId("result-item").should("have.length.at.least", 4);
 
         const searchResultItems = cy.findAllByTestId("result-item");
@@ -94,30 +75,30 @@ describe("scenarios > question > new", () => {
         });
 
         // Discarding the search query should take us back to the original tab
-        cy.findByPlaceholderText("Search…").clear().blur();
-        entityPickerModalTab("Search").should("not.exist");
-        entityPickerModalTab("Recents").should(
-          "have.attr",
-          "aria-selected",
-          "true",
-        );
-        entityPickerModalTab("Models").should("exist");
-        entityPickerModalTab("Tables").should("exist");
-        entityPickerModalTab("Saved questions").should("exist");
+        cy.findByPlaceholderText("Search this collection or everywhere…")
+          .clear()
+          .blur();
+        H.entityPickerModalTab("Search").should("not.exist");
+        H.tabsShouldBe("Collections", ["Tables", "Collections"]);
 
-        entityPickerModalTab("Saved questions").click();
         cy.findByText("Orders, Count").click();
       });
 
-      visualize();
+      cy.log("toggle notebook button should be hidden for brand new questions");
+      H.notebookButton().should("not.exist");
+
+      H.visualize();
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("18,760");
       // should reopen saved question picker after returning back to editor mode
-      cy.icon("notebook").click();
+      H.openNotebook();
+
+      H.notebookButton().should("be.visible");
+
       cy.findByTestId("data-step-cell").contains("Orders, Count").click();
-      entityPickerModal().within(() => {
+      H.entityPickerModal().within(() => {
         // It is now possible to choose another saved question
-        entityPickerModalTab("Saved questions").should(
+        H.entityPickerModalTab("Collections").should(
           "have.attr",
           "aria-selected",
           "true",
@@ -125,11 +106,11 @@ describe("scenarios > question > new", () => {
         cy.findByText("Orders").should("exist");
         cy.findByText("Orders, Count").should("exist");
 
-        entityPickerModalTab("Tables").click();
+        H.entityPickerModalTab("Tables").click();
         cy.findByText("Products").click();
       });
       cy.findByTestId("data-step-cell").contains("Products");
-      visualize();
+      H.visualize();
       // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
       cy.findByText("Rustic Paper Wallet");
     });
@@ -148,9 +129,9 @@ describe("scenarios > question > new", () => {
         cy.findByText("Orders");
       });
 
-      startNewQuestion();
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Saved questions").click();
+      H.startNewQuestion();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Collections").click();
         // Note: collection name's first letter is capitalized
         cy.findByText(/foo:bar/i).click();
         cy.findByText("Orders");
@@ -163,10 +144,10 @@ describe("scenarios > question > new", () => {
         collection_id: SECOND_COLLECTION_ID,
       });
 
-      startNewQuestion();
+      H.startNewQuestion();
 
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Saved questions").click();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Collections").click();
         assertDataPickerEntitySelected(0, "Our analytics");
         cy.findByText("First collection").should("exist");
         cy.findByText("Second collection").should("not.exist");
@@ -189,21 +170,21 @@ describe("scenarios > question > new", () => {
     it("should be possible to create a question based on a question in another user personal collection", () => {
       cy.signOut();
       cy.signIn("nocollection");
-      startNewQuestion();
-      entityPickerModal().findByText("Orders").click();
-      visualize();
-      saveQuestion("Personal question");
+      H.startNewQuestion();
+      H.entityPickerModal().findByText("Orders").click();
+      H.visualize();
+      H.saveQuestion("Personal question");
 
       cy.signOut();
       cy.signInAsAdmin();
-      startNewQuestion();
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Saved questions").click();
+      H.startNewQuestion();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Collections").click();
         cy.findByText("All personal collections").click();
-        cy.findByText(getPersonalCollectionName(USERS.nocollection)).click();
+        cy.findByText(H.getPersonalCollectionName(USERS.nocollection)).click();
         cy.findByText("Personal question").click();
       });
-      visualize();
+      H.visualize();
     });
   });
 
@@ -212,19 +193,19 @@ describe("scenarios > question > new", () => {
       semantic_type: "type/PK",
     });
 
-    openOrdersTable();
+    H.openOrdersTable();
 
     cy.get(".test-TableInteractive-cellWrapper--lastColumn") // Quantity (last in the default order for Sample Database)
-      .eq(1) // first table body cell
+      .eq(0) // first table body cell
       .should("contain", "2"); // quantity for order ID#1
 
     // Test was flaky due to long chain.
-    cy.get(".test-TableInteractive-cellWrapper--lastColumn").eq(1).click();
+    cy.get(".test-TableInteractive-cellWrapper--lastColumn").eq(0).click();
     cy.wait("@dataset");
 
-    cy.get(
-      "#main-data-grid .test-TableInteractive-cellWrapper--firstColumn",
-    ).should("have.length.gt", 1);
+    H.tableInteractiveBody()
+      .get(".test-TableInteractive-cellWrapper--firstColumn")
+      .should("have.length.gt", 1);
 
     cy.log(
       "**Reported at v0.34.3 - v0.37.0.2 / probably was always like this**",
@@ -232,22 +213,22 @@ describe("scenarios > question > new", () => {
     cy.log(
       "**It should display the table with all orders with the selected quantity.**",
     );
-    cy.get(".test-TableInteractive");
+    H.tableInteractive();
 
     cy.get(".test-TableInteractive-cellWrapper--firstColumn") // ID (first in the default order for Sample Database)
-      .eq(1) // first table body cell
+      .eq(0) // first table body cell
       .should("contain", 1)
       .click();
     cy.wait("@dataset");
 
     cy.log("only one row should appear after filtering by ID");
-    cy.get(
-      "#main-data-grid .test-TableInteractive-cellWrapper--firstColumn",
-    ).should("have.length", 1);
+    H.tableInteractiveBody()
+      .get(".test-TableInteractive-cellWrapper--firstColumn")
+      .should("have.length", 1);
   });
 
   it("should handle ad-hoc question with old syntax (metabase#15372)", () => {
-    visitQuestionAdhoc({
+    H.visitQuestionAdhoc({
       dataset_query: {
         type: "query",
         query: {
@@ -264,76 +245,213 @@ describe("scenarios > question > new", () => {
     cy.findByText("37.65");
   });
 
-  it("should suggest the currently viewed collection when saving question", () => {
-    visitCollection(THIRD_COLLECTION_ID);
+  it("should suggest the currently viewed dashboard when saving question", () => {
+    H.visitDashboard(ORDERS_DASHBOARD_ID);
 
     cy.findByLabelText("Navigation bar").within(() => {
       cy.findByText("New").click();
     });
 
-    popover().findByText("Question").click();
+    H.popover().findByText("Question").click();
 
-    entityPickerModal().within(() => {
-      entityPickerModalTab("Tables").click();
+    H.entityPickerModal().within(() => {
+      H.entityPickerModalTab("Tables").click();
       cy.findByText("Orders").click();
     });
+
+    cy.log(
+      "The selected table should be saved and show in recents (metabase#45003)",
+    );
+
+    cy.findByRole("button", { name: /Orders/ }).click();
+    H.shouldDisplayTabs(["Recents", "Tables", "Collections"]);
+    H.entityPickerModalTab("Recents").click();
+    cy.findByRole("dialog", { name: "Pick your starting data" })
+      .findByRole("button", { name: /Orders/ })
+      .should("exist");
+    cy.findByRole("dialog", { name: "Pick your starting data" })
+      .findByRole("button", { name: /Close/ })
+      .click();
 
     cy.findByTestId("qb-header").within(() => {
       cy.findByText("Save").click();
     });
     cy.findByTestId("save-question-modal").within(() => {
-      cy.findByLabelText(/Which collection/).should(
+      cy.findByLabelText(/Where do you want to save/).should(
         "have.text",
-        "Third collection",
+        "Orders in a dashboard",
       );
     });
   });
 
-  it("should be able to save a question to a collection created on the go", () => {
-    visitCollection(THIRD_COLLECTION_ID);
+  it("should not suggest recent items where can_write=false when saving a question", () => {
+    // SETUP TEST - prevent normal user from having access to third collection w/ added content
+    cy.log("setup restricted permissions scenario");
+    cy.signInAsAdmin();
 
-    cy.findByLabelText("Navigation bar").findByText("New").click();
-    popover().findByText("Question").click();
-    entityPickerModal().within(() => {
-      entityPickerModalTab("Tables").click();
-      cy.findByText("Orders").click();
+    // create dashboard that will have restricted access
+    H.createDashboard(
+      {
+        name: "Third collection dashboard",
+        collection_id: THIRD_COLLECTION_ID,
+      },
+      { wrapId: true },
+    );
+
+    // restrict access to a collection
+    cy.visit(`/admin/permissions/collections/${THIRD_COLLECTION_ID}`);
+    H.selectPermissionRow("collection", 0);
+    H.popover().within(() => {
+      cy.findByText("View").click();
     });
-    cy.findByTestId("qb-header").findByText("Save").click();
 
-    cy.log("should be able to tab through fields (metabase#41683)");
-    cy.realPress("Tab").realPress("Tab");
-    cy.findByLabelText("Description").should("be.focused");
-
-    cy.findByTestId("save-question-modal")
-      .findByLabelText(/Which collection/)
-      .click();
-
-    entityPickerModal()
-      .findByRole("tab", { name: /Collections/ })
-      .click();
-
-    entityPickerModal().findByText("Create a new collection").click();
-
-    const NEW_COLLECTION = "Foo";
-    collectionOnTheGoModal().within(() => {
-      cy.findByLabelText(/Give it a name/).type(NEW_COLLECTION);
-      cy.findByText("Create").click();
+    cy.intercept("PUT", "/api/collection/graph?skip-graph=true").as(
+      "saveGraph",
+    );
+    cy.button("Save changes").click();
+    H.modal().within(() => {
+      cy.findByText("Save permissions?");
+      cy.button("Yes").click();
     });
-    entityPickerModal().within(() => {
-      cy.findByText("Foo").click();
-      cy.findByText("Select").click();
+    cy.wait("@saveGraph");
+
+    // TEST STARTS HERE
+    cy.log("start testing proper enforcement");
+    cy.signIn("normal");
+    cy.visit("/");
+
+    // log recents
+    cy.log("log recent views to items with can_write access");
+    cy.log("visit valid recent item");
+    logRecent("collection", SECOND_COLLECTION_ID); // report recent interaction for collection w/ write access
+    logRecent("collection", THIRD_COLLECTION_ID); // report recent interaction for collection w/o write access
+    logRecent("dashboard", ORDERS_DASHBOARD_ID); // report recent interaction for dashboard w/ write access
+    cy.get("@dashboardId").then(id => {
+      logRecent("dashboard", id); // report recent interaction for dashboard w/o write access
     });
+
+    // test recent items do not exist
+    H.startNewNativeQuestion();
+    H.NativeEditor.type("select 'hi'");
+    cy.findByTestId("native-query-editor-sidebar").button("Get Answer").click();
+    cy.findByRole("button", { name: "Save" }).click();
+
     cy.findByTestId("save-question-modal").within(() => {
-      cy.findByText("Save new question");
-      cy.findByLabelText(/Which collection/).should(
-        "have.text",
-        NEW_COLLECTION,
-      );
-      cy.findByText("Save").click();
+      cy.findByLabelText(/Where do you want to save this/).click();
     });
 
-    cy.get("header").findByText(NEW_COLLECTION);
+    H.pickEntity({ tab: "Recents" });
+    H.entityPickerModal().within(() => {
+      cy.log("test valid recents appear");
+      cy.findByText("Second collection").should("exist");
+      cy.findByText("Orders in a dashboard").should("exist");
+
+      cy.log("test invalid recents do not appear");
+      cy.findByText("Third collection").should("not.exist");
+      cy.findByText("Third collection dashboard").should("not.exist");
+    });
   });
+
+  it(
+    "should be able to save a question to a collection created on the go",
+    { tags: "@smoke" },
+    () => {
+      H.visitCollection(THIRD_COLLECTION_ID);
+
+      cy.findByLabelText("Navigation bar").findByText("New").click();
+      H.popover().findByText("Question").click();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Tables").click();
+        cy.findByText("Orders").click();
+      });
+      cy.findByTestId("qb-header").findByText("Save").click();
+
+      cy.log("should be able to tab through fields (metabase#41683)");
+      cy.realPress("Tab").realPress("Tab");
+      cy.findByLabelText("Description").should("be.focused");
+
+      cy.findByTestId("save-question-modal")
+        .findByLabelText(/Where do you want to save/)
+        .click();
+
+      H.entityPickerModal()
+        .findByRole("tab", { name: /Browse/ })
+        .click();
+
+      H.entityPickerModal().findByText("New collection").click();
+
+      const NEW_COLLECTION = "Foo";
+      H.collectionOnTheGoModal().within(() => {
+        cy.findByLabelText(/Give it a name/).type(NEW_COLLECTION);
+        cy.findByText("Create").click();
+      });
+      H.entityPickerModal().within(() => {
+        cy.findByText("Foo").click();
+        cy.button(/Select/).click();
+      });
+      cy.findByTestId("save-question-modal").within(() => {
+        cy.findByText("Save new question");
+        cy.findByLabelText(/Where do you want to save/).should(
+          "have.text",
+          NEW_COLLECTION,
+        );
+        cy.findByText("Save").click();
+      });
+
+      cy.get("header").findByText(NEW_COLLECTION);
+    },
+  );
+
+  it(
+    "should be able to save a question to a dashboard created on the go",
+    { tags: "@smoke" },
+    () => {
+      H.visitCollection(THIRD_COLLECTION_ID);
+
+      cy.findByLabelText("Navigation bar").findByText("New").click();
+      H.popover().findByText("Question").click();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Tables").click();
+        cy.findByText("Orders").click();
+      });
+      cy.findByTestId("qb-header").findByText("Save").click();
+
+      cy.log("should be able to tab through fields (metabase#41683)");
+      cy.realPress("Tab").realPress("Tab");
+      cy.findByLabelText("Description").should("be.focused");
+
+      cy.findByTestId("save-question-modal")
+        .findByLabelText(/Where do you want to save/)
+        .click();
+
+      H.entityPickerModal()
+        .findByRole("tab", { name: /Browse/ })
+        .click();
+
+      H.entityPickerModal().findByText("New dashboard").click();
+
+      const NEW_DASHBOARD = "Foo Dashboard";
+      H.dashboardOnTheGoModal().within(() => {
+        cy.findByLabelText(/Give it a name/).type(NEW_DASHBOARD);
+        cy.findByText("Create").click();
+      });
+      H.entityPickerModal().within(() => {
+        cy.findByText(NEW_DASHBOARD).click();
+        cy.button(/Select/).click();
+      });
+      cy.findByTestId("save-question-modal").within(() => {
+        cy.findByText("Save new question");
+        cy.findByLabelText(/Where do you want to save/).should(
+          "have.text",
+          NEW_DASHBOARD,
+        );
+        cy.findByText("Save").click();
+      });
+
+      cy.get("header").findByText(NEW_DASHBOARD);
+      cy.url().should("include", "/dashboard/");
+    },
+  );
 
   it("should preserve the original question name (metabase#41196)", () => {
     const originalQuestionName = "Foo";
@@ -345,12 +463,12 @@ describe("scenarios > question > new", () => {
       description: originalDescription,
     });
 
-    visitQuestion(ORDERS_COUNT_QUESTION_ID);
+    H.visitQuestion(ORDERS_COUNT_QUESTION_ID);
     cy.findByDisplayValue(originalQuestionName).should("exist");
 
     cy.log("Change anything about this question to make it dirty");
-    tableHeaderClick("Count");
-    popover().icon("arrow_down").click();
+    H.tableHeaderClick("Count");
+    H.popover().icon("arrow_down").click();
 
     cy.findByTestId("qb-header-action-panel").button("Save").click();
     cy.findByTestId("save-question-modal").within(() => {
@@ -375,30 +493,35 @@ describe("scenarios > question > new", () => {
 
     beforeEach(() => {
       cy.intercept("POST", "/api/card").as("createQuestion");
-      cy.createCollection(collectionInRoot);
-      cy.createDashboard(dashboardInRoot);
+      H.createCollection(collectionInRoot).then(({ body: { id } }) => {
+        H.createDashboard({
+          name: "Extra Dashboard",
+          collection_id: id,
+        });
+      });
+      H.createDashboard(dashboardInRoot);
       // Can't use `startNewQuestion` because it's missing `display: "table"` and
       // adding that will fail a lot of other tests and I don't want to deal with that yet.
       cy.visit("/");
       cy.findByTestId("app-bar").button("New").click();
-      popover().findByText("Question").click();
+      H.popover().findByText("Question").click();
     });
 
     it("should hide public collections when selecting a dashboard for a question in a personal collection", () => {
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Tables").click();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Tables").click();
         cy.findByText("Orders").click();
       });
 
-      queryBuilderHeader().button("Save").click();
+      H.queryBuilderHeader().button("Save").click();
       cy.findByTestId("save-question-modal")
-        .findByLabelText(/Which collection/)
+        .findByLabelText(/Where do you want to save/)
         .click();
 
-      pickEntity({
+      H.pickEntity({
         path: [myPersonalCollectionName],
         select: true,
-        tab: "Collections",
+        tab: "Browse",
       });
 
       cy.findByTestId("save-question-modal").button("Save").click();
@@ -406,12 +529,12 @@ describe("scenarios > question > new", () => {
 
       cy.findByTestId("save-question-modal").should("not.exist");
 
-      modal().within(() => {
+      H.modal().within(() => {
         cy.findByText(/add this to a dashboard/i);
         cy.button("Yes please!").click();
       });
 
-      entityPickerModal().within(() => {
+      H.entityPickerModal().within(() => {
         cy.findByText("Add this question to a dashboard").should("be.visible");
         cy.findByText(/bobby tables's personal collection/i).should(
           "be.visible",
@@ -421,31 +544,157 @@ describe("scenarios > question > new", () => {
     });
 
     it("should show all collections when selecting a dashboard for a question in a public collection", () => {
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Tables").click();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Tables").click();
         cy.findByText("Orders").click();
       });
 
-      queryBuilderHeader().button("Save").click();
-      cy.log("default selected collection is the root collection");
+      H.queryBuilderHeader().button("Save").click();
+      cy.findByTestId("save-question-modal")
+        .findByLabelText(/Where do you want to save/)
+        .click();
 
-      cy.findByTestId("save-question-modal").within(modal => {
-        cy.findByText("Save").click();
-        cy.wait("@createQuestion");
+      H.pickEntity({
+        path: ["Our analytics"],
+        select: true,
+        tab: "Browse",
       });
 
-      cy.get("#QuestionSavedModal").within(() => {
-        cy.findByText("Yes please!").click();
-      });
+      cy.findByTestId("save-question-modal").button("Save").click();
+      cy.wait("@createQuestion");
 
-      entityPickerModal().within(() => {
+      cy.get("#QuestionSavedModal").findByText("Yes please!").click();
+
+      H.entityPickerModal().within(() => {
         cy.findByText("Add this question to a dashboard").should("be.visible");
+
+        cy.findByRole("tab", { name: /Dashboards/ }).click();
         cy.findByText("Bobby Tables's Personal Collection").should(
           "be.visible",
         );
         cy.findByText(collectionInRoot.name).should("be.visible");
         cy.findByText(dashboardInRoot.name).should("be.visible");
-        cy.findByText("Create a new dashboard").should("be.visible");
+        cy.findByText("New dashboard").should("be.visible");
+      });
+    });
+
+    describe("creating a new dashboard", () => {
+      beforeEach(() => {
+        H.entityPickerModal().within(() => {
+          H.entityPickerModalTab("Tables").click();
+          cy.findByText("Orders").click();
+        });
+
+        H.queryBuilderHeader().button("Save").click();
+
+        cy.findByTestId("save-question-modal").within(modal => {
+          cy.findByLabelText(/Where do you want to save/).click();
+        });
+
+        H.pickEntity({
+          tab: "Browse",
+          path: ["Our analytics"],
+          select: true,
+        });
+
+        cy.findByTestId("save-question-modal").within(() => {
+          cy.findByText("Save").click();
+          cy.wait("@createQuestion");
+        });
+
+        cy.get("#QuestionSavedModal").within(() => {
+          cy.findByText("Yes please!").click();
+        });
+      });
+
+      it("when selecting a collection", () => {
+        H.entityPickerModal().within(() => {
+          H.entityPickerModalTab("Dashboards").click();
+          H.entityPickerModalItem(1, "Collection in root collection").click();
+          cy.button(/New dashboard/).click();
+        });
+
+        cy.findByRole("dialog", { name: "Create a new dashboard" }).within(
+          () => {
+            cy.findByRole("textbox").type("New Dashboard");
+            cy.button("Create").click();
+          },
+        );
+
+        H.entityPickerModalItem(1, "Collection in root collection").should(
+          "have.attr",
+          "data-active",
+          "true",
+        );
+
+        H.entityPickerModalItem(2, "New Dashboard").should(
+          "have.attr",
+          "data-active",
+          "true",
+        );
+
+        H.entityPickerModal()
+          .button(/Select/)
+          .click();
+        cy.location("pathname").should("eq", "/dashboard/12-new-dashboard");
+      });
+
+      it("when selecting a collection with no child dashboards (metabase#47000)", () => {
+        H.entityPickerModal().within(() => {
+          H.entityPickerModalTab("Dashboards").click();
+          H.entityPickerModalItem(1, "First collection").click();
+          cy.button(/New dashboard/).click();
+        });
+
+        cy.findByRole("dialog", { name: "Create a new dashboard" }).within(
+          () => {
+            cy.findByRole("textbox").type("New Dashboard");
+            cy.button("Create").click();
+          },
+        );
+
+        H.entityPickerModalItem(1, "First collection").should(
+          "have.attr",
+          "data-active",
+          "true",
+        );
+
+        H.entityPickerModalItem(2, "New Dashboard").should(
+          "have.attr",
+          "data-active",
+          "true",
+        );
+
+        H.entityPickerModal()
+          .button(/Select/)
+          .click();
+        cy.location("pathname").should("eq", "/dashboard/12-new-dashboard");
+      });
+
+      it("when a dashboard is currently selected", () => {
+        H.entityPickerModal().within(() => {
+          H.entityPickerModalTab("Dashboards").click();
+          H.entityPickerModalItem(1, "Orders in a dashboard").click();
+          cy.button(/New dashboard/).click();
+        });
+
+        cy.findByRole("dialog", { name: "Create a new dashboard" }).within(
+          () => {
+            cy.findByRole("textbox").type("New Dashboard");
+            cy.button("Create").click();
+          },
+        );
+
+        H.entityPickerModalItem(1, "New Dashboard").should(
+          "have.attr",
+          "data-active",
+          "true",
+        );
+
+        H.entityPickerModal()
+          .button(/Select/)
+          .click();
+        cy.location("pathname").should("eq", "/dashboard/12-new-dashboard");
       });
     });
   });
@@ -456,29 +705,27 @@ describe("scenarios > question > new", () => {
 // model-less behavior
 describe(
   "scenarios > question > new > data picker > without models",
-  { tags: "@OSS" },
+  { tags: ["@OSS", "@smoke"] },
   () => {
     beforeEach(() => {
-      onlyOnOSS();
-      restore("without-models");
+      H.restore("without-models");
       cy.signInAsAdmin();
     });
 
     it("can create a question from the sample database", () => {
       cy.visit("/question/new");
 
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Saved questions").should("be.visible");
-        entityPickerModalTab("Models").should("not.exist");
-        entityPickerModalTab("Tables").click();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Collections").should("be.visible");
+        H.entityPickerModalTab("Tables").click();
 
-        entityPickerModalItem(2, "Products").click();
+        H.entityPickerModalItem(2, "Products").click();
       });
 
       // strange: we get different behavior when we go to question/new
       cy.findAllByTestId("run-button").first().click();
 
-      cy.findByTestId("TableInteractive-root").within(() => {
+      H.tableInteractive().within(() => {
         cy.findByText("Rustic Paper Wallet").should("be.visible");
       });
     });
@@ -486,37 +733,63 @@ describe(
     it("can create a question from a saved question", () => {
       cy.visit("/question/new");
 
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Saved questions").click();
-        entityPickerModalItem(1, "Orders").click();
+      H.entityPickerModal().within(() => {
+        H.entityPickerModalTab("Collections").click();
+        H.entityPickerModalItem(1, "Orders").click();
       });
 
       // strange: we get different behavior when we go to question/new
       cy.findAllByTestId("run-button").first().click();
 
-      cy.findByTestId("TableInteractive-root").within(() => {
+      H.tableInteractive().within(() => {
         cy.findByText(39.72).should("be.visible");
       });
     });
 
     it("shows models and raw data options after creating a model", () => {
-      createQuestion({
+      H.createQuestion({
         name: "Orders Model",
         query: { "source-table": ORDERS_ID },
         type: "model",
       });
 
-      cy.visit("/question/new");
+      cy.intercept("POST", "/api/activity/recents").as("recents");
 
-      entityPickerModal().within(() => {
-        entityPickerModalTab("Saved questions").should("be.visible");
-        entityPickerModalTab("Models").should("be.visible");
-        entityPickerModalTab("Tables").should("be.visible");
+      cy.visit("/question/notebook");
+
+      H.entityPickerModal().within(() => {
+        H.tabsShouldBe("Tables", ["Tables", "Collections"]);
+        H.entityPickerModalTab("Collections").should("be.visible");
+        H.entityPickerModalTab("Tables").should("be.visible");
+        H.entityPickerModalTab("Collections").click();
+        H.entityPickerModalItem(1, "Orders Model").click();
+      });
+
+      cy.wait("@recents");
+
+      cy.button(/Orders Model/).click();
+
+      H.entityPickerModal().within(() => {
+        H.tabsShouldBe("Collections", ["Recents", "Tables", "Collections"]);
+        H.entityPickerModalTab("Recents").click();
+        cy.findByTestId("result-item").should("contain.text", "Orders Model");
       });
     });
   },
 );
 
 function assertDataPickerEntitySelected(level, name) {
-  entityPickerModalItem(level, name).should("have.attr", "data-active", "true");
+  H.entityPickerModalItem(level, name).should(
+    "have.attr",
+    "data-active",
+    "true",
+  );
+}
+
+function logRecent(model, model_id) {
+  cy.request("POST", "/api/activity/recents", {
+    context: "selection",
+    model,
+    model_id,
+  });
 }

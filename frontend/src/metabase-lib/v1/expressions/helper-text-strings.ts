@@ -7,13 +7,15 @@ import type {
 } from "metabase-lib/v1/expressions/types";
 import type Database from "metabase-lib/v1/metadata/Database";
 
-import { formatIdentifier, formatStringLiteral } from "./";
+import { formatStringLiteral } from "./string";
+
+import { formatIdentifier } from "./";
 
 const getDescriptionForNow: HelpTextConfig["description"] = (
   database,
   reportTimezone,
 ) => {
-  const hasTimezoneFeatureFlag = database.features.includes("set-timezone");
+  const hasTimezoneFeatureFlag = database.features?.includes("set-timezone");
   const timezone = hasTimezoneFeatureFlag ? reportTimezone : "UTC";
   const nowAtTimezone = getNowAtTimezone(timezone, reportTimezone);
 
@@ -99,12 +101,13 @@ const HELPER_TEXT_STRINGS: HelpTextConfig[] = [
   {
     name: "offset",
     structure: "Offset",
-    description: () => t`Returns the value of an expression in a different row`,
+    description: () =>
+      t`Returns the value of an aggregation expression in a different row`,
     args: [
       {
         name: t`expression`,
         description: t`The value to get from a different row.`,
-        example: formatIdentifier(t`Total`),
+        example: `Sum(${formatIdentifier(t`Total`)})`,
       },
       {
         name: t`rowOffset`,
@@ -596,7 +599,7 @@ const HELPER_TEXT_STRINGS: HelpTextConfig[] = [
       },
       {
         name: t`unit`,
-        description: t`Choose from: ${"year"}, ${"quarter"}, ${"month"}, ${"week"}, ${"day"}, ${"hour"}, ${"minute"}, ${"second"}, or ${"millisecond"}.`,
+        description: t`Choose from: ${"year"}, ${"quarter"}, ${"month"}, ${"week"}, ${"day"}, ${"hour"}, ${"minute"}, or ${"second"}.`,
         example: formatStringLiteral("month"),
       },
     ],
@@ -618,17 +621,28 @@ const HELPER_TEXT_STRINGS: HelpTextConfig[] = [
   {
     name: "contains",
     structure: "contains",
-    description: () => t`Checks to see if string1 contains string2 within it.`,
+    description: () =>
+      t`Returns true if string1 contains string2 within it (or string3, etc. if specified).`,
     args: [
       {
         name: t`string1`,
         description: t`The column or text to check.`,
-        example: formatIdentifier(t`Status`),
+        example: formatIdentifier(t`Title`),
       },
       {
         name: t`string2`,
         description: t`The string of text to look for.`,
-        example: formatStringLiteral(t`Pass`),
+        example: formatStringLiteral(t`Small`),
+      },
+      {
+        name: "…",
+        description: t`You can add more values to look for.`,
+        example: formatStringLiteral(t`Medium`),
+      },
+      {
+        name: "case-insensitive",
+        description: t`Optional. To perform a case-insensitive match.`,
+        example: formatStringLiteral("case-insensitive"),
       },
     ],
   },
@@ -636,17 +650,27 @@ const HELPER_TEXT_STRINGS: HelpTextConfig[] = [
     name: "does-not-contain",
     structure: "doesNotContain",
     description: () =>
-      t`Checks to see if string1 does not contain string2 within it.`,
+      t`Returns true if string1 does not contain string2 within it (and string3, etc. if specified).`,
     args: [
       {
         name: t`string1`,
         description: t`The column or text to check.`,
-        example: formatIdentifier(t`Status`),
+        example: formatIdentifier(t`Title`),
       },
       {
         name: t`string2`,
         description: t`The string of text to look for.`,
-        example: formatStringLiteral(t`Pass`),
+        example: formatStringLiteral(t`Small`),
+      },
+      {
+        name: "…",
+        description: t`You can add more values to look for.`,
+        example: formatStringLiteral(t`Medium`),
+      },
+      {
+        name: "case-insensitive",
+        description: t`Optional. To perform a case-insensitive match.`,
+        example: formatStringLiteral("case-insensitive"),
       },
     ],
   },
@@ -654,17 +678,27 @@ const HELPER_TEXT_STRINGS: HelpTextConfig[] = [
     name: "starts-with",
     structure: "startsWith",
     description: () =>
-      t`Returns true if the beginning of the text matches the comparison text.`,
+      t`Returns true if the beginning of the string1 matches the string2 (or string3, etc. if specified).`,
     args: [
       {
-        name: t`text`,
+        name: t`string1`,
         description: t`The column or text to check.`,
-        example: formatIdentifier(t`Course Name`),
+        example: formatIdentifier(t`Title`),
       },
       {
-        name: t`comparison`,
-        description: t`The string of text that the original text should start with.`,
-        example: formatStringLiteral(t`Computer Science`),
+        name: t`string2`,
+        description: t`The string of text to look for.`,
+        example: formatStringLiteral(t`Small`),
+      },
+      {
+        name: "…",
+        description: t`You can add more values to look for.`,
+        example: formatStringLiteral(t`Medium`),
+      },
+      {
+        name: "case-insensitive",
+        description: t`Optional. To perform a case-insensitive match.`,
+        example: formatStringLiteral("case-insensitive"),
       },
     ],
   },
@@ -672,17 +706,27 @@ const HELPER_TEXT_STRINGS: HelpTextConfig[] = [
     name: "ends-with",
     structure: "endsWith",
     description: () =>
-      t`Returns true if the end of the text matches the comparison text.`,
+      t`Returns true if the end of the string1 matches the string2 (or string3, etc. if specified).`,
     args: [
       {
-        name: t`text`,
+        name: t`string1`,
         description: t`The column or text to check.`,
-        example: formatIdentifier(t`Appetite`),
+        example: formatIdentifier(t`Title`),
       },
       {
-        name: t`comparison`,
-        description: t`The string of text that the original text should end with.`,
-        example: formatStringLiteral(t`hungry`),
+        name: t`string2`,
+        description: t`The string of text to look for.`,
+        example: formatStringLiteral(t`Small`),
+      },
+      {
+        name: "…",
+        description: t`You can add more values to look for.`,
+        example: formatStringLiteral(t`Medium`),
+      },
+      {
+        name: "case-insensitive",
+        description: t`Optional. To perform a case-insensitive match.`,
+        example: formatStringLiteral("case-insensitive"),
       },
     ],
   },
@@ -746,6 +790,39 @@ const HELPER_TEXT_STRINGS: HelpTextConfig[] = [
         name: t`text`,
         description: t`Type of interval like ${"day"}, ${"month"}, ${"year"}.`,
         example: formatStringLiteral("month"),
+      },
+    ],
+  },
+  {
+    name: "relative-time-interval",
+    structure: "intervalStartingFrom",
+    description: () =>
+      t`Returns true if a column's value falls within an interval, starting from an initial, offsetting interval.`,
+    args: [
+      {
+        name: t`column`,
+        description: t`The date column to check.`,
+        example: formatIdentifier(t`Created At`),
+      },
+      {
+        name: t`value`,
+        description: t`Period of the interval, where negative numbers go back in time.`,
+        example: "-20",
+      },
+      {
+        name: t`unit`,
+        description: t`Type of interval like ${"day"}, ${"month"}, ${"year"}.`,
+        example: formatStringLiteral("month"),
+      },
+      {
+        name: t`offsetValue`,
+        description: t`The initial interval period to start from, where negative values are back in time.`,
+        example: "-10",
+      },
+      {
+        name: t`offsetUnit`,
+        description: t`Type of interval like ${"day"}, ${"month"}, ${"year"}.`,
+        example: formatStringLiteral("year"),
       },
     ],
   },
@@ -844,7 +921,7 @@ const HELPER_TEXT_STRINGS: HelpTextConfig[] = [
     name: "case",
     structure: "case",
     description: () =>
-      t`Tests an expression against a list of cases and returns the corresponding value of the first matching case, with an optional default value if nothing else is met.`,
+      t`Alias for if(). Tests an expression against a list of cases and returns the corresponding value of the first matching case, with an optional default value if nothing else is met.`,
     args: [
       {
         name: t`condition`,
@@ -865,6 +942,77 @@ const HELPER_TEXT_STRINGS: HelpTextConfig[] = [
       },
     ],
     docsPage: "case",
+  },
+  {
+    name: "if",
+    structure: "if",
+    description: () =>
+      t`Alias for case(). Tests an expression against a list of cases and returns the corresponding value of the first matching case, with an optional default value if nothing else is met.`,
+    args: [
+      {
+        name: t`condition`,
+        description: t`Something that should evaluate to true or false.`,
+        example: `${formatIdentifier(t`Weight`)} > 200`,
+      },
+      {
+        name: t`output`,
+        description: t`The value that will be returned if the preceding condition is true.`,
+        example: formatStringLiteral(t`Large`),
+      },
+      {
+        name: "…",
+        description: t`You can add more conditions to test.`,
+        example: `${formatIdentifier(t`Weight`)} > 150, ${formatStringLiteral(
+          t`Medium`,
+        )}, ${formatStringLiteral(t`Small`)}`,
+      },
+    ],
+  },
+  {
+    name: "in",
+    structure: "in",
+    description: () =>
+      t`Returns true if value1 equals value2 (or value3, etc. if specified).`,
+    args: [
+      {
+        name: t`value1`,
+        description: t`The column or value to check.`,
+        example: formatIdentifier(t`Category`),
+      },
+      {
+        name: t`value2`,
+        description: t`The column or value to look for.`,
+        example: formatStringLiteral("Widget"),
+      },
+      {
+        name: "…",
+        description: t`You can add more values to look for.`,
+        example: formatStringLiteral("Gadget"),
+      },
+    ],
+  },
+  {
+    name: "not-in",
+    structure: "notIn",
+    description: () =>
+      t`Returns true if value1 doesn't equal value2 (and value3, etc. if specified).`,
+    args: [
+      {
+        name: t`value1`,
+        description: t`The column or value to check.`,
+        example: formatIdentifier(t`Category`),
+      },
+      {
+        name: t`value2`,
+        description: t`The column or value to look for.`,
+        example: formatStringLiteral("Widget"),
+      },
+      {
+        name: "…",
+        description: t`You can add more values to look for.`,
+        example: formatStringLiteral("Gadget"),
+      },
+    ],
   },
   {
     name: "get-year",
@@ -1049,8 +1197,7 @@ const HELPER_TEXT_STRINGS: HelpTextConfig[] = [
     name: "convert-timezone",
     structure: "convertTimezone",
     description: () => t`Convert timezone of a date or timestamp column.
-We support tz database time zone names.
-See the full list here: https://w.wiki/4Jx`,
+We support tz database time zone names.`,
     args: [
       {
         name: t`column`,
@@ -1104,3 +1251,8 @@ export const getHelpDocsUrl = ({ docsPage }: HelpText): string => {
     ? `questions/query-builder/expressions/${docsPage}`
     : "questions/query-builder/expressions";
 };
+
+export const getFunctionByStructure = (structure: string) =>
+  HELPER_TEXT_STRINGS.find(
+    h => h.structure.toLowerCase() === structure.toLowerCase(),
+  )?.name;

@@ -1,8 +1,9 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { color } from "metabase/lib/colors";
 
-export interface FormInputRootProps {
+interface FormInputRootProps {
   touched?: boolean;
   error?: string | boolean;
 }

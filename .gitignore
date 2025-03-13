@@ -21,6 +21,7 @@
 /*.trace.db
 /.babel_cache
 /.env
+/.envrc
 /.lein-env
 /.lein-failures
 /.lein-plugins
@@ -37,6 +38,7 @@
 /deploy/artifacts/*
 /frontend/test/snapshots/*
 /e2e/snapshots/*
+/e2e/tmp/*
 /lein-plugins/*/target
 /local
 /locales/metabase-*.pot
@@ -65,6 +67,7 @@
 /storybook-static
 /target
 /test-report-*
+**/cli-snippets-tmp/**
 \#*\#
 bin/node_modules/
 bin/release/aws-eb/metabase-aws-eb.zip
@@ -77,6 +80,7 @@ target/checksum.txt
 xcshareddata
 xcuserdata
 dev/src/dev/nocommit/
+dev/serialization_deltas/
 *~
 **/cypress_sample_database.json
 **/cypress_sample_instance_data.json
@@ -96,6 +100,7 @@ modules/drivers/*/.lsp/*
 .clj-kondo/*
 !.clj-kondo/README.md
 !.clj-kondo/config.edn
+!.clj-kondo/config/
 !.clj-kondo/src/
 !.clj-kondo/test/
 !.clj-kondo/macros/
@@ -112,3 +117,11 @@ modules/drivers/*/.lsp/*
 
 # airgap
 /resources/airgap/
+
+# swc
+.swc/
+
+*storybook.log
+
+# jar downloader
+/jars/

@@ -1,21 +1,20 @@
 import { useCallback, useMemo, useState } from "react";
 import { msgid, ngettext, t } from "ttag";
 
-import SettingHeader from "metabase/admin/settings/components/SettingHeader";
-import { StyledTable } from "metabase/common/components/Table";
+import { SettingHeader } from "metabase/admin/settings/components/SettingHeader";
+import { ClientSortableTable } from "metabase/common/components/Table";
+import { useToast } from "metabase/common/hooks";
 import {
   BulkActionBar,
   BulkActionButton,
 } from "metabase/components/BulkActionBar";
 import { DelayedLoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper/DelayedLoadingAndErrorWrapper";
 import Link from "metabase/core/components/Link";
-import { useDispatch } from "metabase/lib/redux";
 import * as Urls from "metabase/lib/urls";
-import { addUndo } from "metabase/redux/undo";
-import { Box, Flex, Text, Button, Icon, Checkbox } from "metabase/ui";
+import { Box, Button, Checkbox, Flex, Icon, Text } from "metabase/ui";
 import {
-  useListUploadTablesQuery,
   useDeleteUploadTableMutation,
+  useListUploadTablesQuery,
 } from "metabase-enterprise/api";
 import type { Table } from "metabase-types/api";
 
@@ -23,23 +22,23 @@ import { DeleteConfirmModal } from "./DeleteConfirmModal";
 import { getDateDisplay } from "./utils";
 
 const columns = [
-  { key: "checkbox", name: "" },
+  { key: "checkbox", name: "", sortable: false },
   { key: "name", name: t`Table name` },
   { key: "created_at", name: t`Created at` },
   { key: "schema", name: t`Schema` },
-  { key: "actions", name: "" },
+  { key: "actions", name: "", sortable: false },
 ];
 
 export function UploadManagementTable() {
   const [selectedItems, setSelectedItems] = useState<Table[]>([]);
   const [deleteTableRequest] = useDeleteUploadTableMutation();
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
-  const dispatch = useDispatch();
+  const [sendToast] = useToast();
 
   // TODO: once we have uploads running through RTK Query, we can remove the force update
   // because we can properly invalidate the tables tag
   const {
-    data: uploadTables,
+    data: uploadTables = [],
     error,
     isLoading,
   } = useListUploadTablesQuery(undefined, {
@@ -110,9 +109,7 @@ export function UploadManagementTable() {
               selectedItems.length,
             );
 
-            dispatch(
-              addUndo({ message, toastColor: "error", icon: "warning" }),
-            );
+            sendToast({ message, toastColor: "error", icon: "warning" });
           } else if (result.length > 0) {
             const message = ngettext(
               msgid`1 table deleted`,
@@ -120,7 +117,7 @@ export function UploadManagementTable() {
               result.length,
             );
 
-            dispatch(addUndo({ message }));
+            sendToast({ message });
           }
           setSelectedItems([]);
         }}
@@ -140,16 +137,11 @@ export function UploadManagementTable() {
           </BulkActionButton>
         </BulkActionBar>
       )}
-      <SettingHeader
-        id="upload-tables-list"
-        setting={{
-          display_name: t`Manage Uploads`,
-        }}
-      />
+      <SettingHeader id="upload-tables-list" title={t`Manage Uploads`} />
       <Text fw="bold" color="text-medium">
         {t`Uploaded Tables`}
       </Text>
-      <StyledTable
+      <ClientSortableTable
         data-testid="upload-tables-table"
         columns={columns}
         rows={uploadTables}

@@ -1,6 +1,6 @@
 (ns metabase.cmd-test
   (:require
-   [clojure.test :as t :refer [are deftest is testing]]
+   [clojure.test :refer [are deftest is testing]]
    [metabase.cmd :as cmd]))
 
 (defn- do-with-captured-call-enterprise-calls! [thunk]
@@ -8,9 +8,9 @@
     (thunk)))
 
 (deftest ^:parallel error-message-test
-  (is (= ["Unrecognized command: 'a-command-that-does-not-exist'"
-          "Valid commands: version, help, drop-entity-ids, import, dump, profile, api-documentation, load, seed-entity-ids, dump-to-h2, environment-variables-documentation, migrate, driver-methods, load-from-h2, export, rotate-encryption-key, reset-password"]
-         (#'cmd/validate "a-command-that-does-not-exist" [])))
+  (is (=? ["Unrecognized command: 'a-command-that-does-not-exist'"
+           #"\QValid commands: version, help, drop-entity-ids, import, dump,\E.*"]
+          (#'cmd/validate "a-command-that-does-not-exist" [])))
   (is (= ["The 'rotate-encryption-key' command requires the following arguments: [new-key], but received: []."]
          (#'cmd/validate "rotate-encryption-key" [])))
   (is (nil? (#'cmd/validate "rotate-encryption-key" [:some-arg]))))
@@ -30,7 +30,13 @@
    (fn []
      (testing "with no options"
        (is (= '(metabase-enterprise.serialization.cmd/v2-load! "/path/" {})
-              (cmd/import "/path/")))))))
+              (cmd/import "/path/"))))
+     (testing "with options"
+       (is (= '(metabase-enterprise.serialization.cmd/v2-load! "/path/" {:continue-on-error true})
+              (cmd/import "/path/" "--continue-on-error"))))
+     (testing "with options"
+       (is (= '(metabase-enterprise.serialization.cmd/v2-load! "/path/" {:full-stacktrace true})
+              (cmd/import "/path/" "--full-stacktrace")))))))
 
 (deftest dump-command-test
   (do-with-captured-call-enterprise-calls!
@@ -53,8 +59,8 @@
        ["--collection" "123"]
        {:collection-ids [123]}
 
-       ["-c" "123, 456"]
-       {:collection-ids [123 456]}
+       ["-c" "123, 456, eid:qj0jT7SXwEUezz1wSjTAZ, nicht"]
+       {:collection-ids [123 456 "eid:qj0jT7SXwEUezz1wSjTAZ" nil]}
 
        ["-c" "123,456,789"]
        {:collection-ids [123 456 789]}
@@ -69,4 +75,13 @@
        {:no-settings true}
 
        ["--no-data-model"]
-       {:no-data-model true}))))
+       {:no-data-model true}
+
+       ["--continue-on-error"]
+       {:continue-on-error true}
+
+       ["-e"]
+       {:continue-on-error true}
+
+       ["--full-stacktrace"]
+       {:full-stacktrace true}))))

@@ -1,33 +1,37 @@
 import type {
   ChangeEvent,
-  KeyboardEvent,
+  FocusEvent,
+  FocusEventHandler,
   HTMLAttributes,
-  Ref,
+  KeyboardEvent,
   MouseEvent,
+  Ref,
 } from "react";
-import { forwardRef, useCallback, useEffect, useState, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import { usePrevious } from "react-use";
 
 import Markdown from "metabase/core/components/Markdown";
+import { Box } from "metabase/ui";
 
 import { EditableTextArea, EditableTextRoot } from "./EditableText.styled";
 
 export type EditableTextAttributes = Omit<
   HTMLAttributes<HTMLDivElement>,
-  "onChange"
+  "onChange" | "onFocus" | "onBlur"
 >;
 
 export interface EditableTextProps extends EditableTextAttributes {
   initialValue?: string | null;
   placeholder?: string;
+  maxLength?: number;
   isEditing?: boolean;
   isOptional?: boolean;
   isMultiline?: boolean;
   isDisabled?: boolean;
   isMarkdown?: boolean;
   onChange?: (value: string) => void;
-  onFocus?: () => void;
-  onBlur?: () => void;
+  onFocus?: FocusEventHandler<HTMLTextAreaElement>;
+  onBlur?: FocusEventHandler<HTMLTextAreaElement>;
   "data-testid"?: string;
 }
 
@@ -35,6 +39,7 @@ const EditableText = forwardRef(function EditableText(
   {
     initialValue,
     placeholder,
+    maxLength,
     isEditing = false,
     isOptional = false,
     isMultiline = false,
@@ -72,18 +77,21 @@ const EditableText = forwardRef(function EditableText(
     }
   }, [isInFocus, isMarkdown]);
 
-  const handleBlur = useCallback(() => {
-    setIsInFocus(false);
+  const handleBlur = useCallback(
+    (event: FocusEvent<HTMLTextAreaElement>) => {
+      setIsInFocus(false);
 
-    if (!isOptional && !inputValue) {
-      setInputValue(submitValue);
-    } else if (inputValue !== submitValue && submitOnBlur.current) {
-      setSubmitValue(inputValue);
-      onChange?.(inputValue);
-    }
+      if (!isOptional && !inputValue) {
+        setInputValue(submitValue);
+      } else if (inputValue !== submitValue && submitOnBlur.current) {
+        setSubmitValue(inputValue);
+        onChange?.(inputValue);
+      }
 
-    onBlur?.();
-  }, [inputValue, submitValue, isOptional, onChange, onBlur, setIsInFocus]);
+      onBlur?.(event);
+    },
+    [inputValue, submitValue, isOptional, onChange, onBlur, setIsInFocus],
+  );
 
   const handleChange = useCallback(
     (event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -96,6 +104,7 @@ const EditableText = forwardRef(function EditableText(
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key === "Escape") {
+        event.stopPropagation(); // don't close modal
         setInputValue(submitValue);
         submitOnBlur.current = false;
         event.currentTarget.blur();
@@ -117,7 +126,8 @@ const EditableText = forwardRef(function EditableText(
   const shouldShowMarkdown = isMarkdown && !isInFocus && inputValue;
 
   return (
-    <EditableTextRoot
+    <Box
+      component={EditableTextRoot}
       onClick={isMarkdown ? handleRootElementClick : undefined}
       {...props}
       ref={ref}
@@ -126,6 +136,19 @@ const EditableText = forwardRef(function EditableText(
       isEditingMarkdown={!shouldShowMarkdown}
       data-value={`${displayValue}\u00A0`}
       data-testid="editable-text"
+      tabIndex={0}
+      // For a11y, allow typing to activate the textarea
+      onKeyDown={(e: React.KeyboardEvent) => {
+        if (shouldPassKeyToTextarea(e.key)) {
+          (e.currentTarget as HTMLTextAreaElement).click();
+        }
+      }}
+      onKeyUp={(e: React.KeyboardEvent) => {
+        if (!shouldPassKeyToTextarea(e.key)) {
+          (e.currentTarget as HTMLTextAreaElement).click();
+        }
+      }}
+      lh={1.57}
     >
       {shouldShowMarkdown ? (
         <Markdown>{inputValue}</Markdown>
@@ -134,17 +157,22 @@ const EditableText = forwardRef(function EditableText(
           ref={inputRef}
           value={inputValue}
           placeholder={placeholder}
+          maxLength={maxLength}
           disabled={isDisabled}
           data-testid={dataTestId}
           onFocus={onFocus}
           onBlur={handleBlur}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          // This is used to stop sidesheets from closing when escape is pressed
+          data-mantine-stop-propagation
         />
       )}
-    </EditableTextRoot>
+    </Box>
   );
 });
+
+const shouldPassKeyToTextarea = (key: string) => key !== "Enter";
 
 // eslint-disable-next-line import/no-default-export -- deprecated usage
 export default Object.assign(EditableText, { Root: EditableTextRoot });

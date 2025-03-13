@@ -1,7 +1,7 @@
-(ns ^:mb/once metabase.task.follow-up-emails-test
+(ns metabase.task.follow-up-emails-test
   (:require
    [clojure.test :refer :all]
-   [metabase.email-test :refer [inbox with-fake-inbox]]
+   [metabase.channel.email-test :refer [inbox with-fake-inbox]]
    [metabase.task.follow-up-emails :as follow-up-emails]
    [metabase.test.fixtures :as fixtures]
    [metabase.test.util :as mt]))
@@ -21,10 +21,10 @@
 
 (deftest send-follow-up-email-survey-not-enabled-test
   (testing "Make sure we don't send an email when surveys-enabled is false."
-   (mt/with-temporary-setting-values [anon-tracking-enabled true
-                                      follow-up-email-sent  false
-                                      surveys-enabled       false]
-     (with-fake-inbox
-       (#'follow-up-emails/send-follow-up-email!)
-       (is (= 0
-              (-> @inbox vals first count)))))))
+    (mt/with-temporary-setting-values [anon-tracking-enabled true
+                                       follow-up-email-sent  false
+                                       surveys-enabled       false]
+      (with-fake-inbox
+        (#'follow-up-emails/send-follow-up-email!)
+        (is (= 0
+               (-> @inbox vals first count)))))))

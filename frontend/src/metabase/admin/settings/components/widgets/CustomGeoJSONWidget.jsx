@@ -1,11 +1,11 @@
 /* eslint-disable react/prop-types */
 import cx from "classnames";
 import PropTypes from "prop-types";
-import { memo, Component } from "react";
+import { Component, memo } from "react";
 import { t } from "ttag";
 
 import Confirm from "metabase/components/Confirm";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import Modal from "metabase/components/Modal";
 import { Ellipsified } from "metabase/core/components/Ellipsified";
 import Select, { Option } from "metabase/core/components/Select";
@@ -13,10 +13,11 @@ import AdminS from "metabase/css/admin.module.css";
 import ButtonsS from "metabase/css/components/buttons.module.css";
 import CS from "metabase/css/core/index.css";
 import { uuid } from "metabase/lib/uuid";
-import { SettingsApi, GeoJSONApi } from "metabase/services";
+import { GeoJSONApi, SettingsApi } from "metabase/services";
 import LeafletChoropleth from "metabase/visualizations/components/LeafletChoropleth";
+import { computeMinimalBounds } from "metabase/visualizations/lib/mapping";
 
-import SettingHeader from "../SettingHeader";
+import { SettingHeader } from "../SettingHeader";
 
 export default class CustomGeoJSONWidget extends Component {
   constructor(props, context) {
@@ -96,14 +97,29 @@ export default class CustomGeoJSONWidget extends Component {
 
       for (const feature of geoJson.features) {
         if (!feature.properties) {
-          throw t`Invalid custom GeoJSON: feature is misssing properties`;
+          throw t`Invalid custom GeoJSON: feature is missing properties`;
         }
+      }
+
+      const bounds = computeMinimalBounds(geoJson.features);
+      const northEast = bounds.getNorthEast();
+      const southWest = bounds.getSouthWest();
+
+      if (
+        [
+          [northEast.lat, northEast.lng],
+          [southWest.lat, southWest.lng],
+        ].every(
+          ([lat, lng]) => lat < -90 || lat > 90 || lng < -180 || lng > 180,
+        )
+      ) {
+        throw t`Invalid custom GeoJSON: coordinates are outside bounds for latitude and longitude`;
       }
     }
 
     if (geoJson.type === "Feature") {
       if (!geoJson.properties) {
-        throw t`Invalid custom GeoJSON: feature is misssing properties`;
+        throw t`Invalid custom GeoJSON: feature is missing properties`;
       }
     }
   };
@@ -145,7 +161,11 @@ export default class CustomGeoJSONWidget extends Component {
     return (
       <div className={CS.flexFull}>
         <div className={cx(CS.flex, CS.justifyBetween)}>
-          <SettingHeader setting={setting} />
+          <SettingHeader
+            id={setting.key}
+            title={setting.display_name}
+            description={setting.description}
+          />
           {!this.state.map && (
             <button
               className={cx(ButtonsS.Button, ButtonsS.ButtonPrimary, CS.ml1)}

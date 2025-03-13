@@ -1,17 +1,20 @@
-import type { ComponentStory } from "@storybook/react";
+import type { StoryFn } from "@storybook/react";
 
 import FileInput from "./FileInput";
 
 export default {
-  title: "Core/FileInput",
+  title: "Components/Ask Before Using/FileInput",
   component: FileInput,
 };
 
-const Template: ComponentStory<typeof FileInput> = args => {
+const Template: StoryFn<typeof FileInput> = args => {
   return <FileInput {...args} />;
 };
 
-export const Default = Template.bind({});
-Default.args = {
-  name: "file",
+export const Default = {
+  render: Template,
+
+  args: {
+    name: "file",
+  },
 };

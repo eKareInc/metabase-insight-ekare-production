@@ -3,6 +3,7 @@
   (:require
    [medley.core :as m]
    [metabase.legacy-mbql.normalize :as mbql.normalize]
+   [metabase.lib.cache :as lib.cache]
    [metabase.lib.convert :as lib.convert]
    [metabase.lib.dispatch :as lib.dispatch]
    [metabase.lib.expression :as lib.expression]
@@ -16,12 +17,16 @@
    [metabase.lib.schema.expression :as lib.schema.expression]
    [metabase.lib.schema.id :as lib.schema.id]
    [metabase.lib.schema.metadata :as lib.schema.metadata]
+   [metabase.lib.temporal-bucket :as lib.temporal-bucket]
+   [metabase.lib.types.isa :as lib.types.isa]
    [metabase.lib.util :as lib.util]
    [metabase.lib.util.match :as lib.util.match]
-   [metabase.shared.util.i18n :as i18n]
    [metabase.util :as u]
+   [metabase.util.i18n :as i18n]
+   [metabase.util.log :as log]
    [metabase.util.malli :as mu]
-   [metabase.util.malli.registry :as mr]))
+   [metabase.util.malli.registry :as mr]
+   [weavejester.dependency :as dep]))
 
 (defmethod lib.metadata.calculation/metadata-method :mbql/query
   [_query _stage-number _x]
@@ -55,6 +60,7 @@
 
 (defmulti can-run-method
   "Returns whether the query is runnable based on first stage :lib/type"
+  {:arglists '([query card-type])}
   (fn [query _card-type]
     (:lib/type (lib.util/query-stage query 0))))
 
@@ -65,8 +71,18 @@
 (defmethod can-run-method :mbql.stage/mbql
   [query card-type]
   (or (not= card-type :metric)
-      (let [last-stage (lib.util/query-stage query -1)]
-        (= (-> last-stage :aggregation count) 1))))
+      (let [stage        (lib.util/query-stage query 0)
+            aggregations (:aggregation stage)
+            breakouts    (:breakout stage)]
+        (and (= (stage-count query) 1)
+             (= (count aggregations) 1)
+             (or (empty? breakouts)
+                 (and (= (count breakouts) 1)
+                      (-> (lib.metadata.calculation/metadata query (first breakouts))
+                          ;; extraction units change `:effective-type` to `:type/Integer`, so remove temporal bucketing
+                          ;; before doing type checks
+                          (lib.temporal-bucket/with-temporal-bucket nil)
+                          lib.types.isa/date-or-datetime?)))))))
 
 (mu/defn can-run :- :boolean
   "Returns whether the query is runnable. Manually validate schema for cljs."
@@ -74,10 +90,12 @@
    card-type :- ::lib.schema.metadata/card.type]
   (and (binding [lib.schema.expression/*suppress-expression-type-check?* true]
          (mr/validate ::lib.schema/query query))
+       (:database query)
        (boolean (can-run-method query card-type))))
 
 (defmulti can-save-method
   "Returns whether the query can be saved based on first stage :lib/type."
+  {:arglists '([query card-type])}
   (fn [query _card-type]
     (:lib/type (lib.util/query-stage query 0))))
 
@@ -85,6 +103,7 @@
   [_query _card-type]
   true)
 
+;;; TODO FIXME -- boolean functions should end in `?`
 (mu/defn can-save :- :boolean
   "Returns whether `query` for a card of `card-type` can be saved."
   [query :- ::lib.schema/query
@@ -102,8 +121,8 @@
        ;; Either it contains no expressions with `:offset`, or there is at least one order-by.
        (every? (fn [stage]
                  (boolean
-                   (or (seq (:order-by stage))
-                       (not (lib.util.match/match-one (:expressions stage) :offset)))))
+                  (or (seq (:order-by stage))
+                      (not (lib.util.match/match-one (:expressions stage) :offset)))))
                (:stages query))))
 
 (defn add-types-to-fields
@@ -119,25 +138,25 @@
     ;; "pre-warm" the metadata provider
     (do (lib.metadata/bulk-metadata metadata-provider :metadata/column field-ids)
         (lib.util.match/replace
-         x
-         [:field
-          (options :guard (every-pred map? (complement (every-pred :base-type :effective-type))))
-          (id :guard integer? pos?)]
-         (if (some #{:mbql/stage-metadata} &parents)
-           &match
-           (update &match 1 merge
+          x
+          [:field
+           (options :guard (every-pred map? (complement (every-pred :base-type :effective-type))))
+           (id :guard integer? pos?)]
+          (if (some #{:mbql/stage-metadata} &parents)
+            &match
+            (update &match 1 merge
                    ;; TODO: For brush filters, query with different base type as in metadata is sent from FE. In that
                    ;;       case no change is performed. Find a way how to handle this properly!
-                   (when-not (and (some? (:base-type options))
-                                  (not= (:base-type options)
-                                        (:base-type (lib.metadata/field metadata-provider id))))
+                    (when-not (and (some? (:base-type options))
+                                   (not= (:base-type options)
+                                         (:base-type (lib.metadata/field metadata-provider id))))
                      ;; Following key is used to track which base-types we added during `query` call. It is used in
                      ;; [[metabase.lib.convert/options->legacy-MBQL]] to remove those, so query after conversion
                      ;; as legacy -> pmbql -> legacy looks closer to the original.
-                     (merge (when-not (contains? options :base-type)
-                              {::transformation-added-base-type true})
-                            (-> (lib.metadata/field metadata-provider id)
-                                (select-keys [:base-type :effective-type]))))))))
+                      (merge (when-not (contains? options :base-type)
+                               {::transformation-added-base-type true})
+                             (-> (lib.metadata/field metadata-provider id)
+                                 (select-keys [:base-type :effective-type]))))))))
     x))
 
 (mu/defn query-with-stages :- ::lib.schema/query
@@ -207,20 +226,20 @@
                (-> stage
                    (add-types-to-fields metadata-provider)
                    (lib.util.match/replace
-                    [:expression
-                     (opts :guard (every-pred map? (complement (every-pred :base-type :effective-type))))
-                     expression-name]
-                    (let [found-ref (try
-                                      (m/remove-vals
-                                       #(= :type/* %)
-                                       (-> (lib.expression/expression-ref query stage-number expression-name)
-                                           second
-                                           (select-keys [:base-type :effective-type])))
-                                      (catch #?(:clj Exception :cljs :default) _
+                     [:expression
+                      (opts :guard (every-pred map? (complement (every-pred :base-type :effective-type))))
+                      expression-name]
+                     (let [found-ref (try
+                                       (m/remove-vals
+                                        #(= :type/* %)
+                                        (-> (lib.expression/expression-ref query stage-number expression-name)
+                                            second
+                                            (select-keys [:base-type :effective-type])))
+                                       (catch #?(:clj Exception :cljs :default) _
                                         ;; This currently does not find expressions defined in join stages
-                                        nil))]
+                                         nil))]
                       ;; Fallback if metadata is missing
-                      [:expression (merge found-ref opts) expression-name]))))
+                       [:expression (merge found-ref opts) expression-name]))))
              (m/indexed stages))))))
 
 (defmethod query-method :metadata/table
@@ -234,16 +253,14 @@
 (defn- metric-query
   [metadata-providerable card-metadata]
   (let [card-id (u/the-id card-metadata)
+        metric-first-stage (-> (query metadata-providerable (:dataset-query card-metadata))
+                               (lib.util/query-stage 0))
         base-query (query-with-stages metadata-providerable
-                                      [{:lib/type :mbql.stage/mbql
-                                        :source-card card-id}])
-        metric-breakouts (-> (query metadata-providerable (:dataset-query card-metadata))
-                             (lib.util/query-stage -1)
-                             :breakout)
+                                      [(select-keys metric-first-stage [:lib/type :source-card :source-table])])
         base-query (reduce
                     #(lib.util/add-summary-clause %1 0 :breakout %2)
                     base-query
-                    metric-breakouts)]
+                    (:breakout metric-first-stage))]
     (-> base-query
         (lib.util/add-summary-clause
          0 :aggregation
@@ -252,7 +269,7 @@
 (defmethod query-method :metadata/card
   [metadata-providerable card-metadata]
   (if (or (= (:type card-metadata) :metric)
-          (= (:lib/type card-metadata) :metdata/metric))
+          (= (:lib/type card-metadata) :metadata/metric))
     (metric-query metadata-providerable card-metadata)
     (query-with-stages metadata-providerable
                        [{:lib/type :mbql.stage/mbql
@@ -276,7 +293,17 @@
   it in separately -- metadata is needed for most query manipulation operations."
   [metadata-providerable :- ::lib.schema.metadata/metadata-providerable
    x]
-  (query-method metadata-providerable x))
+  (lib.cache/attach-query-cache (query-method metadata-providerable x)))
+
+(mu/defn ->query :- ::lib.schema/query
+  "[[->]] friendly form of [[query]].
+
+  Create a new MBQL query from anything that could conceptually be an MBQL query, like a Database or Table or an
+  existing MBQL query or saved question or whatever. If the thing in question does not already include metadata, pass
+  it in separately -- metadata is needed for most query manipulation operations."
+  [x
+   metadata-providerable :- ::lib.schema.metadata/metadata-providerable]
+  (query metadata-providerable x))
 
 (mu/defn query-from-legacy-inner-query :- ::lib.schema/query
   "Create a pMBQL query from a legacy inner query."
@@ -298,7 +325,7 @@
   [original-query :- ::lib.schema/query
    table-id :- [:or ::lib.schema.id/table :string]]
   (let [metadata-provider (lib.metadata/->metadata-provider original-query)]
-   (query metadata-provider (lib.metadata/table-or-card metadata-provider table-id))))
+    (query metadata-provider (lib.metadata/table-or-card metadata-provider table-id))))
 
 (defn- occurs-in-expression?
   [expression-clause clause-type expression-body]
@@ -376,3 +403,109 @@
     (-> a-query
         (update :stages #(vec (take (inc stage-number) %)))
         (update-in [:stages stage-number] preview-stage clause-type clause-index))))
+
+(mu/defn wrap-native-query-with-mbql :- [:map
+                                         [:query ::lib.schema/query]
+                                         [:stage-number :int]]
+  "Given a query and stage number, return a possibly-updated query and stage number which is guaranteed to be MBQL and
+  so to support drill-thru and similar logic. Such a query must be saved, hence the `card-id`.
+
+  If the provided query is already MBQL, this is transparent.
+
+  Returns `{:query query', :stage-number stage-number'}`.
+
+  You might find it more convenient to call [[with-wrapped-native-query]]."
+  [a-query      :- ::lib.schema/query
+   stage-number :- :int
+   card-id      :- [:maybe ::lib.schema.id/card]]
+  (or (and (lib.util/native-stage? a-query stage-number)
+           card-id
+           (if-let [card (lib.metadata/card a-query card-id)]
+             {:query        (query a-query card)
+              :stage-number -1}
+             (do
+               (log/warn "Failed to wrap native query with MBQL; card not found" {:query   a-query
+                                                                                  :card-id card-id})
+               nil)))
+      {:query        a-query
+       :stage-number stage-number}))
+
+(defn with-wrapped-native-query
+  "Calls [[wrap-native-query-with-mbql]] on the given `a-query`, `stage-number` and `card-id`, then calls
+  `(f a-query' stage-number' args...)` using the query and stage number for the wrapper."
+  [a-query stage-number card-id f & args]
+  (let [{q :query, n :stage-number} (wrap-native-query-with-mbql a-query stage-number card-id)]
+    (apply f q n args)))
+
+(defn serializable
+  "Given a query, ensure it doesn't have any keys or structures that aren't safe for serialization.
+
+  For example, any Atoms or Delays or should be removed."
+  [a-query]
+  (-> a-query
+      (dissoc a-query :lib/metadata)
+      lib.cache/discard-query-cache))
+
+(defn- stage-seq* [query-fragment]
+  (cond
+    (vector? query-fragment)
+    (case (first query-fragment)
+      :metric
+      [{:source-card (get query-fragment 2)}]
+
+      (mapcat stage-seq* query-fragment))
+
+    (map? query-fragment)
+    (concat (:stages query-fragment) (mapcat stage-seq* (vals query-fragment)))
+
+    :else
+    []))
+
+(defn- stage-seq [card-id a-query]
+  (map #(assoc % ::from-card card-id) (stage-seq* a-query)))
+
+(defn- expand-stage [metadata-provider stage]
+  (let [card-id (:source-card stage)
+        expanded-query (some->> card-id
+                                (lib.metadata/card metadata-provider)
+                                :dataset-query
+                                (query metadata-provider))]
+    (stage-seq card-id expanded-query)))
+
+(defn- add-stage-dep [graph stage]
+  (let [card-id  (:source-card  stage)
+        table-id (:source-table stage)
+        from-id  (::from-card   stage)]
+    (try
+      (cond-> graph
+        card-id  (dep/depend [:card from-id] [:card  card-id])
+        table-id (dep/depend [:card from-id] [:table table-id]))
+      (catch #?(:clj Exception :cljs :default) _e
+        (throw (ex-info (i18n/tru "Cannot save card with cycles.") {}))))))
+
+(defn- build-graph [source-id metadata-provider a-query]
+  (loop [graph (dep/graph)
+         stages-visited 0
+         stages (stage-seq source-id a-query)]
+    (cond
+      (empty? stages)
+      graph
+
+      (> stages-visited 1000)
+      (throw (ex-info (i18n/tru "There are too many stages (>1000) to save card.") {}))
+
+      :else
+      (let [[stage & stages] stages]
+        (recur (add-stage-dep graph stage)
+               (inc stages-visited)
+               (concat stages (expand-stage metadata-provider stage)))))))
+
+(defn check-overwrite
+  "Returns nil if the card with given `card-id` can be overwritten with `query`.
+  Throws `ExceptionInfo` with a user-facing message otherwise.
+
+  Currently checks for cycles (self-referencing queries)."
+  [card-id new-query]
+  (build-graph card-id new-query new-query)
+  ;; return nil if nothing throws
+  nil)

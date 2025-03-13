@@ -4,11 +4,14 @@ import { callMockEvent } from "__support__/events";
 import {
   setupCardDataset,
   setupDatabasesEndpoints,
+  setupRecentViewsAndSelectionsEndpoints,
   setupSearchEndpoints,
   setupSegmentsEndpoints,
 } from "__support__/server-mocks";
 import {
   act,
+  mockGetBoundingClientRect,
+  mockScrollBy,
   renderWithProviders,
   screen,
   waitFor,
@@ -31,9 +34,16 @@ interface SetupOpts {
 }
 
 const setup = ({ initialRoute = FORM_URL }: SetupOpts = {}) => {
+  mockGetBoundingClientRect();
+  mockScrollBy();
   setupDatabasesEndpoints([createSampleDatabase()]);
   setupSearchEndpoints([]);
-  setupCardDataset();
+  setupCardDataset({
+    data: {
+      rows: [[null]],
+    },
+  });
+  setupRecentViewsAndSelectionsEndpoints([], ["selections"]);
   setupSegmentsEndpoints([]);
 
   const { history } = renderWithProviders(

@@ -1,3 +1,4 @@
+import type { CodeLanguage } from "metabase/components/CodeBlock";
 import type { Card, Dashboard } from "metabase-types/api";
 
 export type DisplayTheme = "light" | "night" | "transparent";
@@ -25,13 +26,32 @@ export type EmbeddingParameters = Record<string, EmbeddingParameterVisibility>;
 
 export type EmbeddingParametersValues = Record<string, string>;
 
+/**
+ * This is a type for all the display options in static embedding sharing modal's Look and Feel tab.
+ */
 export type EmbeddingDisplayOptions = {
   font: null | string;
   theme: DisplayTheme;
+  background: boolean;
   bordered: boolean;
   titled: boolean;
-  hide_download_button: boolean | null;
+  /** this is deprecated in favor of `downloads`, but it's still supported */
+  hide_download_button?: boolean | null;
+  downloads: boolean | null;
 };
+
+/**
+ * This is a type that doesn't belong to static embedding sharing modal.
+ * Properties here exists only in the document (just `hide_parameters` since `locale` is a new one),
+ * but not in the UI.
+ */
+export type EmbeddingAdditionalHashOptions = {
+  hide_parameters?: string | null;
+  locale?: string;
+};
+
+export type EmbeddingHashOptions = EmbeddingDisplayOptions &
+  EmbeddingAdditionalHashOptions;
 
 export type CodeSampleParameters = {
   siteUrl: string;
@@ -46,7 +66,7 @@ export type ClientCodeSampleConfig = {
   id: string;
   name: string;
   source: string;
-  mode: string;
+  language: CodeLanguage;
 };
 
 export type ServerCodeSampleConfig = {
@@ -55,8 +75,8 @@ export type ServerCodeSampleConfig = {
   source: string;
   parametersSource: string;
   getIframeQuerySource: string;
-  mode: string;
   embedOption?: string;
+  language: CodeLanguage;
 };
 
 export type CodeSampleOption = ClientCodeSampleConfig | ServerCodeSampleConfig;

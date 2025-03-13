@@ -1,10 +1,17 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 
 type ToggleHookResult = [
   boolean,
-  { turnOn: () => void; turnOff: () => void; toggle: () => void },
+  {
+    turnOn: () => void;
+    turnOff: () => void;
+    toggle: () => void;
+  },
 ];
 
+/**
+ * @deprecated use `import { useDisclosure } from "@mantine/hooks";` instead
+ */
 export function useToggle(initialValue = false): ToggleHookResult {
   const [value, setValue] = useState(initialValue);
 

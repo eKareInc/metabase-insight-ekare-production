@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ngettext, msgid } from "ttag";
+import { msgid, ngettext } from "ttag";
 import _ from "underscore";
 
 import Search from "metabase/entities/search";
@@ -9,16 +9,15 @@ import type { SearchResult } from "metabase-types/api";
 import type { State } from "metabase-types/store";
 
 import {
-  NodeListItemLink,
-  NodeListItemName,
-  NodeListItemIcon,
-  NodeListTitle,
   NodeListContainer,
   NodeListIcon,
+  NodeListItemIcon,
+  NodeListItemId,
+  NodeListItemLink,
+  NodeListItemName,
+  NodeListTitle,
   NodeListTitleText,
-  QuestionId,
-} from "./NodeList.styled";
-import { PaneContent } from "./Pane.styled";
+} from "./NodeList";
 
 export interface DatabaseTablesPaneProps {
   onBack: () => void;
@@ -56,7 +55,7 @@ export const DatabaseTablesPane = ({
       onBack={onBack}
       onClose={onClose}
     >
-      <PaneContent>
+      <SidebarContent.Pane>
         <NodeListContainer>
           {models.length ? (
             <>
@@ -78,7 +77,7 @@ export const DatabaseTablesPane = ({
                     >
                       <NodeListItemIcon name="model" />
                       <NodeListItemName>{model.name}</NodeListItemName>
-                      <QuestionId>{`#${model.id}`}</QuestionId>
+                      <NodeListItemId>{`#${model.id}`}</NodeListItemId>
                     </NodeListItemLink>
                   </li>
                 ))}
@@ -103,7 +102,10 @@ export const DatabaseTablesPane = ({
                   disabled={table.initial_sync_status !== "complete"}
                   onClick={() => onItemClick("table", table)}
                 >
-                  <NodeListItemIcon name="table" />
+                  <NodeListItemIcon
+                    disabled={table.initial_sync_status !== "complete"}
+                    name="table"
+                  />
                   <NodeListItemName
                     data-disabled={table.initial_sync_status !== "complete"}
                   >
@@ -114,7 +116,7 @@ export const DatabaseTablesPane = ({
             ))}
           </ul>
         </NodeListContainer>
-      </PaneContent>
+      </SidebarContent.Pane>
     </SidebarContent>
   );
 };

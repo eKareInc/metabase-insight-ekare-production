@@ -3,14 +3,12 @@
    [clojure.string :as str]
    [clojure.test :refer :all]
    [metabase-enterprise.advanced-config.models.pulse-channel :as advanced-config.models.pulse-channel]
-   [metabase.models :refer [Pulse PulseChannel]]
    [metabase.test :as mt]
    [metabase.util :as u]
-   [toucan2.core :as t2]
-   [toucan2.tools.with-temp :as t2.with-temp]))
+   [toucan2.core :as t2]))
 
 (deftest validate-email-domains-test
-  (t2.with-temp/with-temp [Pulse {pulse-id :id}]
+  (mt/with-temp [:model/Pulse {pulse-id :id}]
     (doseq [operation       [:create :update]
             allowed-domains [nil
                              #{"metabase.com"}
@@ -20,9 +18,9 @@
                              ["cam@metabase.com" "cam@toucan.farm"]
                              ["cam@metabase.com" "cam@disallowed-domain.com"]]
             :let            [fail? (and allowed-domains
-                                    (not (every? (fn [email]
-                                                   (contains? allowed-domains (u/email->domain email)))
-                                                 emails)))]]
+                                        (not (every? (fn [email]
+                                                       (contains? allowed-domains (u/email->domain email)))
+                                                     emails)))]]
       (mt/with-premium-features #{:email-allow-list}
         (mt/with-temporary-setting-values [subscription-allowed-domains (str/join "," allowed-domains)]
           ;; `with-premium-features` and `with-temporary-setting-values` will add `testing` context for the other
@@ -31,13 +29,13 @@
                         (format "\nEmails = %s" (pr-str emails)))
             (let [thunk (case operation
                           :create
-                          #(first (t2/insert-returning-instances! PulseChannel
-                                                                  (merge (t2.with-temp/with-temp-defaults PulseChannel)
+                          #(first (t2/insert-returning-instances! :model/PulseChannel
+                                                                  (merge (mt/with-temp-defaults :model/PulseChannel)
                                                                          {:pulse_id pulse-id, :details {:emails emails}})))
 
                           :update
-                          #(t2.with-temp/with-temp [PulseChannel {pulse-channel-id :id} {:pulse_id pulse-id}]
-                             (t2/update! PulseChannel pulse-channel-id {:details {:emails emails}})))]
+                          #(mt/with-temp [:model/PulseChannel {pulse-channel-id :id} {:pulse_id pulse-id}]
+                             (t2/update! :model/PulseChannel pulse-channel-id {:details {:emails emails}})))]
               (if fail?
                 (testing "should fail"
                   (is (thrown-with-msg?

@@ -1,13 +1,12 @@
 (ns metabase.lib.util-test
   (:require
    #?@(:cljs ([metabase.test-runner.assert-exprs.approximately-equal]))
-   [clojure.string :as str]
    [clojure.test :refer [are deftest is testing]]
    [metabase.lib.core :as lib]
    [metabase.lib.equality :as lib.equality]
    [metabase.lib.test-metadata :as meta]
-   [metabase.lib.test-util :as lib.tu]
-   [metabase.lib.util :as lib.util]))
+   [metabase.lib.util :as lib.util]
+   [metabase.util :as u]))
 
 #?(:cljs
    (comment metabase.test-runner.assert-exprs.approximately-equal/keep-me))
@@ -223,48 +222,12 @@
     "0601246074"           "00000001"
     "2915035893"           "00000000"))
 
-(deftest ^:parallel truncate-string-to-byte-count-test
-  (letfn [(truncate-string-to-byte-count [s byte-length]
-            (let [truncated (#'lib.util/truncate-string-to-byte-count s byte-length)]
-              (is (<= (#'lib.util/string-byte-count truncated) byte-length))
-              (is (str/starts-with? s truncated))
-              truncated))]
-    (doseq [[s max-length->expected] {"12345"
-                                      {1  "1"
-                                       2  "12"
-                                       3  "123"
-                                       4  "1234"
-                                       5  "12345"
-                                       6  "12345"
-                                       10 "12345"}
-
-                                      "가나다라"
-                                      {1  ""
-                                       2  ""
-                                       3  "가"
-                                       4  "가"
-                                       5  "가"
-                                       6  "가나"
-                                       7  "가나"
-                                       8  "가나"
-                                       9  "가나다"
-                                       10 "가나다"
-                                       11 "가나다"
-                                       12 "가나다라"
-                                       13 "가나다라"
-                                       15 "가나다라"
-                                       20 "가나다라"}}
-            [max-length expected] max-length->expected]
-      (testing (pr-str (list `lib.util/truncate-string-to-byte-count s max-length))
-        (is (= expected
-               (truncate-string-to-byte-count s max-length)))))))
-
 (deftest ^:parallel truncate-alias-test
   (letfn [(truncate-alias [s max-bytes]
             (let [truncated (lib.util/truncate-alias s max-bytes)]
-              (is (<= (#'lib.util/string-byte-count truncated) max-bytes))
+              (is (<= (u/string-byte-count truncated) max-bytes))
               truncated))]
-    (doseq [[s max-bytes->expected] { ;; 20-character plain ASCII string
+    (doseq [[s max-bytes->expected] {;; 20-character plain ASCII string
                                      "01234567890123456789"
                                      {12 "012_fc89bad5"
                                       15 "012345_fc89bad5"
@@ -300,7 +263,7 @@
                (truncate-alias s max-bytes)))))))
 
 (deftest ^:parallel unique-name-generator-test
-  (let [unique-name-fn (lib.util/unique-name-generator meta/metadata-provider)]
+  (let [unique-name-fn (lib.util/unique-name-generator)]
     (is (= "wow"
            (unique-name-fn "wow")))
     (is (= "wow_2"
@@ -316,24 +279,13 @@
 
 (deftest ^:parallel unique-name-generator-idempotence-test
   (testing "idempotence (2-arity calls to generated function)"
-    (let [unique-name (lib.util/unique-name-generator meta/metadata-provider)]
+    (let [unique-name (lib.util/unique-name-generator)]
       (is (= ["A" "B" "A" "A_2" "A_2"]
              [(unique-name :x "A")
               (unique-name :x "B")
               (unique-name :x "A")
               (unique-name :y "A")
               (unique-name :y "A")])))))
-
-(deftest ^:parallel unique-name-use-database-methods-test
-  (testing "Should use database :lib/methods"
-    (let [metadata-provider (lib.tu/merged-mock-metadata-provider
-                             meta/metadata-provider
-                             {:database {:lib/methods {:escape-alias #(lib.util/truncate-alias % 15)}}})
-          unique-name        (lib.util/unique-name-generator metadata-provider)]
-      (is (= "catego_ef520013"
-             (unique-name "categories__via__category_id__name")))
-      (is (= "catego_ec940c72"
-             (unique-name "categories__via__category_id__name"))))))
 
 (deftest ^:parallel strip-id-test
   (are [exp in] (= exp (lib.util/strip-id in))

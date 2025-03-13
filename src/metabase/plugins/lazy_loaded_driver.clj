@@ -7,12 +7,14 @@
   See https://github.com/metabase/metabase/wiki/Metabase-Plugin-Manifest-Reference for all the options allowed for a
   plugin manifest."
   (:require
+   [clojure.java.io :as io]
    [metabase.driver :as driver]
    [metabase.driver.common :as driver.common]
    [metabase.plugins.init-steps :as init-steps]
    [metabase.util :as u]
    [metabase.util.i18n :refer [trs]]
-   [metabase.util.log :as log])
+   [metabase.util.log :as log]
+   [metabase.util.yaml :as yaml])
   (:import
    (clojure.lang MultiFn)))
 
@@ -74,7 +76,7 @@
     ;; Make sure the driver has required properties like driver-name
     (when-not (seq driver-name)
       (throw (ex-info (trs "Cannot initialize plugin: missing required property `driver-name`")
-               driver-info)))
+                      driver-info)))
     ;; if someone forgot to include connection properties for a non-abstract driver throw them a bone and warn them
     ;; about it
     (when (and (not abstract)
@@ -92,3 +94,16 @@
     ;; finally, register the Metabase driver
     (log/debug (u/format-color :magenta "Registering lazy loading driver %s..." driver))
     (driver/register! driver, :parent (set (map keyword (u/one-or-many parent))), :abstract? abstract)))
+
+(defn- load-connection-properties
+  [driver]
+  (let [manifest (str (io/file "modules/drivers/" (name driver) "resources/metabase-plugin.yaml"))
+        properties (some->
+                    (slurp manifest)
+                    yaml/parse-string
+                    :driver
+                    (parse-connection-properties))]
+    (.addMethod ^MultiFn driver/connection-properties driver (constantly properties))))
+
+(comment
+  (load-connection-properties :snowflake))

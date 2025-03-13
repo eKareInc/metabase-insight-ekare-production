@@ -75,7 +75,7 @@ export function QueryColumnFingerprintInfo({
 }: QueryColumnFingerprintInfoProps) {
   const { fingerprint } = Lib.displayInfo(query, stageIndex, column);
 
-  if (Lib.isDate(column)) {
+  if (Lib.isTemporal(column)) {
     return (
       <DateTimeFingerprint
         className={className}
@@ -83,14 +83,14 @@ export function QueryColumnFingerprintInfo({
         timezone={timezone}
       />
     );
-  } else if (Lib.isNumber(column)) {
+  } else if (Lib.isNumeric(column)) {
     return (
       <NumberFingerprint
         className={className}
         fingerprintTypeInfo={fingerprint?.type?.["type/Number"]}
       />
     );
-  } else if (Lib.isCategory(column)) {
+  } else if (Lib.isBoolean(column) || Lib.isCategory(column)) {
     const info = Lib.fieldValuesSearchInfo(query, column);
 
     return (

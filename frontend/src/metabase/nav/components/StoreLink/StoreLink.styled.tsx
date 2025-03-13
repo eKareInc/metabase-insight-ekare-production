@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import ExternalLink from "metabase/core/components/ExternalLink";
@@ -17,11 +18,11 @@ export const StoreIconWrapper = styled.div`
   height: 40px;
   border-radius: 6px;
   cursor: pointer;
-  color: ${color("white")};
+  color: var(--mb-color-text-white);
   transition: all 300ms ease-in-out;
 
   &:hover {
-    color: ${color("white")};
+    color: var(--mb-color-text-white);
     background-color: ${() => darken(color("filter"))};
   }
 

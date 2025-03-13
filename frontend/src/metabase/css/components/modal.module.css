@@ -1,5 +1,6 @@
 .ModalContainer {
-  z-index: 4;
+  position: absolute;
+  z-index: var(--mb-overlay-z-index);
 }
 
 .Modal {
@@ -45,11 +46,10 @@
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 3;
 }
 
 .ModalBackdrop {
-  background-color: color-mod(var(--mb-color-bg-black) alpha(-40%));
+  background-color: var(--mb-color-bg-black-alpha-60);
 }
 
 /* TRANSITIONS */
@@ -58,22 +58,30 @@
 
 .ModalBackdrop.ModalAppear,
 .ModalBackdrop.ModalEnter {
-  background-color: color-mod(var(--mb-color-bg-black) alpha(-99%));
+  background-color: color-mix(
+    in srgb,
+    var(--mb-color-bg-black) 1%,
+    transparent
+  );
 }
 
 .ModalBackdrop.ModalAppearActive,
 .ModalBackdrop.ModalEnterActive {
   transition: background-color 200ms ease-in-out;
-  background-color: color-mod(var(--mb-color-bg-black) alpha(-40%));
+  background-color: var(--mb-color-bg-black-alpha-60);
 }
 
 .ModalBackdrop.ModalExit {
-  background-color: color-mod(var(--mb-color-bg-black) alpha(-40%));
+  background-color: var(--mb-color-bg-black-alpha-60);
 }
 
 .ModalBackdrop.ModalExitActive {
   transition: background-color 200ms ease-in-out 100ms;
-  background-color: color-mod(var(--mb-color-bg-black) alpha(-99%));
+  background-color: color-mix(
+    in srgb,
+    var(--mb-color-bg-black) 1%,
+    transparent
+  );
 }
 
 /* modal */
@@ -86,7 +94,9 @@
 
 .ModalBackdrop.ModalAppearActive .Modal,
 .ModalBackdrop.ModalEnterActive .Modal {
-  transition: opacity 200ms linear 100ms, transform 200ms ease-in-out 100ms;
+  transition:
+    opacity 200ms linear 100ms,
+    transform 200ms ease-in-out 100ms;
   opacity: 1;
   transform: translate(0, 0);
 }
@@ -97,7 +107,9 @@
 }
 
 .ModalBackdrop.ModalExitActive .Modal {
-  transition: opacity 200ms linear, transform 200ms ease-in-out;
+  transition:
+    opacity 200ms linear,
+    transform 200ms ease-in-out;
   opacity: 0.01;
   transform: translate(0, -40px);
 }

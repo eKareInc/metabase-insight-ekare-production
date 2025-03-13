@@ -8,19 +8,19 @@ import {
   setupSearchEndpoints,
 } from "__support__/server-mocks";
 import {
+  renderWithProviders,
   screen,
   waitFor,
-  renderWithProviders,
   waitForLoaderToBeRemoved,
 } from "__support__/ui";
 import {
-  createMockDashboard,
   createMockActionDashboardCard,
-  createMockDashboardCard,
-  createMockQueryAction,
   createMockCard,
-  createMockDatabase,
   createMockCollectionItem,
+  createMockDashboard,
+  createMockDashboardCard,
+  createMockDatabase,
+  createMockQueryAction,
 } from "metabase-types/api/mocks";
 
 import { ActionSidebar } from "./ActionSidebar";
@@ -153,9 +153,11 @@ describe("Dashboard > ActionSidebar", () => {
 
       await userEvent.click(cancelButton);
 
-      expect(
-        screen.queryByTestId("mock-native-query-editor"),
-      ).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          screen.queryByTestId("mock-native-query-editor"),
+        ).not.toBeInTheDocument(),
+      );
     });
   });
 });

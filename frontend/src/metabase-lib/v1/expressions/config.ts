@@ -2,11 +2,6 @@ import { t } from "ttag";
 
 import type { MBQLClauseMap } from "./types";
 
-export const DISPLAY_QUOTES = {
-  identifierQuoteDefault: "",
-  literalQuoteDefault: "",
-};
-
 export const EDITOR_QUOTES = {
   // specifies where different quoting is used:
   characters: {
@@ -118,7 +113,7 @@ export const MBQL_CLAUSES: MBQLClauseMap = {
   concat: {
     displayName: `concat`,
     type: "string",
-    args: ["expression"],
+    args: ["expression", "expression"],
     multiple: true,
   },
   replace: {
@@ -217,24 +212,28 @@ export const MBQL_CLAUSES: MBQLClauseMap = {
     displayName: `contains`,
     type: "boolean",
     args: ["string", "string"],
+    multiple: true,
     hasOptions: true,
   },
   "does-not-contain": {
     displayName: `doesNotContain`,
     type: "boolean",
     args: ["string", "string"],
+    multiple: true,
     hasOptions: true,
   },
   "starts-with": {
     displayName: `startsWith`,
     type: "boolean",
     args: ["string", "string"],
+    multiple: true,
     hasOptions: true,
   },
   "ends-with": {
     displayName: `endsWith`,
     type: "boolean",
     args: ["string", "string"],
+    multiple: true,
     hasOptions: true,
   },
   between: {
@@ -252,6 +251,11 @@ export const MBQL_CLAUSES: MBQLClauseMap = {
     type: "boolean",
     args: ["expression", "number", "string"],
     hasOptions: true,
+  },
+  "relative-time-interval": {
+    displayName: "intervalStartingFrom",
+    type: "boolean",
+    args: ["expression", "number", "string", "number", "string"],
   },
   "relative-datetime": {
     displayName: "relativeDateTime",
@@ -289,6 +293,12 @@ export const MBQL_CLAUSES: MBQLClauseMap = {
     displayName: `case`,
     type: "expression",
     args: ["expression", "expression"], // ideally we'd alternate boolean/expression
+    multiple: true,
+  },
+  if: {
+    displayName: `if`,
+    type: "expression",
+    args: ["expression", "expression"],
     multiple: true,
   },
   offset: {
@@ -333,11 +343,30 @@ export const MBQL_CLAUSES: MBQLClauseMap = {
     args: ["number", "number"],
   },
   // comparison operators
+  "=": {
+    displayName: "=",
+    tokenName: "Equal",
+    type: "boolean",
+    args: ["expression", "expression"],
+  },
   "!=": {
     displayName: "!=",
     tokenName: "NotEqual",
     type: "boolean",
     args: ["expression", "expression"],
+  },
+  // `in` and `not-in` are aliases for `=` and `!=`
+  in: {
+    displayName: "in",
+    type: "boolean",
+    args: ["expression", "expression"],
+    multiple: true,
+  },
+  "not-in": {
+    displayName: "notIn",
+    type: "boolean",
+    args: ["expression", "expression"],
+    multiple: true,
   },
   "<=": {
     displayName: "<=",
@@ -360,12 +389,6 @@ export const MBQL_CLAUSES: MBQLClauseMap = {
   ">": {
     displayName: ">",
     tokenName: "GreaterThan",
-    type: "boolean",
-    args: ["expression", "expression"],
-  },
-  "=": {
-    displayName: "=",
-    tokenName: "Equal",
     type: "boolean",
     args: ["expression", "expression"],
   },
@@ -399,6 +422,7 @@ export const MBQL_CLAUSES: MBQLClauseMap = {
     displayName: `weekday`,
     type: "number",
     args: ["datetime"],
+    hasOptions: true, // optional mode parameter
   },
   "get-hour": {
     displayName: `hour`,
@@ -537,11 +561,14 @@ export const EXPRESSION_FUNCTIONS = new Set([
   "now",
   "convert-timezone",
   // boolean
+  "in",
+  "not-in",
   "contains",
   "ends-with",
   "starts-with",
   "between",
   "time-interval",
+  "relative-time-interval",
   "relative-datetime",
   "interval",
   "is-null",
@@ -550,6 +577,7 @@ export const EXPRESSION_FUNCTIONS = new Set([
   "not-empty",
   "does-not-contain",
   // other
+  "if",
   "coalesce",
 ]);
 
@@ -575,41 +603,6 @@ export const OPERATORS = new Set([
   ...BOOLEAN_UNARY_OPERATORS,
   ...LOGICAL_AND_OPERATOR,
   ...LOGICAL_OR_OPERATOR,
-]);
-
-// "standard" filters, can be edited using UI
-export const STANDARD_FILTERS = new Set([
-  "!=",
-  "<=",
-  ">=",
-  "<",
-  ">",
-  "=",
-  "contains",
-  "does-not-contain",
-  "ends-with",
-  "starts-with",
-  "between",
-  "time-interval",
-  "is-null",
-  "not-null",
-  "is-empty",
-  "not-empty",
-  "inside",
-]);
-
-// "standard" aggregations, can be edited using UI
-export const STANDARD_AGGREGATIONS = new Set([
-  "count",
-  "cum-count",
-  "sum",
-  "cum-sum",
-  "distinct",
-  "stddev",
-  "avg",
-  "min",
-  "max",
-  "median",
 ]);
 
 export const POPULAR_FUNCTIONS = [

@@ -3,13 +3,13 @@
    [java-time.api :as t]
    [metabase.db :as mdb]
    [metabase.db.query :as mdb.query]
-   [metabase.models.query-cache :refer [QueryCache]]
-   [metabase.public-settings.premium-features :refer [defenterprise]]
+   [metabase.premium-features.core :refer [defenterprise]]
    [metabase.query-processor.middleware.cache-backend.interface :as i]
    [metabase.util.date-2 :as u.date]
+   [metabase.util.encryption :as encryption]
    [metabase.util.log :as log]
    [toucan2.connection :as t2.connection]
-   #_{:clj-kondo/ignore [:discouraged-namespace]}
+   ^{:clj-kondo/ignore [:discouraged-namespace]}
    [toucan2.core :as t2])
   (:import
    (java.sql Connection PreparedStatement ResultSet Types)))
@@ -22,21 +22,20 @@
 (defn- seconds-ago [n]
   (ms-ago (long (* 1000 n))))
 
-(def ^:private ^{:arglists '([])} cached-results-query-sql
-  ;; this is memoized for a given application DB so we can deliver cached results EXTRA FAST and not have to spend an
-  ;; extra microsecond compiling the same exact query every time. :shrug:
-  ;;
-  ;; Since application DB can change at run time (during tests) it's not just a plain delay
-  (let [f (memoize (fn [_db-type]
-                     (first (mdb.query/compile {:select   [:results]
-                                                :from     [:query_cache]
-                                                :where    [:and
-                                                           [:= :query_hash [:raw "?"]]
-                                                           [:>= :updated_at [:raw "?"]]]
-                                                :order-by [[:updated_at :desc]]
-                                                :limit    [:inline 1]}))))]
-    (fn []
-      (f (mdb/db-type)))))
+;; this is memoized for a given application DB so we can deliver cached results EXTRA FAST and not have to spend an
+;; extra microsecond compiling the same exact query every time. :shrug:
+;;
+;; Since application DB can change at run time (during tests) it's not just a plain delay
+(let [f (memoize (fn [_db-type]
+                   (first (mdb.query/compile {:select   [:results]
+                                              :from     [:query_cache]
+                                              :where    [:and
+                                                         [:= :query_hash [:raw "?"]]
+                                                         [:>= :updated_at [:raw "?"]]]
+                                              :order-by [[:updated_at :desc]]
+                                              :limit    [:inline 1]}))))]
+  (defn- cached-results-query-sql []
+    (f (mdb/db-type))))
 
 (defn prepare-statement
   "Create a prepared statement to query cache"
@@ -56,14 +55,13 @@
         (.close stmt)
         (throw e)))))
 
-
 (defn fetch-cache-stmt-ttl
   "Make a prepared statement for :ttl caching strategy"
   ^PreparedStatement [strategy query-hash ^Connection conn]
   (if-not (:avg-execution-ms strategy)
     (log/debugf "Caching strategy %s needs :avg-execution-ms to work" (pr-str strategy))
     (let [max-age-ms     (* (:multiplier strategy)
-                        (:avg-execution-ms strategy))
+                            (:avg-execution-ms strategy))
           invalidated-at (t/max (ms-ago max-age-ms) (:invalidated-at strategy))]
       (prepare-statement conn query-hash invalidated-at))))
 
@@ -85,7 +83,7 @@
         (assert (= t2.connection/*current-connectable* conn))
         (if-not (.next rs)
           (respond nil)
-          (with-open [is (.getBinaryStream rs 1)]
+          (with-open [is (encryption/maybe-decrypt-stream (.getBinaryStream rs 1))]
             (respond is)))))))
 
 (defn- purge-old-cache-entries!
@@ -94,7 +92,7 @@
   {:pre [(number? max-age-seconds)]}
   (log/trace "Purging old cache entries.")
   (try
-    (t2/delete! (t2/table-name QueryCache)
+    (t2/delete! (t2/table-name :model/QueryCache)
                 :updated_at [:<= (seconds-ago max-age-seconds)])
     (catch Throwable e
       (log/error e "Error purging old cache entries")))
@@ -105,17 +103,19 @@
   creating a new entry."
   [^bytes query-hash ^bytes results]
   (log/debugf "Caching results for query with hash %s." (pr-str (i/short-hex-hash query-hash)))
-  (try
-    (or (pos? (t2/update! QueryCache {:query_hash query-hash}
-                          {:updated_at (t/offset-date-time)
-                           :results    results}))
-        (first (t2/insert-returning-instances! QueryCache
-                                               :updated_at (t/offset-date-time)
-                                               :query_hash query-hash
-                                               :results    results)))
-    (catch Throwable e
-      (log/error e "Error saving query results to cache.")))
-  nil)
+  (let [final-results (encryption/maybe-encrypt-for-stream results)
+        timestamp     (t/offset-date-time)]
+    (try
+      (or (pos? (t2/update! :model/QueryCache {:query_hash query-hash}
+                            {:updated_at timestamp
+                             :results    final-results}))
+          (first (t2/insert-returning-instances! :model/QueryCache
+                                                 :updated_at timestamp
+                                                 :query_hash query-hash
+                                                 :results final-results)))
+      (catch Throwable e
+        (log/error e "Error saving query results to cache.")))
+    nil))
 
 (defmethod i/cache-backend :db
   [_]

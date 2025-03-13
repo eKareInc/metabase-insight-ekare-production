@@ -1,8 +1,9 @@
-(ns metabase.driver.sql.query-processor-test
+(ns ^:mb/driver-tests metabase.driver.sql.query-processor-test
   (:require
+   [buddy.core.codecs :as codecs]
    [clojure.string :as str]
    [clojure.test :refer :all]
-   [malli.core :as mc]
+   [java-time.api :as t]
    [metabase.driver :as driver]
    [metabase.driver.sql.query-processor :as sql.qp]
    [metabase.driver.sql.query-processor-test-util :as sql.qp-test-util]
@@ -13,15 +14,19 @@
    [metabase.lib.test-util.macros :as lib.tu.macros]
    [metabase.models.setting :as setting]
    [metabase.query-processor :as qp]
-   [metabase.query-processor.interface :as qp.i]
+   [metabase.query-processor.middleware.limit :as limit]
    [metabase.query-processor.preprocess :as qp.preprocess]
    [metabase.query-processor.store :as qp.store]
    [metabase.query-processor.util.add-alias-info :as add]
    [metabase.test :as mt]
    [metabase.test.data.env :as tx.env]
-   [metabase.util.honey-sql-2 :as h2x]))
+   [metabase.util.date-2 :as u.date]
+   [metabase.util.honey-sql-2 :as h2x]
+   [metabase.util.malli.registry :as mr]))
 
 (comment metabase.driver.sql.query-processor.deprecated/keep-me)
+
+(set! *warn-on-reflection* true)
 
 (deftest ^:parallel compiled-test
   (is (= [:raw "x"]
@@ -236,10 +241,13 @@
                                                 ::add/source-alias "id"}]]})]
         (sql.qp/format-honeysql driver {:join join})))))
 
+;;; Ok to hardcode driver names here because it's for general HoneySQL compilation behavior and not something that needs
+;;; to be run against all supported drivers
+#_{:clj-kondo/ignore [:metabase/disallow-hardcoded-driver-names-in-tests]}
 (deftest ^:parallel compile-honeysql-test
   (testing "make sure the generated HoneySQL will compile to the correct SQL"
-    (are [driver expected] (= ["INNER JOIN (SELECT * FROM VENUES) AS \"card\" ON \"PUBLIC\".\"CHECKINS\".\"VENUE_ID\" = \"card\".\"id\""]
-                              (compile-join driver))
+    (are [driver] (= ["INNER JOIN (SELECT * FROM VENUES) AS \"card\" ON \"PUBLIC\".\"CHECKINS\".\"VENUE_ID\" = \"card\".\"id\""]
+                     (compile-join driver))
       :sql :h2 :postgres)))
 
 (deftest adjust-start-of-week-test
@@ -269,14 +277,14 @@
 (defn- query-on-dataset-with-nils
   [query]
   (mt/rows
-    (qp/process-query
-     {:database (mt/id)
-      :type     :query
-      :query    (merge
-                 {:source-query {:native "select 'foo' as a union select null as a union select 'bar' as a"}
-                  :expressions  {"initial" [:regex-match-first [:field "A" {:base-type :type/Text}] "(\\w)"]}
-                  :order-by     [[:asc [:field "A" {:base-type :type/Text}]]]}
-                 query)})))
+   (qp/process-query
+    {:database (mt/id)
+     :type     :query
+     :query    (merge
+                {:source-query {:native "select 'foo' as a union select null as a union select 'bar' as a"}
+                 :expressions  {"initial" [:regex-match-first [:field "A" {:base-type :type/Text}] "(\\w)"]}
+                 :order-by     [[:asc [:field "A" {:base-type :type/Text}]]]}
+                query)})))
 
 (deftest ^:parallel correct-for-null-behaviour
   (testing (str "NULLs should be treated intuitively in filters (SQL has somewhat unintuitive semantics where NULLs "
@@ -307,7 +315,7 @@
       (is (= {:select    '[c.NAME AS c__NAME]
               :from      '[VENUES]
               :left-join '[CATEGORIES AS c ON VENUES.CATEGORY_ID = c.ID]
-              :limit     [qp.i/absolute-max-results]}
+              :limit     [limit/absolute-max-results]}
              (-> (lib.tu.macros/mbql-query venues
                    {:fields [&c.categories.name]
                     :joins  [{:fields       [&c.categories.name]
@@ -323,7 +331,7 @@
               :from   '[{:select    [c.NAME AS c__NAME]
                          :from      [VENUES]
                          :left-join [CATEGORIES AS c ON VENUES.CATEGORY_ID = c.ID]} AS source]
-              :limit  [qp.i/absolute-max-results]}
+              :limit  [limit/absolute-max-results]}
              (-> (lib.tu.macros/mbql-query venues
                    {:fields       [&c.categories.name]
                     :source-query {:source-table $$venues
@@ -406,12 +414,17 @@
                                      ORDERS.PRODUCT_ID                  AS PRODUCT_ID
                                      ORDERS.CREATED_AT                  AS CREATED_AT
                                      ABS (0)                            AS pivot-grouping
-                                     ;; TODO -- I'm not sure if the order here is deterministic
+                                     ;; TODO: The order here is not deterministic!
+                                     ;; It's coming from qp.util/nest-source, which walks the query looking for refs
+                                     ;; in an arbitrary order, and returns `m/distinct-by` over that random order.
+                                     ;; Changing the map keys on the inner query can perturb this order; if you cause
+                                     ;; this test to fail based on shuffling the order of these joined fields, just
+                                     ;; edit the expectation to match the new order.
                                      ;; Tech debt issue: #39396
-                                     PRODUCTS__via__PRODUCT_ID.CATEGORY AS PRODUCTS__via__PRODUCT_ID__CATEGORY
-                                     PEOPLE__via__USER_ID.SOURCE        AS PEOPLE__via__USER_ID__SOURCE
                                      PRODUCTS__via__PRODUCT_ID.ID       AS PRODUCTS__via__PRODUCT_ID__ID
-                                     PEOPLE__via__USER_ID.ID            AS PEOPLE__via__USER_ID__ID]
+                                     PEOPLE__via__USER_ID.ID            AS PEOPLE__via__USER_ID__ID
+                                     PEOPLE__via__USER_ID.SOURCE        AS PEOPLE__via__USER_ID__SOURCE
+                                     PRODUCTS__via__PRODUCT_ID.CATEGORY AS PRODUCTS__via__PRODUCT_ID__CATEGORY]
                          :from      [ORDERS]
                          :left-join [PRODUCTS AS PRODUCTS__via__PRODUCT_ID
                                      ON ORDERS.PRODUCT_ID = PRODUCTS__via__PRODUCT_ID.ID
@@ -969,7 +982,7 @@
 
 (deftest ^:parallel format-honeysql-test
   (are [honeysql expected] (= expected
-                              (sql.qp/format-honeysql nil :ansi honeysql))
+                              (sql.qp/format-honeysql :sql honeysql))
     {:select [:*], :from [:table]} ["SELECT * FROM \"table\""]
 
     (h2x/identifier :field "A" "B") ["\"A\".\"B\""]
@@ -1008,7 +1021,7 @@
                                vec
                                (update 0 #(str/split-lines (driver/prettify-native-form driver/*driver* %))))]
               (testing "this query should not have any parameters"
-                (is (mc/validate [:cat [:sequential :string]] sql-args))))))))))
+                (is (mr/validate [:cat [:sequential :string]] sql-args))))))))))
 
 (deftest ^:parallel binning-optimize-math-expressions-test
   (testing "Don't include nonsense like `+ 0.0` and `- 0.0` when generating expressions for binning"
@@ -1047,12 +1060,10 @@
       ;; String containing semicolon followed by double dash followed by THE _comment or semicolon or end of input_.
       ;; TODO: Enable when better sql parsing solution is found in the [[sql.qp/make-nestable-sql]]].
       ;; Tech debt issue: #39401
-      #_#_
-      "SELECT 'string with \n ; -- ending on the same line';"
-      "(SELECT 'string with \n ; -- ending on the same line')"
-      #_#_
-      "SELECT 'string with \n ; -- ending on the same line';\n-- comment"
-      "(SELECT 'string with \n ; -- ending on the same line')"
+      #_#_"SELECT 'string with \n ; -- ending on the same line';"
+        "(SELECT 'string with \n ; -- ending on the same line')"
+      #_#_"SELECT 'string with \n ; -- ending on the same line';\n-- comment"
+        "(SELECT 'string with \n ; -- ending on the same line')"
 
       ;; String containing just `--` without `;` works
       "SELECT 'string with \n -- ending on the same line';"
@@ -1068,3 +1079,60 @@
       ; --c2\n
       -- c3"
       "(SELECT ';')")))
+
+(deftest ^:parallel string-inline-value-test
+  (testing `String
+    (let [honeysql {:select [[:%count.*]]
+                    :from   [[:venues]]
+                    :where  [:= :venues/name "Barney's Beanery"]}]
+      (binding [driver/*compile-with-inline-parameters* true]
+        (is (= ["SELECT COUNT(*) FROM \"venues\" WHERE \"venues\".\"name\" = 'Barney''s Beanery'"]
+               (sql.qp/format-honeysql :sql honeysql)))))))
+
+(deftest ^:parallel OffsetDateTime-inline-value-test
+  (let [honeysql {:select [[:*]]
+                  :from   [[:venues]]
+                  :where  [:= :venues/created_at (t/offset-date-time "2017-01-01T00:00:00.000Z")]}]
+    (binding [driver/*compile-with-inline-parameters* true]
+      (is (= ["SELECT * FROM \"venues\" WHERE \"venues\".\"created_at\" = timestamp with time zone '2017-01-01 00:00:00.000 +00:00'"]
+             (sql.qp/format-honeysql :sql honeysql))))))
+
+(driver/register! ::inline-value-test, :parent :sql, :abstract? true)
+
+(defmethod sql.qp/inline-value [::inline-value-test java.time.OffsetDateTime]
+  [_driver t]
+  (format "from_iso8601_timestamp('%s')" (u.date/format t)))
+
+(deftest ^:parallel override-inline-value-test
+  (let [honeysql {:select [[:*]]
+                  :from   [[:venues]]
+                  :where  [:= :venues/created_at (t/offset-date-time "2017-01-01T00:00:00.000Z")]}]
+    (binding [driver/*compile-with-inline-parameters* true]
+      (is (= ["SELECT * FROM \"venues\" WHERE \"venues\".\"created_at\" = from_iso8601_timestamp('2017-01-01T00:00:00Z')"]
+             (sql.qp/format-honeysql ::inline-value-test honeysql))))))
+
+(defmethod sql.qp/inline-value [::inline-value-test String]
+  [_driver ^String s]
+  (format "decode(unhex('%s'), 'utf-8')" (codecs/bytes->hex (.getBytes s "UTF-8"))))
+
+(deftest ^:parallel override-inline-value-test-2
+  (let [honeysql {:select [[:*]]
+                  :from   [[:venues]]
+                  :where  [:= :venues/name "ABC"]}]
+    (binding [driver/*compile-with-inline-parameters* true]
+      (is (= ["SELECT * FROM \"venues\" WHERE \"venues\".\"name\" = decode(unhex('414243'), 'utf-8')"]
+             (sql.qp/format-honeysql ::inline-value-test honeysql))))))
+
+(deftype ^:private MyString [s])
+
+(defmethod sql.qp/inline-value [::inline-value-test MyString]
+  [_driver _s]
+  "[my-string]")
+
+(deftest ^:parallel override-inline-value-arbitrary-type-test
+  (let [honeysql {:select [[:*]]
+                  :from   [[:venues]]
+                  :where  [:= :venues/name (->MyString "ABC")]}]
+    (binding [driver/*compile-with-inline-parameters* true]
+      (is (= ["SELECT * FROM \"venues\" WHERE \"venues\".\"name\" = [my-string]"]
+             (sql.qp/format-honeysql ::inline-value-test honeysql))))))

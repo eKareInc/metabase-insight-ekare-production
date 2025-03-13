@@ -21,7 +21,7 @@ If instead you're wondering about what data Metabase the company can see, check 
 - [Data permissions](#data-permissions)
 - [Collection permissions](#collection-permissions)
 - [Application permissions](#application-permissions)
-- [SQL snippet folder permissions](#sql-snippet-folder-permissions)
+- [Snippet folder permissions](#snippet-folder-permissions)
 
 ### Data permissions
 
@@ -39,20 +39,21 @@ If instead you're wondering about what data Metabase the company can see, check 
 - Questions
 - Dashboards
 - Models
+- Metrics
 - Events
 - Timelines
 
 ### Application permissions
 
-[Application permissions](application.md) (available on paid plans) dictate access to Metabase application-level features, including:
+[Application permissions](application.md) (available on [Pro and Enterprise plans](https://www.metabase.com/pricing/)) dictate access to Metabase application-level features, including:
 
 - **Settings**: The Settings tab in the Admin panel.
-- **Monitoring access**: The Tools, Audit, and Troubleshooting tabs in the Admin panel.
+- **Monitoring access**: The Tools and Troubleshooting tabs in the Admin panel.
 - **Subscriptions and Alerts**. Which groups can create/edit dashboard subscriptions and alerts.
 
-### SQL snippet folder permissions
+### Snippet folder permissions
 
-For plans that include [SQL Snippet Folders][sql-snippet-folders], you can also set permissions on those folders.
+For plans that include [Snippet Folders][snippet-folders], you can also set permissions on those folders.
 
 ## Changing permissions
 
@@ -71,10 +72,9 @@ Whenever you change permissions for a group, make sure you:
 [dashboard-subscriptions]: ../dashboards/subscriptions.md
 [data-permissions]: ./data.md
 [data-sandboxing]: ./data-sandboxes.md
-[permissions]: https://www.metabase.com/learn/permissions/
-[sandbox-columns]: https://www.metabase.com/learn/permissions/data-sandboxing-column-permissions
-[sandbox-rows]: https://www.metabase.com/learn/permissions/data-sandboxing-row-permissionsk
+[permissions]: https://www.metabase.com/learn/metabase-basics/administration/permissions
+[sandbox-columns]: https://www.metabase.com/learn/metabase-basics/administration/permissions/data-sandboxing-column-permissions
+[sandbox-rows]: https://www.metabase.com/learn/metabase-basics/administration/permissions/data-sandboxing-row-permissions
 [slack-integration]: ../configuring-metabase/slack.md
-[sql-snippet-folders]: ../questions/native-editor/sql-snippets.md
-[table-permissions]: data.md#table-permissions
+[snippet-folders]: ../questions/native-editor/snippets.md
 [troubleshooting-permissions]: ../troubleshooting-guide/permissions.md

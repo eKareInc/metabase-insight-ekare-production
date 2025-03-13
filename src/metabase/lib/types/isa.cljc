@@ -4,7 +4,6 @@
   (:require
    [medley.core :as m]
    [metabase.lib.types.constants :as lib.types.constants]
-   [metabase.lib.util :as lib.util]
    [metabase.types]))
 
 (comment metabase.types/keep-me)
@@ -115,19 +114,6 @@
   [column]
   (clojure.core/isa? (:semantic-type column) :type/Description))
 
-(defn ^:export dimension?
-  "Is `column` a dimension?"
-  [column]
-  (and column
-       (not= (:lib/source column) :source/aggregations)
-       (not (description? column))))
-
-(defn ^:export metric?
-  "Is `column` a metric?"
-  [column]
-  (and (not= (:lib/source column) :source/breakouts)
-       (summable? column)))
-
 (defn ^:export foreign-key?
   "Is `column` a foreign-key?"
   [column]
@@ -168,10 +154,11 @@
   [_column]
   true)
 
-(defn ^:export numeric-base-type?
-  "Is `column` a numneric base type?"
+(defn ^:export date-or-datetime?
+  "Is `column` a date or datetime?"
   [column]
-  (clojure.core/isa? (:effective-type column) :type/Number))
+  (or (clojure.core/isa? (:effective-type column) :type/Date)
+      (clojure.core/isa? (:effective-type column) :type/DateTime)))
 
 (defn ^:export date-without-time?
   "Is `column` a date without time?"
@@ -192,16 +179,6 @@
   "Is `column` a creation time column?"
   [column]
   (clojure.core/isa? (:semantic-type column) :type/CreationTime))
-
-;; ZipCode, ID, etc derive from Number but should not be formatted as numbers
-(defn ^:export number?
-  "Is `column` a number without some other semantic type (like ZIP code)?"
-  [column]
-  (and (numeric-base-type? column)
-       (let [semantic-type (:semantic-type column)]
-         (or (nil? semantic-type)
-             ;; this is a precaution, :type/Number is not a semantic type
-             (clojure.core/isa? semantic-type :type/Number)))))
 
 (defn ^:export integer?
   "Is `column` a integer column?"
@@ -289,23 +266,6 @@
   [column]
   (clojure.core/isa? (:semantic-type column) :type/ImageURL))
 
-(defn ^:export has-latitude-and-longitude?
-  "Does the collection `columns` contain both a latitude and a longitude column?"
-  [columns]
-  (every? #(some % columns) [latitude? longitude?]))
-
-(defn ^:export primary-key-pred
-  "Return a prdicate for checking if a column is a primary key."
-  [table-id]
-  (fn primary-key-pred-for-table-id [column]
-    (let [pk? (primary-key? column)]
-      ;; comment from isa.js:
-      ;; > FIXME: columns of nested questions at this moment miss table_id value
-      ;; > which makes it impossible to match them with their tables that are nested cards
-      (if (lib.util/legacy-string-table-id->card-id table-id)
-        pk?
-        (and pk? (= (:table-id column) table-id))))))
-
 ;;; TODO -- This stuff should probably use the constants in [[metabase.lib.types.constants]], however this logic isn't
 ;;; supposed to include things with semantic type = Category which the `::string` constant define there includes.
 (defn searchable?
@@ -325,7 +285,7 @@
   of `dst-column`."
   [src-column dst-column]
   (or
-    (and (string? src-column)   (string? dst-column))
-    (and (number? src-column)   (number? dst-column))
-    (and (temporal? src-column) (temporal? dst-column))
-    (clojure.core/isa? (:base-type src-column) (:base-type dst-column))))
+   (and (string? src-column)   (string? dst-column))
+   (and (numeric? src-column)  (numeric? dst-column))
+   (and (temporal? src-column) (temporal? dst-column))
+   (clojure.core/isa? (:base-type src-column) (:base-type dst-column))))

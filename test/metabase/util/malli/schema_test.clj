@@ -1,7 +1,7 @@
 (ns metabase.util.malli.schema-test
   (:require
    [clojure.test :refer :all]
-   [malli.core :as mc]
+   [metabase.util.malli.registry :as mr]
    [metabase.util.malli.schema :as ms]))
 
 (deftest ^:parallel schema-test
@@ -106,11 +106,11 @@
                              :target        [:field 3 nil]
                              :card_id       3}]}]]
 
-   (testing (format "schema %s" (pr-str schema))
-    (doseq [case failed-cases]
-      (testing (format "case: %s should fail" (pr-str case))
-        (is (false? (mc/validate schema case)))))
+    (testing (format "schema %s" (pr-str schema))
+      (doseq [case failed-cases]
+        (testing (format "case: %s should fail" (pr-str case))
+          (is (false? (mr/validate schema case)))))
 
-    (doseq [case success-cases]
-      (testing (format "case: %s should success" (pr-str case))
-       (is (true? (mc/validate schema case))))))))
+      (doseq [case success-cases]
+        (testing (format "case: %s should success" (pr-str case))
+          (is (true? (mr/validate schema case))))))))

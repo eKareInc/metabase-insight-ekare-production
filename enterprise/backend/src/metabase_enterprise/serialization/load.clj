@@ -14,24 +14,8 @@
    [metabase.legacy-mbql.normalize :as mbql.normalize]
    [metabase.legacy-mbql.util :as mbql.u]
    [metabase.lib.util.match :as lib.util.match]
-   [metabase.models.card :refer [Card]]
-   [metabase.models.collection :refer [Collection]]
-   [metabase.models.dashboard :refer [Dashboard]]
-   [metabase.models.dashboard-card :refer [DashboardCard]]
-   [metabase.models.dashboard-card-series :refer [DashboardCardSeries]]
-   [metabase.models.database :as database :refer [Database]]
-   [metabase.models.dimension :refer [Dimension]]
-   [metabase.models.field :refer [Field]]
-   [metabase.models.field-values :refer [FieldValues]]
-   [metabase.models.native-query-snippet :refer [NativeQuerySnippet]]
-   [metabase.models.pulse :refer [Pulse]]
-   [metabase.models.pulse-card :refer [PulseCard]]
-   [metabase.models.pulse-channel :refer [PulseChannel]]
-   [metabase.models.segment :refer [Segment]]
    [metabase.models.setting :as setting]
-   [metabase.models.table :refer [Table]]
-   [metabase.models.user :as user :refer [User]]
-   [metabase.shared.models.visualization-settings :as mb.viz]
+   [metabase.models.visualization-settings :as mb.viz]
    [metabase.util.date-2 :as u.date]
    [metabase.util.i18n :refer [trs]]
    [metabase.util.log :as log]
@@ -148,7 +132,7 @@
   [entity]
   (lib.util.match/replace entity
     ;; handle legacy `:field-id` forms encoded prior to 0.39.0
-    ;; and also *current* expresion forms used in parameter mapping dimensions
+    ;; and also *current* expression forms used in parameter mapping dimensions
     ;; example relevant clause - [:dimension [:fk-> [:field-id 1] [:field-id 2]]]
     [:field-id (fully-qualified-name :guard string?)]
     (mbql-fully-qualified-names->ids* [:field fully-qualified-name nil])
@@ -179,7 +163,7 @@
 (def ^:private ^{:arglists '([])} default-user-id
   (mdb/memoize-for-application-db
    (fn []
-     (let [user (t2/select-one-pk User :is_superuser true)]
+     (let [user (t2/select-one-pk :model/User :is_superuser true)]
        (assert user (trs "No admin users found! At least one admin user is needed to act as the owner for all the loaded entities."))
        user))))
 
@@ -214,17 +198,18 @@
 
 (defn- load-dimensions!
   [path context]
-  (maybe-upsert-many! context Dimension
-    (for [dimension (yaml/from-file (str path "/dimensions.yaml"))]
-      (-> dimension
-          (update :human_readable_field_id (comp :field fully-qualified-name->context))
-          (update :field_id (comp :field fully-qualified-name->context))))))
+  (maybe-upsert-many!
+   context :model/Dimension
+   (for [dimension (yaml/from-file (str path "/dimensions.yaml"))]
+     (-> dimension
+         (update :human_readable_field_id (comp :field fully-qualified-name->context))
+         (update :field_id (comp :field fully-qualified-name->context))))))
 
 (defmethod load! "databases"
   [path context]
   (doseq [path (list-dirs path)]
     ;; If we failed to load the DB no use in trying to load its tables
-    (when-let [db (first (maybe-upsert-many! context Database (slurp-dir path)))]
+    (when-let [db (first (maybe-upsert-many! context :model/Database (slurp-dir path)))]
       (doseq [inner-path (conj (list-dirs (str path "/schemas")) path)
               :let [context (merge context {:database db
                                             :schema   (when (not= inner-path path)
@@ -235,9 +220,10 @@
 (defmethod load! "tables"
   [path context]
   (let [paths     (list-dirs path)
-        table-ids (maybe-upsert-many! context Table
-                    (for [table (slurp-many paths)]
-                      (assoc table :db_id (:database context))))]
+        table-ids (maybe-upsert-many!
+                   context :model/Table
+                   (for [table (slurp-many paths)]
+                     (assoc table :db_id (:database context))))]
     ;; First load fields ...
     (doseq [[path table-id] (map vector paths table-ids)
             :when table-id]
@@ -257,18 +243,20 @@
   [path context]
   (let [fields       (slurp-dir path)
         field-values (map :values fields)
-        field-ids    (maybe-upsert-many! context Field
-                       (for [field fields]
-                         (-> field
-                             (update :parent_id (comp :field fully-qualified-name->context))
-                             (update :last_analyzed u.date/parse)
-                             (update :fk_target_field_id (comp :field fully-qualified-name->context))
-                             (dissoc :values)
-                             (assoc :table_id (:table context)))))]
-    (maybe-upsert-many! context FieldValues
-      (for [[field-value field-id] (map vector field-values field-ids)
-            :when field-id]
-        (assoc field-value :field_id field-id)))))
+        field-ids    (maybe-upsert-many!
+                      context :model/Field
+                      (for [field fields]
+                        (-> field
+                            (update :parent_id (comp :field fully-qualified-name->context))
+                            (update :last_analyzed u.date/parse)
+                            (update :fk_target_field_id (comp :field fully-qualified-name->context))
+                            (dissoc :values)
+                            (assoc :table_id (:table context)))))]
+    (maybe-upsert-many!
+     context :model/FieldValues
+     (for [[field-value field-id] (map vector field-values field-ids)
+           :when field-id]
+       (assoc field-value :field_id field-id)))))
 
 (defmethod load! "fields"
   [path context]
@@ -280,13 +268,14 @@
 
 (defmethod load! "segments"
   [path context]
-  (maybe-upsert-many! context Segment
-    (for [metric (slurp-dir path)]
-      (-> metric
-          (assoc :table_id   (:table context)
-                 :creator_id (default-user-id))
-          (assoc-in [:definition :source-table] (:table context))
-          (update :definition mbql-fully-qualified-names->ids)))))
+  (maybe-upsert-many!
+   context :model/Segment
+   (for [metric (slurp-dir path)]
+     (-> metric
+         (assoc :table_id   (:table context)
+                :creator_id (default-user-id))
+         (assoc-in [:definition :source-table] (:table context))
+         (update :definition mbql-fully-qualified-names->ids)))))
 
 (defn- update-card-parameter-mappings
   [parameter-mappings]
@@ -313,8 +302,8 @@
 (defn- resolve-param-ref [param-ref]
   (cond-> param-ref
     (= "dimension" (::mb.viz/param-ref-type param-ref))
-    (-> ; from outer cond->
-        (m/update-existing ::mb.viz/param-ref-id mbql-fully-qualified-names->ids)
+    ;; from outer cond->
+    (-> (m/update-existing ::mb.viz/param-ref-id mbql-fully-qualified-names->ids)
         (m/update-existing ::mb.viz/param-dimension resolve-dimension))))
 
 (defn- resolve-param-mapping-val [v]
@@ -328,7 +317,7 @@
        mb.viz/db->norm-param-mapping
        (reduce-kv (fn [acc k v]
                     (assoc acc (resolve-param-mapping-key k)
-                               (resolve-param-mapping-val v))) {})
+                           (resolve-param-mapping-val v))) {})
        mb.viz/norm->db-param-mapping))
 
 (defn- resolve-click-behavior
@@ -390,14 +379,18 @@
     [f-type f-str f-md]))
 
 (defn- resolve-pivot-table-settings
-  "Resolve the entries in a :pivot_table.column_split map (which is under a :visualization_settings map). These map entries
-  may contain fully qualified field names, or even other cards. In case of an unresolved name (i.e. a card that hasn't
-  yet been loaded), we will track it under ::unresolved-names and revisit on the next pass."
+  "Resolve the entries in a :pivot_table.column_split map (which is under a :visualization_settings map). Modern map
+  entries contain column names that should be preserved as is. Legacy map entries may contain fully qualified field
+  names, or even other cards. In case of an unresolved name (i.e. a card that hasn't yet been loaded), we will track it
+  under ::unresolved-names and revisit on the next pass."
   [vs-norm]
   (if (:pivot_table.column_split vs-norm)
     (letfn [(resolve-vec [pivot vec-type]
-              (update-in pivot [:pivot_table.column_split vec-type] (fn [tbl-vecs]
-                                                                      (mapv resolve-table-column-field-ref tbl-vecs))))]
+              (update-in pivot [:pivot_table.column_split vec-type]
+                         (fn [tbl-vecs]
+                           (if (every? string? tbl-vecs)
+                             tbl-vecs
+                             (mapv resolve-table-column-field-ref tbl-vecs)))))]
       (-> vs-norm
           (resolve-vec :rows)
           (resolve-vec :columns)))
@@ -441,17 +434,24 @@
     ;; for a deprecated feature
     (m/update-existing-in p [:values_source_config :card_id] fully-qualified-name->card-id)))
 
+(defn- parse-timestamp [ts]
+  (if (string? ts)
+    (u.date/parse ts)
+    ts))
+
 (defn load-dashboards!
   "Loads `dashboards` (which is a sequence of maps parsed from a YAML dump of dashboards) in a given `context`."
   {:added "0.40.0"}
   [context dashboards]
-  (let [dashboard-ids   (maybe-upsert-many! context Dashboard
-                                            (for [dashboard dashboards]
-                                              (-> dashboard
-                                                  (update :parameters resolve-dashboard-parameters)
-                                                  (dissoc :dashboard_cards)
-                                                  (assoc :collection_id (:collection context)
-                                                         :creator_id    (default-user-id)))))
+  (let [dashboard-ids   (maybe-upsert-many!
+                         context :model/Dashboard
+                         (for [dashboard dashboards]
+                           (-> dashboard
+                               (update :parameters resolve-dashboard-parameters)
+                               (update :last_viewed_at parse-timestamp)
+                               (dissoc :dashboard_cards)
+                               (assoc :collection_id (:collection context)
+                                      :creator_id    (default-user-id)))))
         ;; MEGA HACK -- if `load` is ran with `--mode update` we should delete any Cards that were removed from a
         ;; Dashboard (according to #20786). However there are literally zero facilities for doing this sort of thing in
         ;; the current dump/load codebase. So for now we'll just delete ALL DashboardCards for the dumped Dashboard when
@@ -460,7 +460,7 @@
         ;; until we can come in here and clean things up. -- Cam 2022-03-24
         _               (when (and (= (:mode context) :update)
                                    (seq dashboard-ids))
-                          (t2/delete! DashboardCard :dashboard_id [:in (set dashboard-ids)]))
+                          (t2/delete! :model/DashboardCard :dashboard_id [:in (set dashboard-ids)]))
         dashboard-cards (map :dashboard_cards dashboards)
         ;; a function that prepares a dash card for insertion, while also validating to ensure the underlying
         ;; card_id could be resolved from the fully qualified name
@@ -495,15 +495,16 @@
                          (mapv vector dashboard-cards dashboard-ids))
         revisit-indexes (vec (::revisit-index filtered-cards))
         proceed-cards   (vec (::process filtered-cards))
-        dashcard-ids    (maybe-upsert-many! context DashboardCard (map #(dissoc % :series) proceed-cards))
+        dashcard-ids    (maybe-upsert-many! context :model/DashboardCard (map #(dissoc % :series) proceed-cards))
         series-pairs    (map vector (map :series proceed-cards) dashcard-ids)]
-    (maybe-upsert-many! context DashboardCardSeries
-                        (for [[series dashboard-card-id] series-pairs
-                              dashboard-card-series      series
-                              :when (and dashboard-card-series dashboard-card-id)]
-                          (-> dashboard-card-series
-                              (assoc :dashboardcard_id dashboard-card-id)
-                              (update :card_id fully-qualified-name->card-id))))
+    (maybe-upsert-many!
+     context :model/DashboardCardSeries
+     (for [[series dashboard-card-id] series-pairs
+           dashboard-card-series      series
+           :when (and dashboard-card-series dashboard-card-id)]
+       (-> dashboard-card-series
+           (assoc :dashboardcard_id dashboard-card-id)
+           (update :card_id fully-qualified-name->card-id))))
     (let [revisit-dashboards (map (partial nth dashboards) revisit-indexes)]
       (when (seq revisit-dashboards)
         (let [revisit-map    (::revisit filtered-cards)
@@ -531,12 +532,13 @@
 (defn- load-pulses! [pulses context]
   (let [cards       (map :cards pulses)
         channels    (map :channels pulses)
-        pulse-ids   (maybe-upsert-many! context Pulse
-                      (for [pulse pulses]
-                        (-> pulse
-                            (assoc :collection_id (:collection context)
-                                   :creator_id    (default-user-id))
-                            (dissoc :channels :cards))))
+        pulse-ids   (maybe-upsert-many!
+                     context :model/Pulse
+                     (for [pulse pulses]
+                       (-> pulse
+                           (assoc :collection_id (:collection context)
+                                  :creator_id    (default-user-id))
+                           (dissoc :channels :cards))))
         pulse-cards (for [[cards pulse-id pulse-idx] (map vector cards pulse-ids (range 0 (count pulse-ids)))
                           card             cards
                           :when pulse-id]
@@ -549,12 +551,13 @@
         grouped     (group-by #(empty? (::unresolved-names %)) pulse-cards)
         process     (get grouped true)
         revisit     (get grouped false)]
-    (maybe-upsert-many! context PulseCard (map #(dissoc % ::pulse-index ::pulse-name) process))
-    (maybe-upsert-many! context PulseChannel
-      (for [[channels pulse-id] (map vector channels pulse-ids)
-            channel             channels
-            :when pulse-id]
-        (assoc channel :pulse_id pulse-id)))
+    (maybe-upsert-many! context :model/PulseCard (map #(dissoc % ::pulse-index ::pulse-name) process))
+    (maybe-upsert-many!
+     context :model/PulseChannel
+     (for [[channels pulse-id] (map vector channels pulse-ids)
+           channel             channels
+           :when pulse-id]
+       (assoc channel :pulse_id pulse-id)))
     (when (seq revisit)
       (let [revisit-info-map (group-by ::pulse-name revisit)]
         (log/infof "Unresolved references for pulses in collection %s; will reload after first pass complete:%n%s%n"
@@ -562,8 +565,8 @@
                    (str/join "\n" (map
                                    (fn [[pulse-name revisit-cards]]
                                      (format " for %s:%n%s"
-                                           pulse-name
-                                           (str/join "\n" (map (comp unresolved-names->string #(into {} %)) revisit-cards))))
+                                             pulse-name
+                                             (str/join "\n" (map (comp unresolved-names->string #(into {} %)) revisit-cards))))
                                    revisit-info-map)))
         (fn []
           (log/infof "Reloading pulses from collection %d" (:collection context))
@@ -623,16 +626,16 @@
       (update-in [:dataset_query :database] (comp :database fully-qualified-name->context))
       resolve-visualization-settings
       (cond->
-          (-> card
-              :dataset_query
-              :type
-              mbql.u/normalize-token
-              (= :query)) resolve-card-dataset-query
-          (-> card
-              :dataset_query
-              :native
-              :template-tags
-              not-empty) (resolve-native))))
+       (-> card
+           :dataset_query
+           :type
+           mbql.u/normalize-token
+           (= :query)) resolve-card-dataset-query
+       (-> card
+           :dataset_query
+           :native
+           :template-tags
+           not-empty) (resolve-native))))
 
 (defn- make-dummy-card
   "Make a dummy card for first pass insertion"
@@ -663,11 +666,11 @@
                             (vec resolved-cards))
         dummy-insert-cards (not-empty (::revisit grouped-cards))
         process-cards      (::process grouped-cards)]
-    (maybe-upsert-many! context Card process-cards)
+    (maybe-upsert-many! context :model/Card process-cards)
     (when dummy-insert-cards
       (let [dummy-inserted-ids (maybe-upsert-many!
                                 context
-                                Card
+                                :model/Card
                                 (map make-dummy-card dummy-insert-cards))
             id-and-cards       (map vector dummy-insert-cards dummy-inserted-ids)
             retry-info-fn      (fn [[card card-id]]
@@ -718,14 +721,15 @@
   [path context]
   ;; Currently we only serialize the new owner user, so it's fine to ignore mode setting
   ;; add :post-insert-fn post-insert-user back to start sending password reset emails
-  (maybe-upsert-many! (assoc context :pre-insert-fn pre-insert-user) User
-    (for [user (slurp-dir path)]
-      (dissoc user :password))))
+  (maybe-upsert-many!
+   (assoc context :pre-insert-fn pre-insert-user) :model/User
+   (for [user (slurp-dir path)]
+     (dissoc user :password))))
 
 (defn- derive-location
   [context]
   (if-let [parent-id (:collection context)]
-    (str (t2/select-one-fn :location Collection :id parent-id) parent-id "/")
+    (str (t2/select-one-fn :location :model/Collection :id parent-id) parent-id "/")
     "/"))
 
 (defn- make-reload-fn [all-results]
@@ -749,12 +753,12 @@
                           first)
         results      (for [path entity-paths]
                        (let [context (assoc context
-                                       :collection (->> (slurp-dir path)
-                                                        (map #(assoc % :location  (derive-location context)
-                                                                       :namespace (-> context
-                                                                                      :collection-namespace)))
-                                                        (maybe-upsert-many! context Collection)
-                                                        first))]
+                                            :collection (->> (slurp-dir path)
+                                                             (map #(assoc % :location  (derive-location context)
+                                                                          :namespace (-> context
+                                                                                         :collection-namespace)))
+                                                             (maybe-upsert-many! context :model/Collection)
+                                                             first))]
                          (log/infof "Processing collection at path %s" path)
                          [(load! (str path "/collections") context)
                           (load! (str path "/cards") context)
@@ -773,13 +777,13 @@
 
 (defn- prepare-snippet [context snippet]
   (assoc snippet :creator_id    (default-user-id)
-                 :collection_id (:collection context)))
+         :collection_id (:collection context)))
 
 (defmethod load! "snippets"
   [path context]
   (let [paths       (list-dirs path)
         snippets    (map (partial prepare-snippet context) (slurp-many paths))]
-    (maybe-upsert-many! context NativeQuerySnippet snippets)))
+    (maybe-upsert-many! context :model/NativeQuerySnippet snippets)))
 
 (defn load-settings!
   "Load a dump of settings."

@@ -1,4 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { color, lighten } from "metabase/lib/colors";
@@ -13,7 +15,7 @@ interface TreeNodeRootProps {
 export const TreeNodeRoot = styled.li<TreeNodeRootProps>`
   display: flex;
   align-items: center;
-  color: ${props => (props.isSelected ? color("white") : color("brand"))};
+  color: ${props => (props.isSelected ? color("text-white") : color("brand"))};
   background-color: ${props => (props.isSelected ? color("brand") : "unset")};
   padding-left: ${props => props.depth + 0.5}rem;
   padding-right: 0.5rem;
@@ -27,7 +29,6 @@ export const TreeNodeRoot = styled.li<TreeNodeRootProps>`
 `;
 
 export const ExpandToggleButton = styled.button`
-  display: flex;
   cursor: pointer;
   padding: 0.5rem 0.25rem 0.5rem 0.25rem;
   display: block;
@@ -35,11 +36,19 @@ export const ExpandToggleButton = styled.button`
   visibility: ${props => (props.hidden ? "hidden" : "visible")};
 `;
 
-interface ExpandToggleIconProps {
+interface ExpandToggleIconProps extends IconProps {
   isExpanded: boolean;
 }
 
-export const ExpandToggleIcon = styled(Icon)<ExpandToggleIconProps & IconProps>`
+export const ExpandToggleIcon = styled(
+  ({ isExpanded, ...props }: ExpandToggleIconProps) => (
+    <Icon
+      {...props}
+      name={props.name ?? "chevronright"}
+      size={props.size ?? 12}
+    />
+  ),
+)`
   transition: transform 200ms;
 
   ${props =>
@@ -48,11 +57,6 @@ export const ExpandToggleIcon = styled(Icon)<ExpandToggleIconProps & IconProps>`
       transform: rotate(90deg);
     `}
 `;
-
-ExpandToggleIcon.defaultProps = {
-  name: "chevronright",
-  size: 12,
-};
 
 export const NameContainer = styled.div`
   word-break: break-word;
@@ -64,9 +68,5 @@ export const IconContainer = styled.div<{ transparent?: boolean }>`
   display: flex;
   align-items: center;
   padding: 0.25rem;
-  opacity: ${props => (props.transparent ? 0.5 : 1)};
+  opacity: ${({ transparent = true }) => (transparent ? 0.5 : 1)};
 `;
-
-IconContainer.defaultProps = {
-  transparent: true,
-};

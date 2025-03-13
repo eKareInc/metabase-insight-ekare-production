@@ -1,19 +1,20 @@
 import _ from "underscore";
 
+import { loginCache } from "e2e/support/commands/user/authentication";
 import {
-  USERS,
-  USER_GROUPS,
+  METABASE_SECRET_KEY,
   SAMPLE_DB_ID,
   SAMPLE_DB_TABLES,
-  METABASE_SECRET_KEY,
+  USERS,
+  USER_GROUPS,
 } from "e2e/support/cypress_data";
 import {
-  snapshot,
+  createQuestion,
+  createQuestionAndDashboard,
   restore,
+  snapshot,
+  updateSetting,
   withSampleDatabase,
-  setTokenFeatures,
-  describeEE,
-  deleteToken,
 } from "e2e/support/helpers";
 
 const {
@@ -70,29 +71,6 @@ describe("snapshots", () => {
     });
   });
 
-  describeEE("default-ee", () => {
-    it("default-ee", () => {
-      restore("blank");
-      setup();
-      updateSettings();
-      setTokenFeatures("all");
-      addUsersAndGroups(true);
-      createCollections();
-      withSampleDatabase(SAMPLE_DATABASE => {
-        ensureTableIdsAreCorrect(SAMPLE_DATABASE);
-        hideNewSampleTables(SAMPLE_DATABASE);
-        createQuestionsAndDashboards(SAMPLE_DATABASE);
-        createModels(SAMPLE_DATABASE);
-        cy.writeFile(
-          "e2e/support/cypress_sample_database.json",
-          SAMPLE_DATABASE,
-        );
-      });
-      deleteToken();
-      snapshot("default-ee");
-    });
-  });
-
   function setup() {
     cy.request("GET", "/api/session/properties").then(
       ({ body: properties }) => {
@@ -112,17 +90,26 @@ describe("snapshots", () => {
       // Dismiss `it's ok to play around` modal for admin
       cy.request("PUT", `/api/user/${id}/modal/qbnewb`);
     });
+
+    cy.signIn("admin", { setupCache: true }); // cache admin credentials
   }
 
   function updateSettings() {
-    cy.request("PUT", "/api/setting/enable-public-sharing", { value: true });
-    cy.request("PUT", "/api/setting/enable-embedding", { value: true }).then(
-      () => {
-        cy.request("PUT", "/api/setting/embedding-secret-key", {
-          value: METABASE_SECRET_KEY,
-        });
-      },
-    );
+    // Asynchronous updates greatly contribute to the non-determinism of our e2e tests,
+    // significantly increasing their flakiness. These failures hardly reflect real-life
+    // scenarios, as users do not interact with the UI as quickly as Cypress does.
+    // To mitigate this type of flakiness, we use synchronous updates by default in e2e tests.
+    //
+    // The most frequently flaky tests were the dashboard filter tests, often involving last_used_param_values.
+    updateSetting("synchronous-batch-updates", true);
+
+    updateSetting("enable-public-sharing", true);
+    // interactive is not enabled in the snapshots as it requires a premium feature
+    // updateSetting("enable-embedding-interactive", true);
+    updateSetting("enable-embedding-sdk", true);
+    updateSetting("enable-embedding-static", true).then(() => {
+      updateSetting("embedding-secret-key", METABASE_SECRET_KEY);
+    });
 
     // update the Sample db connection string so it is valid in both CI and locally
     cy.request("GET", `/api/database/${SAMPLE_DB_ID}`).then(response => {
@@ -132,9 +119,7 @@ describe("snapshots", () => {
     });
   }
 
-  function addUsersAndGroups(isEE = false) {
-    const lowest_read_data_permission = isEE ? "blocked" : "unrestricted";
-
+  function addUsersAndGroups() {
     // groups
     cy.request("POST", "/api/permissions/group", { name: "collection" }).then(
       ({ body }) => {
@@ -165,11 +150,21 @@ describe("snapshots", () => {
     // Make a call to `/api/user` because some things (personal collections) get created there
     cy.request("GET", "/api/user");
 
+    Object.keys(USERS).forEach(user => {
+      if (user === "admin") {
+        // we already cached admin user credentials during setup
+        return;
+      }
+      cy.signIn(user, { setupCache: true });
+    });
+
+    cy.signInAsAdmin();
+
     cy.updatePermissionsGraph({
       [ALL_USERS_GROUP]: {
         [SAMPLE_DB_ID]: {
           // set the data permission so the UI doesn't warn us that "all users has higher permissions than X"
-          "view-data": lowest_read_data_permission,
+          "view-data": "unrestricted",
           "create-queries": "no",
         },
       },
@@ -187,13 +182,13 @@ describe("snapshots", () => {
       },
       [COLLECTION_GROUP]: {
         [SAMPLE_DB_ID]: {
-          "view-data": lowest_read_data_permission,
+          "view-data": "unrestricted",
           "create-queries": "no",
         },
       },
       [READONLY_GROUP]: {
         [SAMPLE_DB_ID]: {
-          "view-data": lowest_read_data_permission,
+          "view-data": "unrestricted",
           "create-queries": "no",
         },
       },
@@ -208,6 +203,15 @@ describe("snapshots", () => {
     });
   }
 
+  function logSelectModel(model_id, model) {
+    console.log("select collection:", model_id);
+    cy.request("Post", "/api/activity/recents", {
+      model_id,
+      model,
+      context: "selection",
+    });
+  }
+
   function createCollections() {
     function postCollection(name, parent_id, callback) {
       cy.request("POST", "/api/collection", {
@@ -217,14 +221,21 @@ describe("snapshots", () => {
       }).then(({ body }) => callback && callback(body));
     }
 
-    postCollection("First collection", undefined, firstCollection =>
+    postCollection("First collection", undefined, firstCollection => {
+      logSelectModel(firstCollection.id, "collection");
       postCollection(
         "Second collection",
         firstCollection.id,
-        secondCollection =>
-          postCollection("Third collection", secondCollection.id),
-      ),
-    );
+        secondCollection => {
+          logSelectModel(secondCollection.id, "collection");
+          postCollection(
+            "Third collection",
+            secondCollection.id,
+            thirdCollection => logSelectModel(thirdCollection.id, "collection"),
+          );
+        },
+      );
+    });
   }
 
   function createQuestionsAndDashboards({ ORDERS, ORDERS_ID }) {
@@ -237,20 +248,22 @@ describe("snapshots", () => {
     // dashboard 1: Orders in a dashboard
     const dashboardDetails = { name: "Orders in a dashboard" };
 
-    cy.createQuestionAndDashboard({
+    createQuestionAndDashboard({
       questionDetails,
       dashboardDetails,
       cardDetails: { size_x: 16, size_y: 8 },
+    }).then(({ body: { dashboard_id } }) => {
+      logSelectModel(dashboard_id, "dashboard");
     });
 
     // question 2: Orders, Count
-    cy.createQuestion({
+    createQuestion({
       name: "Orders, Count",
       query: { "source-table": ORDERS_ID, aggregation: [["count"]] },
     });
 
     // question 3: Orders, Count, Grouped by Created At (year)
-    cy.createQuestion({
+    createQuestion({
       name: "Orders, Count, Grouped by Created At (year)",
       query: {
         "source-table": ORDERS_ID,
@@ -263,7 +276,7 @@ describe("snapshots", () => {
 
   function createModels({ ORDERS_ID }) {
     // Model 1
-    cy.createQuestion({
+    createQuestion({
       name: "Orders Model",
       query: { "source-table": ORDERS_ID },
       type: "model",
@@ -346,6 +359,8 @@ describe("snapshots", () => {
 
 function getDefaultInstanceData() {
   const instanceData = {};
+
+  instanceData.loginCache = loginCache;
 
   cy.request("/api/card").then(({ body: cards }) => {
     instanceData.questions = cards;

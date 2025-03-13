@@ -1,4 +1,3 @@
-import { waitFor } from "@testing-library/react";
 import moment from "moment"; // eslint-disable-line no-restricted-imports -- deprecated usage
 
 import {
@@ -8,7 +7,7 @@ import {
   setupUserRecipientsEndpoint,
   setupUsersEndpoints,
 } from "__support__/server-mocks";
-import { renderWithProviders, screen } from "__support__/ui";
+import { renderWithProviders, screen, waitFor } from "__support__/ui";
 import type { WrappedResult } from "metabase/search/types";
 import type { IconName } from "metabase/ui";
 import type { SearchModel, SearchResult } from "metabase-types/api";
@@ -131,7 +130,7 @@ describe("InfoText", () => {
         `/collection/${MOCK_COLLECTION.id}-collection-name`,
       );
 
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Updated ${LAST_EDITED_DURATION}`,
       );
     });
@@ -143,7 +142,7 @@ describe("InfoText", () => {
       const collectionElement = screen.getByText("Collection");
       expect(collectionElement).toBeInTheDocument();
 
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Updated ${LAST_EDITED_DURATION}`,
       );
     });
@@ -153,7 +152,7 @@ describe("InfoText", () => {
         model: "database",
       });
       expect(screen.getByText("Database")).toBeInTheDocument();
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Updated ${LAST_EDITED_DURATION}`,
       );
     });
@@ -169,7 +168,7 @@ describe("InfoText", () => {
         `/question#?db=${MOCK_DATABASE.id}&table=${MOCK_TABLE.id}`,
       );
 
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Updated ${LAST_EDITED_DURATION}`,
       );
     });
@@ -186,7 +185,7 @@ describe("InfoText", () => {
         `/browse/databases/${MOCK_DATABASE.id}-database-name`,
       );
 
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Updated ${LAST_EDITED_DURATION}`,
       );
     });
@@ -203,7 +202,7 @@ describe("InfoText", () => {
         `/collection/${MOCK_COLLECTION.id}-collection-name`,
       );
 
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Updated ${LAST_EDITED_DURATION}`,
       );
     });
@@ -213,7 +212,7 @@ describe("InfoText", () => {
     it("should show last_edited_by when available", async () => {
       await setup();
 
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Updated ${LAST_EDITED_DURATION} by ${MOCK_OTHER_USER.common_name}`,
       );
     });
@@ -227,7 +226,7 @@ describe("InfoText", () => {
         },
       });
 
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Created by you`,
       );
     });
@@ -241,7 +240,7 @@ describe("InfoText", () => {
         },
       });
 
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Created ${CREATED_AT_DURATION}`,
       );
     });
@@ -254,7 +253,7 @@ describe("InfoText", () => {
         },
       });
 
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Updated ${LAST_EDITED_DURATION}`,
       );
     });
@@ -268,7 +267,7 @@ describe("InfoText", () => {
         },
       });
 
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Updated ${LAST_EDITED_DURATION}`,
       );
     });
@@ -282,7 +281,7 @@ describe("InfoText", () => {
         },
       });
 
-      expect(screen.getByTestId("revision-history-button")).toHaveTextContent(
+      expect(screen.getByTestId("revision-history-text")).toHaveTextContent(
         `Created ${CREATED_AT_DURATION}`,
       );
     });
@@ -299,7 +298,7 @@ describe("InfoText", () => {
 
       expect(screen.queryByText("•")).not.toBeInTheDocument();
       expect(
-        screen.queryByTestId("revision-history-button"),
+        screen.queryByTestId("revision-history-text"),
       ).not.toBeInTheDocument();
     });
   });

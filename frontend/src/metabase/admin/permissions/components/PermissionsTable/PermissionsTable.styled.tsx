@@ -1,10 +1,13 @@
+// eslint-disable-next-line no-restricted-imports
 import type { Theme } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
+import { forwardRef } from "react";
 
 import Label from "metabase/components/type/Label";
 import Link from "metabase/core/components/Link";
-import { color, alpha } from "metabase/lib/colors";
-import { Icon } from "metabase/ui";
+import { alpha, color } from "metabase/lib/colors";
+import { Icon, type IconProps } from "metabase/ui";
 
 const getTableBorder = (theme: Theme) =>
   `1px solid ${alpha(theme.fn.themeColor("border"), 0.5)}`;
@@ -15,9 +18,10 @@ const getHeaderBackground = (theme: Theme) =>
   `linear-gradient(to top, ${alpha(
     theme.fn.themeColor("border"),
     0.5,
-  )}, ${alpha(theme.fn.themeColor("border"), 0.5)} 1px, ${color(
-    "white",
-  )} 1px, ${color("white")} 100%)`;
+  )}, ${alpha(
+    theme.fn.themeColor("border"),
+    0.5,
+  )} 1px, var(--mb-color-bg-white) 1px, var(--mb-color-bg-white) 100%)`;
 
 export const PermissionsTableRoot = styled.table`
   border-collapse: collapse;
@@ -65,6 +69,7 @@ export const PermissionTableHeaderCell = styled(
   &:first-of-type {
     background: ${({ theme }) => getHeaderBackground(theme)};
     z-index: 2;
+
     &:after {
       display: none;
     }
@@ -86,16 +91,22 @@ export const EntityNameLink = styled(Link)`
   color: ${() => color("admin-navbar")};
 `;
 
-export const HintIcon = styled(Icon)`
-  color: ${color("text-light")};
+export const HintIcon = styled(
+  forwardRef<SVGSVGElement, IconProps>(function HintIcon(props, ref) {
+    return (
+      <Icon
+        {...props}
+        name={props.name ?? "info"}
+        size={props.size ?? 16}
+        ref={ref}
+      />
+    );
+  }),
+)`
+  color: var(--mb-color-text-light);
   margin-left: 0.375rem;
   cursor: pointer;
 `;
-
-HintIcon.defaultProps = {
-  name: "info",
-  size: 16,
-};
 
 export const ColumnName = styled(Label)`
   display: inline;

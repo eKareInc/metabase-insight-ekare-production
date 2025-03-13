@@ -1,3 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
+import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import Card from "metabase/components/Card";
@@ -14,22 +17,30 @@ export const UndoList = styled.ul`
   left: 0;
   bottom: 0;
   margin: ${LIST_H_MARGINS};
-  z-index: 999;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 `;
 
 export const ToastCard = styled(Card)<{
-  translateY: number;
+  translateY?: number;
   color?: string;
+  noBorder?: boolean;
 }>`
   padding: 10px ${space(2)};
   margin-top: ${space(1)};
   min-width: 310px;
   max-width: calc(100vw - 2 * ${LIST_H_MARGINS});
-  transform: ${props => `translateY(${props.translateY}px)`};
-  ${props => (props.color ? `background-color: ${color(props.color)}` : "")}
+  position: relative;
+  ${props =>
+    props.translateY ? `transform: translateY(${props.translateY}px)` : ""}
+  ${props => (props.color ? `background-color: ${color(props.color)}` : "")};
+  ${({ noBorder }) =>
+    noBorder &&
+    css`
+      border: none;
+      overflow-x: hidden;
+    `};
 `;
 
 export const CardContent = styled.div`
@@ -42,11 +53,11 @@ export const CardContentSide = styled(Box)<BoxProps>`
   display: flex;
   align-items: center;
   overflow: hidden;
-`;
+` as unknown as typeof Box;
 
 export const ControlsCardContent = styled(CardContentSide)`
   flex-shrink: 0;
-`;
+` as unknown as typeof Box;
 
 export const CardIcon = styled(Icon)`
   margin-right: ${space(1)};
@@ -59,15 +70,13 @@ export const DefaultText = styled.span`
 
 export const UndoButton = styled(Link)`
   font-weight: bold;
-  background-color: ${({ theme }) =>
-    alpha(theme.fn.themeColor("bg-white"), 0.1)};
+  background-color: ${() => alpha(color("bg-white"), 0.1)};
   padding: 4px 12px;
   margin-left: ${space(1)};
   border-radius: 8px;
 
   :hover {
-    background-color: ${({ theme }) =>
-      alpha(theme.fn.themeColor("bg-white"), 0.3)};
+    background-color: ${() => alpha(color("bg-white"), 0.3)};
   }
 `;
 

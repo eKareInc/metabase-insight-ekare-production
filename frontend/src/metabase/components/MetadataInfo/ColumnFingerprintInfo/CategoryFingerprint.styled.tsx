@@ -1,4 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
+import type { ComponentProps } from "react";
 
 import _LoadingSpinner from "metabase/components/LoadingSpinner";
 import { isReducedMotionPreferred } from "metabase/lib/dom";
@@ -24,17 +26,17 @@ export const NoWrap = styled.div`
   line-height: 1.3em;
 `;
 
-export const LoadingSpinner = styled(_LoadingSpinner)`
+type LoadingSpinnerProps = ComponentProps<typeof _LoadingSpinner>;
+
+export const LoadingSpinner = styled((props: LoadingSpinnerProps) => (
+  <_LoadingSpinner {...props} size={props.size ?? 18} />
+))`
   display: flex;
   flex-grow: 1;
   align-self: center;
   justify-content: center;
   color: var(--mb-color-brand);
 `;
-
-LoadingSpinner.defaultProps = {
-  size: 18,
-};
 
 export const RelativeContainer = styled.div<{ height?: number }>`
   position: relative;
@@ -54,7 +56,8 @@ export const Fade = styled.div<{ visible?: boolean }>`
 export const FadeAndSlide = styled.div<{ visible?: boolean }>`
   position: absolute;
   width: 100%;
-  transition: opacity ${TRANSITION_DURATION} linear,
+  transition:
+    opacity ${TRANSITION_DURATION} linear,
     transform ${TRANSITION_DURATION} linear;
   opacity: ${({ visible }) => (visible ? "1" : "0")};
   transform: ${({ visible }) =>

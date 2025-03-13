@@ -1,13 +1,13 @@
 import type React from "react";
-import { useMemo, useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 import { getComputedSettingsForSeries } from "metabase/visualizations/lib/settings/visualization";
 import type {
   ComputedVisualizationSettings,
-  VisualizationProps,
-  RenderingContext,
   OnChangeCardAndRun,
   OnChangeCardAndRunOpts,
+  RenderingContext,
+  VisualizationProps,
 } from "metabase/visualizations/types";
 import type { RawSeries } from "metabase-types/api";
 
@@ -64,7 +64,7 @@ export const TransformedVisualization = ({
         previousCard,
       };
 
-      onChangeCardAndRun(transformedOptions);
+      onChangeCardAndRun?.(transformedOptions);
     },
     [onChangeCardAndRun, rawSeries],
   );

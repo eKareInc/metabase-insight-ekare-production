@@ -1,6 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import { color } from "metabase/lib/colors";
 import { Icon } from "metabase/ui";
 
 export const EditIcon = styled(Icon)`
@@ -12,5 +12,5 @@ export const ErrorIcon = styled(Icon)`
 `;
 
 export const SuccessIcon = styled(Icon)`
-  color: ${color("summarize")};
+  color: var(--mb-color-summarize);
 `;

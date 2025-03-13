@@ -1,7 +1,6 @@
-import Tooltip from "metabase/core/components/Tooltip";
 import { color } from "metabase/lib/colors";
 import { getRelativeTime } from "metabase/lib/time";
-import { Icon } from "metabase/ui";
+import { Icon, Tooltip } from "metabase/ui";
 import type { ModerationReview, User } from "metabase-types/api";
 
 import { getIconForReview, getModeratorDisplayText } from "../../service";
@@ -10,16 +9,15 @@ import { TooltipTime } from "./ModerationReviewIcon.styled";
 
 export interface ModerationReviewIconProps {
   review: ModerationReview;
-  moderator?: User;
   currentUser: User;
 }
 
 const ModerationReviewIcon = ({
   review,
-  moderator,
   currentUser,
 }: ModerationReviewIconProps): JSX.Element => {
   const { name: iconName, color: iconColor } = getIconForReview(review);
+  const { user: moderator } = review;
 
   const tooltip = moderator && (
     <div>
@@ -31,7 +29,7 @@ const ModerationReviewIcon = ({
   );
 
   return (
-    <Tooltip tooltip={tooltip}>
+    <Tooltip label={tooltip} disabled={!tooltip}>
       <Icon name={iconName} color={color(iconColor)} />
     </Tooltip>
   );

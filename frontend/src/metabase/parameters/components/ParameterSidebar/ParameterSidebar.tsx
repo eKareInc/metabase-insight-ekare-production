@@ -13,6 +13,7 @@ import { parameterHasNoDisplayValue } from "metabase-lib/v1/parameters/utils/par
 import type {
   Parameter,
   ParameterId,
+  TemporalUnit,
   ValuesQueryType,
   ValuesSourceConfig,
   ValuesSourceType,
@@ -54,6 +55,10 @@ export interface ParameterSidebarProps {
     filteringParameters: string[],
   ) => void;
   onChangeRequired: (parameterId: ParameterId, value: boolean) => void;
+  onChangeTemporalUnits: (
+    parameterId: ParameterId,
+    temporalUnits: TemporalUnit[],
+  ) => void;
   onRemoveParameter: (parameterId: ParameterId) => void;
   onShowAddParameterPopover: () => void;
   onClose: () => void;
@@ -71,6 +76,7 @@ export const ParameterSidebar = ({
   onChangeSourceConfig,
   onChangeFilteringParameters,
   onChangeRequired,
+  onChangeTemporalUnits,
   onRemoveParameter,
   onShowAddParameterPopover,
   onClose,
@@ -164,6 +170,9 @@ export const ParameterSidebar = ({
   const handleChangeRequired = (value: boolean) =>
     onChangeRequired(parameterId, value);
 
+  const handleChangeTemporalUnits = (temporalUnits: TemporalUnit[]) =>
+    onChangeTemporalUnits(parameterId, temporalUnits);
+
   const handleTabChange = (newTab: string | null) => {
     if (!newTab || (newTab !== "settings" && newTab !== "filters")) {
       return;
@@ -184,7 +193,7 @@ export const ParameterSidebar = ({
       onRemove={handleRemove}
       data-testid="dashboard-parameter-sidebar"
     >
-      <Tabs radius={0} value={tab} onTabChange={handleTabChange}>
+      <Tabs radius={0} value={tab} onChange={handleTabChange}>
         <Tabs.List grow>
           {tabs.length > 1 &&
             tabs.map(tab => {
@@ -229,6 +238,7 @@ export const ParameterSidebar = ({
             onChangeSourceType={handleSourceTypeChange}
             onChangeSourceConfig={handleSourceConfigChange}
             onChangeRequired={handleChangeRequired}
+            onChangeTemporalUnits={handleChangeTemporalUnits}
             hasMapping={hasMapping}
           />
         </Tabs.Panel>
@@ -256,7 +266,9 @@ const getTabs = (parameter: Parameter): Tab[] => {
   const tabs: Tab[] = [];
 
   tabs.push({
-    name: isFilterParameter(parameter) ? t`Filter settings` : t`Settings`,
+    name: isFilterParameter(parameter)
+      ? t`Filter settings`
+      : t`Parameter settings`,
     value: "settings",
     icon: "gear",
   });

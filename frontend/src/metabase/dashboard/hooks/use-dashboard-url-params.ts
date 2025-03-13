@@ -1,19 +1,16 @@
 import type { Location } from "history";
-import { useEffect } from "react";
 
 import {
   useDashboardFullscreen,
   useDashboardRefreshPeriod,
+  useEmbedTheme,
 } from "metabase/dashboard/hooks";
-import { useEmbedDisplayOptions } from "metabase/dashboard/hooks/use-embed-display-options";
 import { useLocationSync } from "metabase/dashboard/hooks/use-location-sync";
-import type {
-  DashboardDisplayOptionControls,
-  RefreshPeriod,
-} from "metabase/dashboard/types";
-import type { DashboardUrlHashOptions } from "metabase/dashboard/types/hash-options";
-import { parseHashOptions } from "metabase/lib/browser";
+import type { RefreshPeriod } from "metabase/dashboard/types";
+import { useEmbedFrameOptions, useSetEmbedFont } from "metabase/public/hooks";
 import type { DisplayTheme } from "metabase/public/lib/types";
+
+import { useAutoScrollToDashcard } from "./use-auto-scroll-to-dashcard";
 
 export const useDashboardUrlParams = ({
   location,
@@ -21,28 +18,31 @@ export const useDashboardUrlParams = ({
 }: {
   location: Location;
   onRefresh: () => Promise<void>;
-}): DashboardDisplayOptionControls => {
+}) => {
+  useSetEmbedFont({ location });
+
   const {
+    background,
     bordered,
-    font,
+    titled,
+    hide_parameters,
+    downloadsEnabled,
+    locale,
+  } = useEmbedFrameOptions({ location });
+
+  const {
     hasNightModeToggle,
-    hideDownloadButton,
-    hideParameters,
     isNightMode,
     onNightModeChange,
-    setBordered,
-    setFont,
-    setHideDownloadButton,
-    setHideParameters,
     setTheme,
-    setTitled,
     theme,
-    titled,
-  } = useEmbedDisplayOptions();
+  } = useEmbedTheme();
 
   const { isFullscreen, onFullscreenChange } = useDashboardFullscreen();
   const { onRefreshPeriodChange, refreshPeriod, setRefreshElapsedHook } =
     useDashboardRefreshPeriod({ onRefresh });
+  const { autoScrollToDashcardId, reportAutoScrolledToDashcard } =
+    useAutoScrollToDashcard(location);
 
   useLocationSync<RefreshPeriod>({
     key: "refresh",
@@ -65,51 +65,24 @@ export const useDashboardUrlParams = ({
     location,
   });
 
-  useEffect(() => {
-    const hashOptions = parseHashOptions(
-      location.hash,
-    ) as DashboardUrlHashOptions;
-    setTitled(hashOptions.titled ?? titled);
-    setBordered(hashOptions.bordered ?? bordered);
-    setFont(hashOptions.font ?? font);
-    setHideDownloadButton(
-      hashOptions.hide_download_button ?? hideDownloadButton,
-    );
-    setHideParameters(hashOptions.hide_parameters ?? hideParameters);
-  }, [
-    bordered,
-    font,
-    hideDownloadButton,
-    hideParameters,
-    location.hash,
-    setBordered,
-    setFont,
-    setHideDownloadButton,
-    setHideParameters,
-    setTitled,
-    titled,
-  ]);
-
   return {
     isFullscreen,
     onFullscreenChange,
-    hideParameters,
-    setHideParameters,
     hasNightModeToggle,
     onNightModeChange,
-    setTheme,
-    theme,
     isNightMode,
     refreshPeriod,
     setRefreshElapsedHook,
     onRefreshPeriodChange,
+    background,
     bordered,
-    setBordered,
     titled,
-    setTitled,
-    hideDownloadButton,
-    setHideDownloadButton,
-    font,
-    setFont,
+    theme,
+    setTheme,
+    hideParameters: hide_parameters,
+    downloadsEnabled,
+    locale,
+    autoScrollToDashcardId,
+    reportAutoScrolledToDashcard,
   };
 };

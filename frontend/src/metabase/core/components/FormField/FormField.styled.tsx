@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { color } from "metabase/lib/colors";
@@ -5,7 +6,7 @@ import { Icon } from "metabase/ui";
 
 import type { FieldAlignment, FieldOrientation } from "./types";
 
-export interface FormCaptionProps {
+interface FormCaptionProps {
   alignment: FieldAlignment;
   orientation: FieldOrientation;
   hasDescription: boolean;
@@ -24,7 +25,7 @@ export const FieldCaption = styled.div<FormCaptionProps>`
     "0.5rem"};
 `;
 
-export interface FieldLabelProps {
+interface FieldLabelProps {
   hasError: boolean;
 }
 
@@ -36,7 +37,7 @@ export const FieldLabel = styled.label<FieldLabelProps>`
 `;
 
 export const OptionalTag = styled.span`
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
   font-size: 0.77rem;
   font-weight: 900;
   margin-left: 0.25rem;
@@ -59,7 +60,7 @@ export const FieldLabelError = styled.span`
 `;
 
 export const FieldDescription = styled.div`
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
   margin-bottom: 0.5rem;
 `;
 
@@ -75,13 +76,13 @@ export const FieldInfoIcon = styled(Icon)`
 `;
 
 export const FieldInfoLabel = styled.div`
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
   font-size: 0.75rem;
   margin-left: auto;
   cursor: default;
 `;
 
-export interface FieldRootProps {
+interface FieldRootProps {
   alignment: FieldAlignment;
   orientation: FieldOrientation;
 }
@@ -96,7 +97,7 @@ export const FieldRoot = styled.div<FieldRootProps>`
 
   &:focus-within {
     ${FieldLabel} {
-      color: ${color("text-medium")};
+      color: var(--mb-color-text-medium);
     }
 
     ${FieldLabelError} {
@@ -109,5 +110,5 @@ export const FieldTitleActions = styled.div`
   margin-left: auto;
   font-size: 0.77rem;
   font-weight: 900;
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
 `;

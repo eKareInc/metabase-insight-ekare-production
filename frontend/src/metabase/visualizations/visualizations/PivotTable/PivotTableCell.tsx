@@ -1,5 +1,5 @@
 import cx from "classnames";
-import type * as React from "react";
+import * as React from "react";
 import type { ControlPosition, DraggableBounds } from "react-draggable";
 import Draggable from "react-draggable";
 
@@ -10,7 +10,7 @@ import type { VisualizationSettings } from "metabase-types/api";
 import { PivotTableCell, ResizeHandle } from "./PivotTable.styled";
 import { RowToggleIcon } from "./RowToggleIcon";
 import { LEFT_HEADER_LEFT_SPACING, RESIZE_HANDLE_WIDTH } from "./constants";
-import type { HeaderItem, BodyItem, PivotTableClicked } from "./types";
+import type { BodyItem, HeaderItem, PivotTableClicked } from "./types";
 
 interface CellProps {
   value: React.ReactNode;
@@ -24,7 +24,7 @@ interface CellProps {
   isBorderedHeader?: boolean;
   isTransparent?: boolean;
   hasTopBorder?: boolean;
-  onClick?: ((e: React.SyntheticEvent) => void) | undefined;
+  onClick?: ((e: React.MouseEvent) => void) | undefined;
   onResize?: (newWidth: number) => void;
 }
 
@@ -40,7 +40,7 @@ interface CellProps {
   isBorderedHeader?: boolean;
   isTransparent?: boolean;
   hasTopBorder?: boolean;
-  onClick?: ((e: React.SyntheticEvent) => void) | undefined;
+  onClick?: ((e: React.MouseEvent) => void) | undefined;
   onResize?: (newWidth: number) => void;
   showTooltip?: boolean;
 }
@@ -61,8 +61,11 @@ export function Cell({
   onResize,
   showTooltip = true,
 }: CellProps) {
+  const resizeHandleRef = React.useRef<HTMLDivElement | null>(null);
+
   return (
     <PivotTableCell
+      data-allow-page-break-after
       data-testid="pivot-table-cell"
       isNightMode={isNightMode}
       isBold={isBold}
@@ -103,8 +106,12 @@ export function Cell({
             onStop={(e, { x }) => {
               onResize(x);
             }}
+            nodeRef={resizeHandleRef}
           >
-            <ResizeHandle data-testid="pivot-table-resize-handle" />
+            <ResizeHandle
+              data-testid="pivot-table-resize-handle"
+              ref={resizeHandleRef}
+            />
           </Draggable>
         )}
       </>
@@ -114,7 +121,7 @@ export function Cell({
 
 type CellClickHandler = (
   clicked: PivotTableClicked,
-) => ((e: React.SyntheticEvent) => void) | undefined;
+) => ((e: React.MouseEvent) => void) | undefined;
 
 interface TopHeaderCellProps {
   item: HeaderItem;

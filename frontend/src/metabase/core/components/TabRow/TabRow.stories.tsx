@@ -1,20 +1,19 @@
 import type { UniqueIdentifier } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
-import { useArgs } from "@storybook/addons";
-import type { ComponentStory } from "@storybook/react";
+import { useArgs } from "@storybook/preview-api";
+import type { StoryFn } from "@storybook/react";
 import { useState } from "react";
 
 import { color } from "metabase/lib/colors";
 
 import { Sortable } from "../Sortable";
-import type { TabButtonMenuItem, TabButtonMenuAction } from "../TabButton";
+import type { TabButtonMenuAction, TabButtonMenuItem } from "../TabButton";
 import { TabButton } from "../TabButton";
-import TabLink from "../TabLink";
 
 import { TabRow } from "./TabRow";
 
 export default {
-  title: "Core/TabRow",
+  title: "Deprecated/Components/TabRow",
   component: TabRow,
 };
 
@@ -28,7 +27,7 @@ const sampleStyle = {
   backgroundColor: "white",
 };
 
-const Template: ComponentStory<typeof TabRow> = args => {
+const Template: StoryFn<typeof TabRow> = args => {
   const [{ value }, updateArgs] = useArgs();
   const handleChange = (value: unknown) => updateArgs({ value });
   const [message, setMessage] = useState("");
@@ -80,34 +79,15 @@ const Template: ComponentStory<typeof TabRow> = args => {
   );
 };
 
-export const Default = Template.bind({});
-Default.args = {
-  value: 1,
+export const Default = {
+  render: Template,
+
+  args: {
+    value: 1,
+  },
 };
 
-const LinkTemplate: ComponentStory<typeof TabRow> = args => {
-  const [{ value }, updateArgs] = useArgs();
-  const handleChange = (value: unknown) => updateArgs({ value });
-
-  return (
-    <div style={sampleStyle}>
-      <TabRow {...args} value={value} onChange={handleChange}>
-        {[1, 2, 3, 4, 5, 6, 7].map(num => (
-          <TabLink value={num} to="" key={num}>
-            Tab {num}
-          </TabLink>
-        ))}
-      </TabRow>
-    </div>
-  );
-};
-
-export const WithLinks = LinkTemplate.bind({});
-WithLinks.args = {
-  value: 1,
-};
-
-const DraggableTemplate: ComponentStory<typeof TabRow> = args => {
+const DraggableTemplate: StoryFn<typeof TabRow> = args => {
   const [{ value }, updateArgs] = useArgs();
   const handleChange = (value: unknown) => updateArgs({ value });
 
@@ -145,7 +125,10 @@ const DraggableTemplate: ComponentStory<typeof TabRow> = args => {
   );
 };
 
-export const Draggable = DraggableTemplate.bind({});
-Draggable.args = {
-  value: 1,
+export const Draggable = {
+  render: DraggableTemplate,
+
+  args: {
+    value: 1,
+  },
 };

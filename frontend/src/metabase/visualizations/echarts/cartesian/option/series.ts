@@ -18,19 +18,19 @@ import {
   Z_INDEXES,
 } from "metabase/visualizations/echarts/cartesian/constants/style";
 import type {
-  SeriesModel,
-  DataKey,
-  StackTotalDataKey,
-  ChartDataset,
-  Datum,
-  XAxisModel,
-  TimeSeriesXAxisModel,
-  NumericXAxisModel,
-  NumericAxisScaleTransforms,
-  LabelFormatter,
-  ChartDataDensity,
   CartesianChartModel,
+  ChartDataDensity,
+  ChartDataset,
   ComboChartDataDensity,
+  DataKey,
+  Datum,
+  LabelFormatter,
+  NumericAxisScaleTransforms,
+  NumericXAxisModel,
+  SeriesModel,
+  StackTotalDataKey,
+  TimeSeriesXAxisModel,
+  XAxisModel,
 } from "metabase/visualizations/echarts/cartesian/model/types";
 import type { EChartsSeriesOption } from "metabase/visualizations/echarts/cartesian/option/types";
 import type {
@@ -275,7 +275,7 @@ export const buildEChartsLabelOptions = (
     fontWeight: CHART_STYLE.seriesLabels.weight,
     fontSize,
     color: renderingContext.getColor("text-dark"),
-    textBorderColor: renderingContext.getColor("white"),
+    textBorderColor: renderingContext.getColor("bg-white"),
     textBorderWidth: 3,
     formatter:
       formatter &&
@@ -407,7 +407,7 @@ function getDataLabelSeriesOption(
       fontWeight: CHART_STYLE.seriesLabels.weight,
       fontSize: CHART_STYLE.seriesLabels.size,
       color: renderingContext.getColor("text-dark"),
-      textBorderColor: renderingContext.getColor("white"),
+      textBorderColor: renderingContext.getColor("bg-white"),
       textBorderWidth: 3,
     },
     labelLayout: {
@@ -582,6 +582,10 @@ const buildEChartsLineAreaSeries = (
       focus: hasMultipleSeries ? "series" : "self",
       itemStyle: {
         color: seriesModel.color,
+        opacity: 1,
+      },
+      areaStyle: {
+        opacity: CHART_STYLE.opacity.areaFocused,
       },
     },
     blur: {
@@ -592,7 +596,7 @@ const buildEChartsLineAreaSeries = (
       lineStyle: {
         opacity: blurOpacity,
       },
-      areaStyle: { opacity: CHART_STYLE.opacity.area },
+      areaStyle: { opacity: CHART_STYLE.opacity.areaBlurred },
     },
     z: Z_INDEXES.lineAreaSeries,
     id: seriesModel.dataKey,
@@ -605,6 +609,7 @@ const buildEChartsLineAreaSeries = (
     },
     yAxisIndex,
     showSymbol: true,
+    showAllSymbol: true,
     symbolSize: CHART_STYLE.symbolSize,
     smooth: seriesSettings["line.interpolate"] === "cardinal",
     connectNulls: seriesSettings["line.missing"] === "interpolate",
@@ -863,6 +868,7 @@ export const buildEChartsSeries = (
   const hasMultipleSeries = chartModel.seriesModels.length > 1;
 
   const series = chartModel.seriesModels
+    .filter(seriesModel => seriesModel.visible)
     .map(seriesModel => {
       const seriesSettings = seriesSettingsByDataKey[seriesModel.dataKey];
       const yAxisIndex = seriesYAxisIndexByDataKey[seriesModel.dataKey];

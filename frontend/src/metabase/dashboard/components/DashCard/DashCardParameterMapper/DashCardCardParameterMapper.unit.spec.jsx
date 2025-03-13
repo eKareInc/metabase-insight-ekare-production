@@ -1,19 +1,25 @@
 import { createMockEntitiesState } from "__support__/store";
-import { getIcon, renderWithProviders, screen } from "__support__/ui";
+import {
+  getIcon,
+  queryIcon,
+  renderWithProviders,
+  screen,
+} from "__support__/ui";
 import { getMetadata } from "metabase/selectors/metadata";
 import Question from "metabase-lib/v1/Question";
 import {
-  createMockCard,
-  createMockTemplateTag,
-  createMockDashboardCard,
   createMockActionDashboardCard,
+  createMockCard,
+  createMockDashboardCard,
   createMockHeadingDashboardCard,
-  createMockParameter,
-  createMockTextDashboardCard,
-  createMockStructuredDatasetQuery,
+  createMockIFrameDashboardCard,
+  createMockLinkDashboardCard,
   createMockNativeDatasetQuery,
   createMockNativeQuery,
-  createMockLinkDashboardCard,
+  createMockParameter,
+  createMockStructuredDatasetQuery,
+  createMockTemplateTag,
+  createMockTextDashboardCard,
   createMockVirtualCard,
   createMockVirtualDashCard,
 } from "metabase-types/api/mocks";
@@ -36,26 +42,26 @@ const metadata = getMetadata(state); // metabase-lib Metadata instance
 const setup = options => {
   const card = options.card ?? createMockCard();
 
-  renderWithProviders(
+  const { rerender } = renderWithProviders(
     <DashCardCardParameterMapper
       card={card}
       dashcard={createMockDashboardCard({ card })}
       question={new Question(card, metadata)}
       editingParameter={createMockParameter()}
+      isRecentlyAutoConnected={false}
       mappingOptions={[]}
-      metadata={metadata}
-      setParameterMapping={jest.fn()}
       isMobile={false}
       {...options}
     />,
   );
+
+  return { rerender };
 };
 
-describe("DashCardParameterMapper", () => {
+describe("DashCardCardParameterMapper", () => {
   it("should render an unauthorized state for a card with no dataset query", () => {
     const card = createMockCard({
       dataset_query: createMockStructuredDatasetQuery({ query: {} }),
-      can_run_adhoc_query: false,
     });
     setup({ card });
 
@@ -78,17 +84,16 @@ describe("DashCardParameterMapper", () => {
   });
 
   describe("Virtual cards", () => {
-    it("should render an informative error state for link cards", () => {
-      const dashcard = createMockLinkDashboardCard();
-
+    it("should render an informative parameter mapping state for link cards without variables", () => {
+      const dashcard = createMockLinkDashboardCard({ size_y: 3 });
       setup({
-        card: dashcard.card,
         dashcard,
       });
-
       expect(getIcon("info")).toBeInTheDocument();
       expect(
-        screen.getByLabelText(/cannot connect variables to link cards/i),
+        screen.getByText(
+          "You can connect widgets to {{variables}} in link cards.",
+        ),
       ).toBeInTheDocument();
     });
 
@@ -101,6 +106,19 @@ describe("DashCardParameterMapper", () => {
       expect(
         screen.getByText(
           "You can connect widgets to {{variables}} in text cards.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("should render an informative parameter mapping state for iframe cards without variables", () => {
+      const textCard = createMockIFrameDashboardCard({ size_y: 3 });
+      setup({
+        dashcard: textCard,
+      });
+      expect(getIcon("info")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "You can connect widgets to {{variables}} in iframe cards.",
         ),
       ).toBeInTheDocument();
     });
@@ -161,6 +179,93 @@ describe("DashCardParameterMapper", () => {
     expect(screen.getByText("Section.Name")).toBeInTheDocument();
   });
 
+  describe("Auto-connected hint", () => {
+    it("should render 'Auto-connected' message on auto-wire", () => {
+      const card = createMockCard();
+      const dashcard = createMockDashboardCard({
+        card,
+        size_y: 4,
+      });
+
+      setup({
+        dashcard,
+        card,
+        mappingOptions: [
+          {
+            target: ["dimension", ["field", 1]],
+            sectionName: "Section",
+            name: "Name",
+          },
+        ],
+        target: ["dimension", ["field", 1]],
+        isRecentlyAutoConnected: true,
+      });
+
+      expect(screen.getByText("Auto-connected")).toBeInTheDocument();
+      expect(getIcon("sparkles")).toBeInTheDocument();
+    });
+
+    it("should not render 'Auto-connected' message on auto-wire when no dashcards mapped", () => {
+      const card = createMockCard();
+      const dashcard = createMockDashboardCard({ card });
+
+      setup({
+        dashcard,
+        card,
+        isRecentlyAutoConnected: true,
+      });
+
+      expect(screen.queryByText("Auto-connected")).not.toBeInTheDocument();
+      expect(queryIcon("sparkles")).not.toBeInTheDocument();
+    });
+
+    it("should render only an icon when a dashcard is short", async () => {
+      const card = createMockCard();
+      const dashcard = createMockDashboardCard({ card, size_y: 3, size_x: 5 });
+
+      setup({
+        dashcard,
+        card,
+        mappingOptions: [
+          {
+            target: ["dimension", ["field", 1]],
+            sectionName: "Section",
+            name: "Name",
+          },
+        ],
+        target: ["dimension", ["field", 1]],
+        isRecentlyAutoConnected: true,
+      });
+
+      expect(screen.queryByText("Auto-connected")).not.toBeInTheDocument();
+      expect(
+        await screen.findByRole("img", { name: /sparkles/ }),
+      ).toBeInTheDocument();
+    });
+
+    it("should not render an icon when a dashcard is narrow", () => {
+      const card = createMockCard();
+      const dashcard = createMockDashboardCard({ card, size_y: 3, size_x: 3 });
+
+      setup({
+        dashcard,
+        card,
+        mappingOptions: [
+          {
+            target: ["dimension", ["field", 1]],
+            sectionName: "Section",
+            name: "Name",
+          },
+        ],
+        target: ["dimension", ["field", 1]],
+        isRecentlyAutoConnected: true,
+      });
+
+      expect(screen.queryByText("Auto-connected")).not.toBeInTheDocument();
+      expect(queryIcon("sparkles")).not.toBeInTheDocument();
+    });
+  });
+
   it("should render an error state when a field is not present in the list of options", () => {
     const card = createMockCard({
       dataset_query: createMockStructuredDatasetQuery({
@@ -180,6 +285,26 @@ describe("DashCardParameterMapper", () => {
       isMobile: true,
     });
     expect(screen.getByText(/unknown field/i)).toBeInTheDocument();
+  });
+
+  it("should render an error state when mapping to a native model", () => {
+    const card = createMockCard({
+      type: "model",
+      dataset_query: createMockNativeDatasetQuery({
+        native: {
+          query: "SELECT * FROM ORDERS",
+        },
+      }),
+      display: "table",
+    });
+    setup({
+      card,
+      dashcard: createMockDashboardCard({
+        card,
+      }),
+      mappingOptions: [],
+    });
+    expect(screen.getByText(/Models are data sources/)).toBeInTheDocument();
   });
 
   it("should show header content when card is more than 2 units high", () => {
@@ -212,6 +337,23 @@ describe("DashCardParameterMapper", () => {
       mappingOptions: ["foo", "bar"],
     });
     expect(screen.queryByText(/Column to filter on/i)).not.toBeInTheDocument();
+  });
+
+  describe("Action parameter", () => {
+    it("should show action parameter warning if an action parameter is used", () => {
+      const dashcard = createMockActionDashboardCard();
+
+      setup({
+        card: dashcard.card,
+        dashcard,
+        target: ["variable", ["template-tag", "source"]],
+      });
+      expect(
+        screen.getByText(
+          /Action parameters only accept a single value\. They do not support dropdown lists/i,
+        ),
+      ).toBeInTheDocument();
+    });
   });
 
   describe("Native question", () => {

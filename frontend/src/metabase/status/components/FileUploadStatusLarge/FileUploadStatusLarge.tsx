@@ -5,14 +5,14 @@ import { t } from "ttag";
 import Button from "metabase/core/components/Button";
 import Link from "metabase/core/components/Link";
 import {
-  isUploadInProgress,
-  isUploadCompleted,
   isUploadAborted,
+  isUploadCompleted,
+  isUploadInProgress,
 } from "metabase/lib/uploads";
 import { Box, Stack } from "metabase/ui";
 import type Table from "metabase-lib/v1/metadata/Table";
 import type { Collection } from "metabase-types/api";
-import { UploadMode, type FileUpload } from "metabase-types/store/upload";
+import { type FileUpload, UploadMode } from "metabase-types/store/upload";
 
 import StatusLarge from "../StatusLarge";
 
@@ -56,6 +56,7 @@ const FileUploadLarge = ({
       id: upload.id,
       title: getName(upload),
       icon: "model",
+      href: upload.modelId ? `/model/${upload.modelId}` : undefined,
       description: Description({ upload }),
       isInProgress: isUploadInProgress(upload),
       isCompleted: isUploadCompleted(upload),
@@ -122,12 +123,12 @@ const getLoadingMessage = (time: number) => {
 
 const Description = ({ upload }: { upload: FileUpload }) => {
   if (upload.status === "complete" && upload.modelId) {
-    return <Link to={`/model/${upload.modelId}`}>Start exploring</Link>;
+    return t`Start exploring`;
   }
 
   if (upload.status === "error") {
     return (
-      <Stack align="start" spacing="xs">
+      <Stack align="start" gap="xs">
         <Box>{upload.message}</Box>
         <UploadErrorDisplay upload={upload} />
       </Stack>

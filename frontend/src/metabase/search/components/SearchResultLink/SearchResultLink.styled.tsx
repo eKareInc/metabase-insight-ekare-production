@@ -1,14 +1,15 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import type { TextProps, AnchorProps } from "metabase/ui";
+import type { AnchorProps, TextProps } from "metabase/ui";
 import { Group } from "metabase/ui";
 
 type ResultLinkProps = AnchorProps | TextProps;
 
 export const ResultLink = styled.a<ResultLinkProps>`
   line-height: unset;
-
   ${({ href }) => {
     return (
       href &&
@@ -22,7 +23,6 @@ export const ResultLink = styled.a<ResultLinkProps>`
       `
     );
   }};
-
   transition: color 0.2s ease-in-out;
 `;
 

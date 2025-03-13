@@ -1,6 +1,6 @@
 import userEvent from "@testing-library/user-event";
 
-import { setupFieldSearchValuesEndpoints } from "__support__/server-mocks";
+import { setupFieldSearchValuesEndpoint } from "__support__/server-mocks";
 import {
   getBrokenUpTextMatcher,
   renderWithProviders,
@@ -14,20 +14,20 @@ import { checkNotNull, isNotNull } from "metabase/lib/types";
 import type Field from "metabase-lib/v1/metadata/Field";
 import {
   ORDERS,
-  PRODUCTS,
   PEOPLE,
-  PRODUCT_CATEGORY_VALUES,
   PEOPLE_SOURCE_VALUES,
+  PRODUCTS,
+  PRODUCT_CATEGORY_VALUES,
 } from "metabase-types/api/mocks/presets";
 
 import {
-  state,
-  metadata,
+  EXPRESSION_FIELD_ID,
   LISTABLE_PK_FIELD_ID,
   LISTABLE_PK_FIELD_VALUE,
   SEARCHABLE_FK_FIELD_ID,
-  EXPRESSION_FIELD_ID,
+  metadata,
   metadataWithSearchValuesField,
+  state,
 } from "./testMocks";
 
 async function setup({
@@ -51,7 +51,8 @@ async function setup({
 
   if (searchValue) {
     fields.forEach(field => {
-      setupFieldSearchValuesEndpoints(field?.id as number, searchValue);
+      const fieldId = field?.id as number;
+      setupFieldSearchValuesEndpoint(fieldId, fieldId, searchValue);
     });
   }
 

@@ -1,7 +1,6 @@
 (ns metabase.http-client
   "HTTP client for making API calls against the Metabase API. For test/REPL purposes."
   (:require
-   [cheshire.core :as json]
    [clj-http.client :as http]
    [clojure.core.async :as a]
    [clojure.edn :as edn]
@@ -18,15 +17,17 @@
    [metabase.test.initialize :as initialize]
    [metabase.util :as u]
    [metabase.util.date-2 :as u.date]
+   [metabase.util.json :as json]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
    [metabase.util.malli.humanize :as mu.humanize]
+   [metabase.util.malli.registry :as mr]
    [metabase.util.malli.schema :as ms]
    [peridot.multipart]
    [ring.util.codec :as codec])
   (:import
    (java.io ByteArrayInputStream InputStream)
-   (metabase.async.streaming_response StreamingResponse)))
+   (metabase.server.streaming_response StreamingResponse)))
 
 (set! *warn-on-reflection* true)
 
@@ -39,16 +40,16 @@
 (defn- build-query-string
   [query-parameters]
   (str/join \& (letfn [(url-encode [s]
-                                  (cond-> s
-                                    (keyword? s) u/qualified-name
-                                    (some? s)    codec/url-encode))
+                         (cond-> s
+                           (keyword? s) u/qualified-name
+                           (some? s)    codec/url-encode))
                        (encode-key-value [k v]
                          (str (url-encode k) \= (url-encode v)))]
-                      (flatten (for [[k value-or-values] query-parameters]
-                                 (if (sequential? value-or-values)
-                                   (for [v value-or-values]
-                                     (encode-key-value k v))
-                                   [(encode-key-value k value-or-values)]))))))
+                 (flatten (for [[k value-or-values] query-parameters]
+                            (if (sequential? value-or-values)
+                              (for [v value-or-values]
+                                (encode-key-value k v))
+                              [(encode-key-value k value-or-values)]))))))
 
 (defn build-url
   "Build an API URL for `localhost` and `MB_JETTY_PORT` with `query-parameters`.
@@ -71,10 +72,13 @@
       {:body (ByteArrayInputStream. (.getBytes ^String http-body "UTF-8"))}
 
       (= "application/json" content-type)
-      {:body (ByteArrayInputStream. (.getBytes (json/generate-string http-body) "UTF-8"))}
+      {:body (ByteArrayInputStream. (.getBytes (json/encode http-body) "UTF-8"))}
 
       (= "multipart/form-data" content-type)
       (peridot.multipart/build http-body)
+
+      (= "application/x-www-form-urlencoded" content-type)
+      {:body (ByteArrayInputStream. (.getBytes ^String (codec/form-encode http-body) "UTF-8"))}
 
       :else
       (throw (ex-info "If you want this content-type to work, improve me"
@@ -83,7 +87,7 @@
 ;;; parse-response
 
 (def ^:private auto-deserialize-dates-keys
-  #{:created_at :updated_at :last_login :date_joined :started_at :finished_at :last_analyzed})
+  #{:created_at :updated_at :last_login :date_joined :started_at :finished_at :last_analyzed :last_used_at :last_viewed_at})
 
 (defn- auto-deserialize-dates
   "Automatically recurse over `response` and look for keys that are known to correspond to dates. Parse their values and
@@ -135,7 +139,7 @@
   (if-not (string? body)
     body
     (try
-      (auto-deserialize-dates (json/parse-string body parse-response-key))
+      (auto-deserialize-dates (json/decode body parse-response-key))
       (catch Throwable e
         ;; if this actually looked like some sort of JSON response and we failed to parse it, log it so we can debug it
         ;; more easily in the REPL.
@@ -168,7 +172,6 @@
       (throw (ex-info "Failed to authenticate with credentials"
                       {:credentials credentials}
                       e)))))
-
 
 ;;; client
 
@@ -203,7 +206,7 @@
     (let [message (format "%s %s expected a status code of %d, got %d."
                           method-name url expected-status-code actual-status-code)
           body    (try
-                    (json/parse-string body keyword)
+                    (json/decode+kw body)
                     (catch Throwable _
                       body))]
       (throw (ex-info message {:status-code actual-status-code, :body body}))))
@@ -218,6 +221,7 @@
   {:get    http/get
    :post   http/post
    :put    http/put
+   :patch  http/patch
    :delete http/delete})
 
 (def ^:private ClientParamsMap
@@ -230,7 +234,7 @@
    [:query-parameters {:optional true} [:maybe map?]]
    [:request-options  {:optional true} [:maybe map?]]])
 
-(mu/defn ^:private -client
+(mu/defn- -client
   ;; Since the params for this function can get a little complicated make sure we validate them
   [{:keys [credentials method expected-status url http-body query-parameters request-options]} :- ClientParamsMap]
   (initialize/initialize-if-needed! :db :web-server)
@@ -320,7 +324,7 @@
      request-options
      (build-body-params http-body content-type))))
 
-(mu/defn ^:private -mock-client
+(mu/defn- -mock-client
   ;; Since the params for this function can get a little complicated make sure we validate them
   [{:keys [method expected-status] :as params} :- ClientParamsMap]
   (initialize/initialize-if-needed! :db :web-server)
@@ -330,16 +334,16 @@
         _           (log/debug method-name (pr-str url) (pr-str request))
         thunk       (fn []
                       (try
-                       (handler/app request coerce-mock-response-body (fn raise [e] (throw e)))
-                       (catch clojure.lang.ExceptionInfo e
-                         (log/debug e method-name url)
-                         (ex-data e))
-                       (catch Exception e
-                         (throw (ex-info (.getMessage e)
-                                         {:method  method-name
-                                          :url     url
-                                          :request request}
-                                         e)))))
+                        (handler/app request coerce-mock-response-body (fn raise [e] (throw e)))
+                        (catch clojure.lang.ExceptionInfo e
+                          (log/debug e method-name url)
+                          (ex-data e))
+                        (catch Exception e
+                          (throw (ex-info (.getMessage e)
+                                          {:method  method-name
+                                           :url     url
+                                           :request request}
+                                          e)))))
         ;; Now perform the HTTP request
         {:keys [status body] :as response} (thunk)]
     (log/debug :mock-request method-name url status)
@@ -349,7 +353,7 @@
 (def ^:private http-client-args
   [:catn
    [:credentials      [:? [:or string? map?]]]
-   [:method           [:enum :get :put :post :delete]]
+   [:method           [:enum :get :put :post :patch :delete]]
    [:expected-status  [:? integer?]]
    [:url              string?]
    [:request-options  [:? [:fn (every-pred map? :request-options)]]]
@@ -370,7 +374,7 @@
   [args]
   (let [parsed (http-client-args-parser args)]
     (when (= parsed :malli.core/invalid)
-      (let [explain-data (mc/explain http-client-args args)]
+      (let [explain-data (mr/explain http-client-args args)]
         (throw (ex-info (str "Invalid http-client args: " (mu.humanize/humanize explain-data))
                         explain-data))))
     (cond-> parsed
@@ -426,7 +430,7 @@
 
    *  `credentials`          Optional map of `:username` and `:password` or Session token of a User who we
                              should perform the request as
-   *  `method`               `:get`, `:post`, `:delete`, or `:put`
+   *  `method`               `:get`, `:post`, `:delete`, `:put`, or `:patch`
    *  `expected-status-code` When passed, throw an exception if the response has a different status code.
    *  `endpoint`             URL minus the `<host>/api/` part e.g. `card/1/favorite`. Appended to `*url-prefix*`.
    *  `request-options`      Optional map of options to pass as part of request to `clj-http.client`, e.g. `:headers`.
@@ -435,7 +439,7 @@
    *  `query-params`         Key-value pairs that will be encoded and added to the URL as query params
 
   Note: One benefit of [[client]] over [[real-client]] is the call site and API execution are on the same thread,
-  so it's possible to run a test inside a transaction and bindings will works."
+  so it's possible to run a test inside a transaction and bindings will work."
   {:arglists '([credentials? method expected-status-code? endpoint request-options? http-body-map? & {:as query-params}])}
   [& args]
   (:body (apply client-full-response args)))

@@ -5,14 +5,15 @@ import { getIconForVisualizationType } from "metabase/visualizations";
 import type {
   CardDisplayType,
   Collection,
+  CollectionItemModel,
   SearchModel,
 } from "metabase-types/api";
 
-type IconModel = SearchModel | "schema";
+export type IconModel = SearchModel | CollectionItemModel | "schema";
 
 export type ObjectWithModel = {
-  model: IconModel;
   id?: unknown;
+  model: IconModel;
   authority_level?: "official" | string | null;
   collection_authority_level?: "official" | string | null;
   moderated_status?: "verified" | string | null;
@@ -21,7 +22,7 @@ export type ObjectWithModel = {
   is_personal?: boolean;
 };
 
-const modelIconMap: Record<IconModel, IconName> = {
+export const modelIconMap: Record<IconModel, IconName> = {
   collection: "folder",
   database: "database",
   table: "table",
@@ -33,6 +34,7 @@ const modelIconMap: Record<IconModel, IconName> = {
   card: "table",
   segment: "segment",
   metric: "metric",
+  snippet: "unknown",
 };
 
 export type IconData = {

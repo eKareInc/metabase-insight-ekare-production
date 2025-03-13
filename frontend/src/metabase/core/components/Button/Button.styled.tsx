@@ -1,9 +1,11 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import { alpha, color } from "metabase/lib/colors";
+import { alpha } from "metabase/lib/colors";
 
-export interface ButtonRootProps {
+interface ButtonRootProps {
   purple?: boolean;
   onlyText?: boolean;
   light?: boolean;
@@ -12,6 +14,7 @@ export interface ButtonRootProps {
 export const ButtonRoot = styled.button<ButtonRootProps>`
   transition: all 200ms linear;
   flex-shrink: 0;
+
   @media (prefers-reduced-motion) {
     &,
     &:hover {
@@ -22,12 +25,12 @@ export const ButtonRoot = styled.button<ButtonRootProps>`
   ${({ purple, theme }) =>
     purple &&
     css`
-      color: ${color("white")};
+      color: var(--mb-color-text-white);
       background-color: var(--mb-color-filter);
       border: 1px solid var(--mb-color-filter);
 
       &:hover {
-        color: ${color("white")};
+        color: var(--mb-color-text-white);
         background-color: ${alpha(theme.fn.themeColor("filter"), 0.88)};
         border-color: ${alpha(theme.fn.themeColor("filter"), 0.88)};
       }
@@ -38,7 +41,6 @@ export const ButtonRoot = styled.button<ButtonRootProps>`
     css`
       border: none;
       padding: 0;
-
       color: var(--mb-color-brand);
 
       &:hover {
@@ -53,7 +55,6 @@ export const ButtonRoot = styled.button<ButtonRootProps>`
       height: fit-content;
       line-height: 1.5rem;
       padding: 0.5rem;
-
       color: var(--mb-color-brand);
 
       &:hover {
@@ -62,7 +63,7 @@ export const ButtonRoot = styled.button<ButtonRootProps>`
     `}
 `;
 
-export interface ButtonContentProps {
+interface ButtonContentProps {
   iconVertical?: boolean;
 }
 
@@ -74,7 +75,7 @@ export const ButtonContent = styled.div<ButtonContentProps>`
   min-width: ${props => (props.iconVertical ? "60px" : "")};
 `;
 
-export interface ButtonTextContainerProps {
+interface ButtonTextContainerProps {
   iconVertical: boolean;
   hasIcon: boolean;
   hasRightIcon: boolean;

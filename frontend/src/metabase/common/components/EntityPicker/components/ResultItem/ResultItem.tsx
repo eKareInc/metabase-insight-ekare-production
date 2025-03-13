@@ -2,28 +2,15 @@ import { t } from "ttag";
 
 import { Ellipsified } from "metabase/core/components/Ellipsified";
 import { color } from "metabase/lib/colors";
+import { humanize, titleize } from "metabase/lib/formatting";
 import { getIcon } from "metabase/lib/icon";
 import { getName } from "metabase/lib/name";
-import { Flex, Tooltip, FixedSizeIcon } from "metabase/ui";
-import type { SearchResult } from "metabase-types/api";
+import { PLUGIN_MODERATION } from "metabase/plugins";
+import { FixedSizeIcon, Flex, Tooltip } from "metabase/ui";
 
-import { ENTITY_PICKER_Z_INDEX } from "../EntityPickerModal";
+import type { SearchItem } from "../../types";
 
 import { ChunkyListItem } from "./ResultItem.styled";
-
-export type ResultItemType = Pick<SearchResult, "model" | "name"> &
-  Partial<
-    Pick<
-      SearchResult,
-      | "id"
-      | "collection"
-      | "description"
-      | "collection_authority_level"
-      | "moderated_status"
-      | "display"
-      | "database_name"
-    >
-  >;
 
 export const ResultItem = ({
   item,
@@ -31,7 +18,7 @@ export const ResultItem = ({
   isSelected,
   isLast,
 }: {
-  item: ResultItemType;
+  item: SearchItem;
   onClick: () => void;
   isSelected?: boolean;
   isLast?: boolean;
@@ -50,7 +37,7 @@ export const ResultItem = ({
     >
       <Flex gap="md" miw="10rem" align="center" style={{ flex: 1 }}>
         <FixedSizeIcon
-          color={color(icon.color ?? (isSelected ? "white" : "brand"))}
+          color={color(icon.color ?? (isSelected ? "text-white" : "brand"))}
           name={icon.name}
           style={{
             flexShrink: 0,
@@ -59,13 +46,13 @@ export const ResultItem = ({
         <Ellipsified style={{ fontWeight: "bold" }}>
           {getName(item)}
         </Ellipsified>
+        <PLUGIN_MODERATION.ModerationStatusIcon
+          status={item.moderated_status}
+          filled
+          size={14}
+        />
         {item.description && (
-          <Tooltip
-            maw="20rem"
-            multiline
-            label={item.description}
-            zIndex={ENTITY_PICKER_Z_INDEX}
-          >
+          <Tooltip maw="20rem" multiline label={item.description}>
             <FixedSizeIcon color="brand" name="info" />
           </Tooltip>
         )}
@@ -74,7 +61,7 @@ export const ResultItem = ({
       {parentInfo && (
         <Flex
           style={{
-            color: isSelected ? color("white") : color("text-light"),
+            color: isSelected ? color("text-white") : color("text-light"),
             flexShrink: 0,
           }}
           align="center"
@@ -89,17 +76,34 @@ export const ResultItem = ({
   );
 };
 
-function getParentInfo(item: ResultItemType) {
+function getParentInfo(item: SearchItem) {
   if (item.model === "table") {
+    const icon = getIcon({ model: "database" }).name;
+    const databaseName = item.database_name ?? t`Database`;
+
+    if (!item.table_schema) {
+      return {
+        icon,
+        name: databaseName,
+      };
+    }
+
     return {
-      icon: getIcon({ model: "database" }).name,
-      name: item.database_name ?? t`Database`,
+      icon,
+      name: `${databaseName} (${titleize(humanize(item.table_schema))})`,
     };
   }
 
   if (item.model === "collection" && item?.collection?.id === item?.id) {
     // some APIs return collection items with themselves populated as their own parent 🥴
     return null;
+  }
+
+  if (item.dashboard) {
+    return {
+      icon: getIcon({ model: "dashboard", ...item.dashboard }).name,
+      name: getName(item.dashboard),
+    };
   }
 
   if (!item.collection) {

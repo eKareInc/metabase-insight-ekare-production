@@ -1,7 +1,9 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import { color } from "metabase/lib/colors";
 
 const LOG_PREFIX = ".react-ansi-style";
@@ -54,7 +56,7 @@ export const LogsContent = styled.div`
 
   ${LOG_PREFIX}-inverse {
     color: var(--mb-color-text-dark);
-    background-color: ${color("white")};
+    background-color: var(--mb-color-bg-white);
   }
 
   ${LOG_PREFIX}-hidden {

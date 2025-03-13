@@ -1,6 +1,7 @@
 import type {
   CardId,
   Collection,
+  DashboardId,
   DatabaseId,
   SchemaName,
   TableId,
@@ -23,6 +24,9 @@ export type DatabaseItem = {
 
 export type SchemaItem = {
   id: SchemaName;
+  dbId: DatabaseId;
+  dbName: string | undefined;
+  isOnlySchema: boolean;
   name: string;
   model: "schema";
 };
@@ -37,6 +41,12 @@ export type QuestionItem = {
   id: CardId;
   name: string;
   model: "card";
+};
+
+export type DashboardItem = {
+  id: DashboardId;
+  name: string;
+  model: "dashboard";
 };
 
 export type ModelItem = {
@@ -65,16 +75,25 @@ export type DataPickerValue =
   | ModelItem
   | MetricItem;
 
-export type NotebookDataPickerFolderItem =
+export type DataPickerFolderItem =
   | CollectionItem
   | DatabaseItem
-  | SchemaItem;
+  | SchemaItem
+  | DashboardItem;
 
-export type NotebookDataPickerValueItem =
+export type DataPickerValueItem =
   | TableItem
   | QuestionItem
   | ModelItem
   | MetricItem;
 
+export type DataPickerItem = DataPickerFolderItem | DataPickerValueItem;
+
 export type DataPickerModalOptions = EntityPickerModalOptions &
   QuestionPickerOptions;
+
+export type TablePickerStatePath = [
+  DatabaseId | undefined,
+  SchemaName | undefined,
+  TableId | undefined,
+];

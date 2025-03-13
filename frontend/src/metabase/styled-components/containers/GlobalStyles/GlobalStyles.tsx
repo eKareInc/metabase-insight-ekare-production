@@ -1,11 +1,13 @@
-import { css, Global, useTheme } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
+import { Global, css } from "@emotion/react";
+import { useMemo } from "react";
 
-import { baseStyle, getRootStyle } from "metabase/css/core/base.styled";
+import { baseStyle, rootStyle } from "metabase/css/core/base.styled";
 import { defaultFontFiles } from "metabase/css/core/fonts.styled";
-import { alpha, color, lighten } from "metabase/lib/colors";
 import { getSitePath } from "metabase/lib/dom";
 import { useSelector } from "metabase/lib/redux";
-import { aceEditorStyles } from "metabase/query_builder/components/NativeQueryEditor/NativeQueryEditor.styled";
+import { getMetabaseCssVariables } from "metabase/styled-components/theme/css-variables";
+import { useMantineTheme } from "metabase/ui";
 import { saveDomImageStyles } from "metabase/visualizations/lib/save-chart-image";
 
 import { getFont, getFontFiles } from "../../selectors";
@@ -13,52 +15,41 @@ import { getFont, getFontFiles } from "../../selectors";
 export const GlobalStyles = (): JSX.Element => {
   const font = useSelector(getFont);
   const fontFiles = useSelector(getFontFiles);
-  const theme = useTheme();
 
   const sitePath = getSitePath();
+  const theme = useMantineTheme();
 
-  const styles = css`
-    :root {
-      --mb-default-font-family: "${font}";
-      --mb-color-brand: ${color("brand")};
-      --mb-color-brand-alpha-04: ${alpha("brand", 0.04)};
-      --mb-color-brand-alpha-88: ${alpha("brand", 0.88)};
-      --mb-color-brand-light: ${lighten("brand", 0.532)};
-      --mb-color-brand-lighter: ${lighten("brand", 0.598)};
-      --mb-color-focus: ${color("focus")};
-      --mb-color-bg-dark: ${color("bg-dark")};
-      --mb-color-bg-light: ${color("bg-light")};
-      --mb-color-bg-medium: ${color("bg-medium")};
-      --mb-color-bg-night: ${color("bg-night")};
-      --mb-color-bg-white: ${color("bg-white")};
-      --mb-color-border: ${color("border")};
-      --mb-color-danger: ${color("danger")};
-      --mb-color-error: ${color("error")};
-      --mb-color-filter: ${color("filter")};
-      --mb-color-shadow: ${color("shadow")};
-    }
+  // This can get expensive so we should memoize it separately
+  const cssVariables = useMemo(() => getMetabaseCssVariables(theme), [theme]);
 
-    ${defaultFontFiles({ baseUrl: sitePath })}
-    ${fontFiles?.map(
-      file => css`
-        @font-face {
-          font-family: "Custom";
-          src: url(${encodeURI(file.src)}) format("${file.fontFormat}");
-          font-weight: ${file.fontWeight};
-          font-style: normal;
-          font-display: swap;
-        }
-      `,
-    )}
-    ${aceEditorStyles}
+  const styles = useMemo(() => {
+    return css`
+      ${cssVariables}
+      :root {
+        --mb-default-font-family: "${font}";
+      }
+
+      ${defaultFontFiles({ baseUrl: sitePath })}
+      ${fontFiles?.map(
+        file => css`
+          @font-face {
+            font-family: "Custom";
+            src: url(${encodeURI(file.src)}) format("${file.fontFormat}");
+            font-weight: ${file.fontWeight};
+            font-style: normal;
+            font-display: swap;
+          }
+        `,
+      )}
     ${saveDomImageStyles}
     body {
-      font-size: 0.875em;
-      ${getRootStyle(theme)}
-    }
+        font-size: 0.875em;
+        ${rootStyle}
+      }
 
-    ${baseStyle}
-  `;
+      ${baseStyle}
+    `;
+  }, [cssVariables, font, sitePath, fontFiles]);
 
   return <Global styles={styles} />;
 };

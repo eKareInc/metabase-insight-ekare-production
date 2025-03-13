@@ -1,9 +1,9 @@
 import cx from "classnames";
-import PropTypes from "prop-types";
 import type { ReactNode } from "react";
 import { Component } from "react";
 
 import CS from "metabase/css/core/index.css";
+import ZIndex from "metabase/css/core/z-index.module.css";
 
 import { ModalHeader } from "./ModalHeader";
 import type { CommonModalProps } from "./types";
@@ -11,8 +11,9 @@ import type { CommonModalProps } from "./types";
 export interface ModalContentProps extends CommonModalProps {
   "data-testid"?: string;
   id?: string;
-  title: string;
+  title?: string | ReactNode;
   footer?: ReactNode;
+  withFooterTopBorder?: boolean;
   children: ReactNode;
 
   className?: string;
@@ -20,32 +21,9 @@ export interface ModalContentProps extends CommonModalProps {
 
 // eslint-disable-next-line import/no-default-export -- deprecated usage
 export default class ModalContent extends Component<ModalContentProps> {
-  static propTypes = {
-    "data-testid": PropTypes.string,
-    id: PropTypes.string,
-    title: PropTypes.oneOfType([PropTypes.string, PropTypes.element]),
-    centeredTitle: PropTypes.bool,
-    onClose: PropTypes.func,
-    onBack: PropTypes.func,
-    // takes over the entire screen
-    fullPageModal: PropTypes.bool,
-    // standard modal
-    formModal: PropTypes.bool,
-
-    headerActions: PropTypes.any,
-  };
-
   static defaultProps = {
     formModal: true,
   };
-
-  static childContextTypes = {
-    isModal: PropTypes.bool,
-  };
-
-  getChildContext() {
-    return { isModal: true };
-  }
 
   render() {
     const {
@@ -60,6 +38,7 @@ export default class ModalContent extends Component<ModalContentProps> {
       fullPageModal,
       formModal,
       headerActions,
+      withFooterTopBorder,
     } = this.props;
 
     return (
@@ -75,6 +54,7 @@ export default class ModalContent extends Component<ModalContentProps> {
           { [CS.fullHeight]: fullPageModal && !formModal },
           // add bottom padding if this is a standard "form modal" with no footer
           { [CS.pb4]: formModal && !footer },
+          ZIndex.Overlay,
         )}
         data-testid={dataTestId}
       >
@@ -94,7 +74,11 @@ export default class ModalContent extends Component<ModalContentProps> {
           {children}
         </ModalBody>
         {footer && (
-          <ModalFooter fullPageModal={fullPageModal} formModal={formModal}>
+          <ModalFooter
+            fullPageModal={fullPageModal}
+            formModal={formModal}
+            withTopBorder={withFooterTopBorder}
+          >
             {footer}
           </ModalFooter>
         )}
@@ -121,7 +105,14 @@ export const ModalBody = ({
     })}
   >
     <div
-      className={cx(CS.flexFull, CS.mlAuto, CS.mrAuto, CS.flex, CS.flexColumn)}
+      className={cx(
+        CS.flexFull,
+        CS.mlAuto,
+        CS.mrAuto,
+        CS.flex,
+        CS.flexColumn,
+        ZIndex.Overlay,
+      )}
       style={{ maxWidth: formModal && fullPageModal ? FORM_WIDTH : undefined }}
     >
       {children}
@@ -130,6 +121,7 @@ export const ModalBody = ({
 );
 
 interface ModalFooterProps extends CommonModalProps {
+  withTopBorder?: boolean;
   children: ReactNode;
 }
 
@@ -137,6 +129,7 @@ export const ModalFooter = ({
   children,
   fullPageModal,
   formModal,
+  withTopBorder,
 }: ModalFooterProps) => (
   <div
     className={cx(
@@ -145,6 +138,8 @@ export const ModalFooter = ({
       CS.flexNoShrink,
       CS.px4,
       fullPageModal ? CS.py4 : CS.py3,
+      withTopBorder && CS.borderTop,
+      withTopBorder && CS.mt4,
     )}
   >
     <div

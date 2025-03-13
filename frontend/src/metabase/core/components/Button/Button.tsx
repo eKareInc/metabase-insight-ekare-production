@@ -1,6 +1,7 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 import cx from "classnames";
-import type { ButtonHTMLAttributes, ReactNode, ElementType, Ref } from "react";
+import type { ButtonHTMLAttributes, ElementType, ReactNode, Ref } from "react";
 import { forwardRef } from "react";
 import _ from "underscore";
 
@@ -85,6 +86,11 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidth?: boolean;
   onlyText?: boolean;
   light?: boolean;
+
+  classNames?: {
+    root?: string;
+    icon?: string;
+  };
 }
 
 const BaseButton = forwardRef(function BaseButton(
@@ -98,6 +104,7 @@ const BaseButton = forwardRef(function BaseButton(
     iconVertical = false,
     labelBreakpoint,
     children,
+    classNames = {},
     ...props
   }: ButtonProps,
   ref: Ref<HTMLButtonElement>,
@@ -111,9 +118,15 @@ const BaseButton = forwardRef(function BaseButton(
       ref={ref}
       as={as}
       {..._.omit(props, ...BUTTON_VARIANTS)}
-      className={cx(ButtonsS.Button, className, variantClasses, {
-        [SpacingS.p1]: !children,
-      })}
+      className={cx(
+        ButtonsS.Button,
+        classNames.root,
+        variantClasses,
+        {
+          [SpacingS.p1]: !children,
+        },
+        className,
+      )}
       purple={props.purple}
     >
       <ButtonContent iconVertical={iconVertical}>
@@ -140,6 +153,7 @@ const BaseButton = forwardRef(function BaseButton(
         )}
         {iconRight && (
           <Icon
+            className={classNames.icon}
             color={iconColor}
             name={iconRight}
             size={iconSize ? iconSize : 16}

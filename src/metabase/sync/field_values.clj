@@ -4,8 +4,7 @@
    [java-time.api :as t]
    [metabase.db :as mdb]
    [metabase.driver.sql.query-processor :as sql.qp]
-   [metabase.models.field :refer [Field]]
-   [metabase.models.field-values :as field-values :refer [FieldValues]]
+   [metabase.models.field-values :as field-values]
    [metabase.sync.interface :as i]
    [metabase.sync.util :as sync-util]
    [metabase.util :as u]
@@ -13,23 +12,30 @@
    [metabase.util.malli :as mu]
    [toucan2.core :as t2]))
 
-(mu/defn ^:private clear-field-values-for-field!
+(mu/defn- clear-field-values-for-field!
   [field :- i/FieldInstance]
-  (when (t2/exists? FieldValues :field_id (u/the-id field))
+  (when (t2/exists? :model/FieldValues :field_id (u/the-id field))
     (log/debug (format "Based on cardinality and/or type information, %s should no longer have field values.\n"
                        (sync-util/name-for-logging field))
                "Deleting FieldValues...")
     (field-values/clear-field-values-for-field! field)
     ::field-values/fv-deleted))
 
-(mu/defn ^:private update-field-values-for-field!
+(mu/defn- update-field-values-for-field!
   [field :- i/FieldInstance]
   (log/debug (u/format-color 'green "Looking into updating FieldValues for %s" (sync-util/name-for-logging field)))
   (let [field-values (field-values/get-latest-full-field-values (u/the-id field))]
-    (if (field-values/inactive? field-values)
-      (log/debugf "Field %s has not been used since %s. Skipping..."
-                  (sync-util/name-for-logging field) (t/format "yyyy-MM-dd" (t/local-date-time (:last_used_at field-values))))
-      (field-values/create-or-update-full-field-values! field))))
+    (cond
+      (not field-values)
+      (log/infof "Field %s does not have FieldValues. Skipping..."
+                 (sync-util/name-for-logging field))
+
+      (field-values/inactive? field-values)
+      (log/infof "Field %s has not been used since %s. Skipping..."
+                 (sync-util/name-for-logging field) (t/format "yyyy-MM-dd" (t/local-date-time (:last_used_at field-values))))
+
+      :else
+      (field-values/create-or-update-full-field-values! field :field-values field-values))))
 
 (defn- update-field-value-stats-count [counts-map result]
   (if (instance? Exception result)
@@ -46,7 +52,7 @@
 
 (defn- table->fields-to-scan
   [table]
-  (t2/select Field :table_id (u/the-id table), :active true, :visibility_type "normal"))
+  (t2/select :model/Field :table_id (u/the-id table), :active true, :visibility_type "normal"))
 
 (mu/defn update-field-values-for-table!
   "Update the FieldValues for all Fields (as needed) for `table`."
@@ -60,14 +66,14 @@
           {:errors 0, :created 0, :updated 0, :deleted 0}
           (table->fields-to-scan table)))
 
-(mu/defn ^:private update-field-values-for-database!
-  [_database :- i/DatabaseInstance
-   tables    :- [:maybe [:sequential i/TableInstance]]]
-  (apply merge-with + (map update-field-values-for-table! tables)))
+(mu/defn- update-field-values-for-database!
+  [database :- i/DatabaseInstance]
+  (let [tables (sync-util/reducible-sync-tables database)]
+    (transduce (map update-field-values-for-table!) (partial merge-with +) tables)))
 
 (defn- update-field-values-summary [{:keys [created updated deleted errors]}]
   (format "Updated %d field value sets, created %d, deleted %d with %d errors"
-       updated created deleted errors))
+          updated created deleted errors))
 
 (defn- delete-expired-advanced-field-values-summary [{:keys [deleted]}]
   (format "Deleted %d expired advanced fieldvalues" deleted))
@@ -82,8 +88,8 @@
                                        :%now
                                        (- (t/as field-values/advanced-field-values-max-age :days))
                                        :day)]]
-          rows-count (apply t2/count FieldValues conditions)]
-      (apply t2/delete! FieldValues conditions)
+          rows-count (apply t2/count :model/FieldValues conditions)]
+      (apply t2/delete! :model/FieldValues conditions)
       rows-count)))
 
 (mu/defn delete-expired-advanced-field-values-for-table!
@@ -94,25 +100,24 @@
        (map delete-expired-advanced-field-values-for-field!)
        (reduce +)))
 
-(mu/defn ^:private delete-expired-advanced-field-values-for-database!
-  [_database :- i/DatabaseInstance
-   tables :- [:maybe [:sequential i/TableInstance]]]
-  {:deleted (transduce (comp (map delete-expired-advanced-field-values-for-table!)
-                             (map (fn [result]
-                                    (if (instance? Throwable result)
-                                      (throw result)
-                                      result))))
-                       +
-                       0
-                       tables)})
+(mu/defn- delete-expired-advanced-field-values-for-database!
+  [database :- i/DatabaseInstance]
+  (let [tables (sync-util/reducible-sync-tables database)]
+    {:deleted (transduce (comp (map delete-expired-advanced-field-values-for-table!)
+                               (map (fn [result]
+                                      (if (instance? Throwable result)
+                                        (throw result)
+                                        result))))
+                         +
+                         0
+                         tables)}))
 
-(defn- make-sync-field-values-steps
-  [tables]
+(def ^:private sync-field-values-steps
   [(sync-util/create-sync-step "delete-expired-advanced-field-values"
-                               #(delete-expired-advanced-field-values-for-database! % tables)
+                               delete-expired-advanced-field-values-for-database!
                                delete-expired-advanced-field-values-summary)
    (sync-util/create-sync-step "update-field-values"
-                               #(update-field-values-for-database! % tables)
+                               update-field-values-for-database!
                                update-field-values-summary)])
 
 (mu/defn update-field-values!
@@ -121,5 +126,4 @@
   [database :- i/DatabaseInstance]
   (sync-util/sync-operation :cache-field-values database (format "Cache field values in %s"
                                                                  (sync-util/name-for-logging database))
-    (let [tables (sync-util/db->sync-tables database)]
-     (sync-util/run-sync-operation "field values scanning" database (make-sync-field-values-steps tables)))))
+    (sync-util/run-sync-operation "field values scanning" database sync-field-values-steps)))

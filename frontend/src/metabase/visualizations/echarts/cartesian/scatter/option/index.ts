@@ -28,7 +28,7 @@ export function getScatterPlotOption(
   selectedTimelineEventsIds: TimelineEventId[],
   settings: ComputedVisualizationSettings,
   chartWidth: number,
-  isPlaceholder: boolean,
+  isAnimated: boolean,
   renderingContext: RenderingContext,
 ): EChartsCoreOption {
   const hasTimelineEvents = timelineEventsModel != null;
@@ -40,15 +40,16 @@ export function getScatterPlotOption(
       )
     : null;
 
-  const dataSeriesOptions: EChartsSeriesOption[] = chartModel.seriesModels.map(
-    seriesModel =>
+  const dataSeriesOptions: EChartsSeriesOption[] = chartModel.seriesModels
+    .filter(seriesModel => seriesModel.visible)
+    .map(seriesModel =>
       buildEChartsScatterSeries(
         seriesModel,
         chartModel.bubbleSizeDomain,
         getSeriesYAxisIndex(seriesModel.dataKey, chartModel),
         renderingContext,
       ),
-  );
+    );
   const goalSeriesOption = getGoalLineSeriesOption(
     chartModel,
     settings,
@@ -92,7 +93,7 @@ export function getScatterPlotOption(
   }
 
   return {
-    ...getSharedEChartsOptions(isPlaceholder),
+    ...getSharedEChartsOptions(isAnimated),
     grid: {
       ...chartMeasurements.padding,
     },
@@ -104,7 +105,6 @@ export function getScatterPlotOption(
       chartMeasurements,
       settings,
       hasTimelineEvents,
-      null,
       renderingContext,
     ),
   };

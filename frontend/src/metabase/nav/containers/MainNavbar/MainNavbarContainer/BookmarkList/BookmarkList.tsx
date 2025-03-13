@@ -1,26 +1,25 @@
 import type { DragEndEvent } from "@dnd-kit/core";
-import { DndContext, useSensor, PointerSensor } from "@dnd-kit/core";
+import { DndContext, PointerSensor, useSensor } from "@dnd-kit/core";
 import {
-  restrictToVerticalAxis,
   restrictToParentElement,
+  restrictToVerticalAxis,
 } from "@dnd-kit/modifiers";
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useCallback, useEffect, useState } from "react";
-import { connect } from "react-redux";
 import { t } from "ttag";
 
 import CollapseSection from "metabase/components/CollapseSection";
 import { Sortable } from "metabase/core/components/Sortable";
-import Tooltip from "metabase/core/components/Tooltip";
 import GrabberS from "metabase/css/components/grabber.module.css";
 import CS from "metabase/css/core/index.css";
 import Bookmarks from "metabase/entities/bookmarks";
+import { connect } from "metabase/lib/redux";
 import * as Urls from "metabase/lib/urls";
 import { PLUGIN_COLLECTIONS } from "metabase/plugins";
-import { Icon } from "metabase/ui";
+import { Icon, Tooltip } from "metabase/ui";
 import type { Bookmark } from "metabase-types/api";
 
 import { SidebarHeading } from "../../MainNavbar.styled";
@@ -44,7 +43,7 @@ interface CollectionSidebarBookmarksProps {
   }: {
     newIndex: number;
     oldIndex: number;
-  }) => void;
+  }) => Promise<any>;
   onToggle: (isExpanded: boolean) => void;
   initialState: "expanded" | "collapsed";
 }
@@ -97,7 +96,7 @@ const BookmarkItem = ({
         onClick={onSelect}
         right={
           <button onClick={onRemove}>
-            <Tooltip tooltip={t`Remove bookmark`} placement="bottom">
+            <Tooltip label={t`Remove bookmark`} position="bottom">
               <Icon name={iconName} />
             </Tooltip>
           </button>
@@ -135,12 +134,12 @@ const BookmarkList = ({
   }, []);
 
   const handleSortEnd = useCallback(
-    (input: DragEndEvent) => {
+    async (input: DragEndEvent) => {
       document.body.classList.remove(GrabberS.grabbing);
       setIsSorting(false);
       const newIndex = bookmarks.findIndex(b => b.id === input.over?.id);
       const oldIndex = bookmarks.findIndex(b => b.id === input.active.id);
-      reorderBookmarks({ newIndex, oldIndex });
+      await reorderBookmarks({ newIndex, oldIndex });
     },
     [reorderBookmarks, bookmarks],
   );

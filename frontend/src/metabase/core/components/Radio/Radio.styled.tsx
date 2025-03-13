@@ -1,15 +1,16 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import { color, lighten, tint, isDark } from "metabase/lib/colors";
+import { color, isDark, lighten, tint } from "metabase/lib/colors";
 
 import type { RadioColorScheme, RadioVariant } from "./types";
 
-export interface RadioGroupProps {
+interface RadioGroupProps {
   variant: RadioVariant;
   vertical: boolean;
 }
 
-export const RadioGroup = styled.div<RadioGroupProps>`
+const RadioGroup = styled.div<RadioGroupProps>`
   display: flex;
   flex-direction: ${props => (props.vertical ? "column" : "row")};
 `;
@@ -22,12 +23,12 @@ export const RadioGroupBubble = styled(RadioGroup)`
   display: flex;
 `;
 
-export interface RadioLabelProps {
+interface RadioLabelProps {
   variant: RadioVariant;
   vertical: boolean;
 }
 
-export const RadioLabel = styled.label<RadioLabelProps>`
+const RadioLabel = styled.label<RadioLabelProps>`
   display: block;
 `;
 
@@ -52,7 +53,7 @@ export const RadioInput = styled.input`
   padding: 0;
 `;
 
-export interface RadioContainerProps {
+interface RadioContainerProps {
   checked: boolean;
   variant: RadioVariant;
   colorScheme: RadioColorScheme;
@@ -60,7 +61,7 @@ export interface RadioContainerProps {
   showButtons: boolean;
 }
 
-export const RadioContainer = styled.div<RadioContainerProps>`
+const RadioContainer = styled.div<RadioContainerProps>`
   display: flex;
   align-items: center;
   cursor: ${props => (props.disabled ? "" : "pointer")};
@@ -98,7 +99,9 @@ export const RadioContainerBubble = styled(RadioContainer)`
   border-radius: 10rem;
   font-weight: bold;
   color: ${props =>
-    props.checked ? color("white") : getContrastSchemeColor(props.colorScheme)};
+    props.checked
+      ? color("text-white")
+      : getContrastSchemeColor(props.colorScheme)};
   background-color: ${props =>
     props.checked
       ? getSchemeColor(props.colorScheme)

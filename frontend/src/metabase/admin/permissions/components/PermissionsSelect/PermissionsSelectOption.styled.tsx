@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { color } from "metabase/lib/colors";
@@ -15,7 +16,7 @@ export const IconContainer = styled.div<{ color: string }>`
   border-radius: 3px;
   width: 20px;
   height: 20px;
-  color: ${color("white")};
+  color: var(--mb-color-text-white);
   background-color: ${props => color(props.color)};
   flex-shrink: 0;
 `;

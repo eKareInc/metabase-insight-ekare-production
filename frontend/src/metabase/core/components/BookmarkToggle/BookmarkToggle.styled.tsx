@@ -1,7 +1,11 @@
+// eslint-disable-next-line no-restricted-imports
 import { keyframes } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
+import { forwardRef } from "react";
 
-import Button from "metabase/core/components/Button";
+import { doNotForwardProps } from "metabase/common/utils/doNotForwardProps";
+import Button, { type ButtonProps } from "metabase/core/components/Button";
 import { color } from "metabase/lib/colors";
 import { Icon } from "metabase/ui";
 
@@ -17,13 +21,16 @@ const shrinkKeyframes = keyframes`
   }
 `;
 
-export interface BookmarkIconProps {
+interface BookmarkIconProps {
   isBookmarked: boolean;
   isAnimating: boolean;
   onAnimationEnd: () => void;
 }
 
-export const BookmarkIcon = styled(Icon)<BookmarkIconProps>`
+export const BookmarkIcon = styled(
+  Icon,
+  doNotForwardProps("isBookmarked", "isAnimating"),
+)<BookmarkIconProps>`
   color: ${props => (props.isBookmarked ? color("brand") : "")};
   animation-name: ${props =>
     props.isBookmarked ? expandKeyframes : shrinkKeyframes};
@@ -32,11 +39,20 @@ export const BookmarkIcon = styled(Icon)<BookmarkIconProps>`
   animation-timing-function: linear;
 `;
 
-interface BookmarkButtonProps {
-  isBookmarked: boolean;
-}
+const BaseBookmarkButton = forwardRef<HTMLButtonElement, ButtonProps>(
+  function BookmarkButton(props, ref) {
+    return (
+      <Button
+        {...props}
+        ref={ref}
+        onlyIcon={props.onlyIcon ?? true}
+        iconSize={props.iconSize ?? 16}
+      />
+    );
+  },
+);
 
-export const BookmarkButton = styled(Button)<BookmarkButtonProps>`
+export const BookmarkButton = styled(BaseBookmarkButton)`
   padding: 0.25rem 0.5rem;
   height: 2rem;
   width: 2rem;
@@ -50,8 +66,3 @@ export const BookmarkButton = styled(Button)<BookmarkButtonProps>`
     vertical-align: middle;
   }
 `;
-
-BookmarkButton.defaultProps = {
-  onlyIcon: true,
-  iconSize: 16,
-};

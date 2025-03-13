@@ -12,20 +12,18 @@
    [medley.core :as m]
    [metabase.legacy-mbql.util :as mbql.u]
    [metabase.lib.common :as lib.common]
-   [metabase.lib.database.methods :as lib.database.methods]
    [metabase.lib.dispatch :as lib.dispatch]
    [metabase.lib.hierarchy :as lib.hierarchy]
-   [metabase.lib.metadata.protocols :as lib.metadata.protocols]
+   [metabase.lib.ident :as lib.ident]
    [metabase.lib.options :as lib.options]
    [metabase.lib.schema :as lib.schema]
    [metabase.lib.schema.common :as lib.schema.common]
    [metabase.lib.schema.expression :as lib.schema.expression]
    [metabase.lib.schema.id :as lib.schema.id]
-   [metabase.lib.schema.metadata :as lib.schema.metadata]
    [metabase.lib.schema.ref :as lib.schema.ref]
    [metabase.lib.util.match :as lib.util.match]
-   [metabase.shared.util.i18n :as i18n]
    [metabase.util :as u]
+   [metabase.util.i18n :as i18n]
    [metabase.util.malli :as mu]))
 
 #?(:clj
@@ -73,10 +71,10 @@
    If the expression has an original-effective-type due to bucketing, check that."
   [expression typ]
   (isa?
-    (or (and (clause? expression)
-             (:metabase.lib.field/original-effective-type (second expression)))
-        (lib.schema.expression/type-of expression))
-    typ))
+   (or (and (clause? expression)
+            (:metabase.lib.field/original-effective-type (second expression)))
+       (lib.schema.expression/type-of expression))
+   typ))
 
 (defn expression-name
   "Returns the :lib/expression-name of `clause`. Returns nil if `clause` is not a clause."
@@ -94,7 +92,8 @@
          clause])
       (lib.options/update-options (fn [opts]
                                     (-> opts
-                                        (assoc :lib/expression-name a-name)
+                                        (assoc :lib/expression-name a-name
+                                               :ident (lib.ident/random-ident))
                                         (dissoc :name :display-name))))))
 
 (defmulti custom-name-method
@@ -122,8 +121,10 @@
   [stage location target-clause new-clause]
   {:pre [((some-fn clause? #(= (:lib/type %) :mbql/join)) target-clause)]}
   (let [new-clause (if (= :expressions (first location))
-                     (top-level-expression-clause new-clause (or (custom-name new-clause)
-                                                                 (expression-name target-clause)))
+                     (-> new-clause
+                         (top-level-expression-clause (or (custom-name new-clause)
+                                                          (expression-name target-clause)))
+                         (lib.common/preserve-ident-of target-clause))
                      new-clause)]
     (m/update-existing-in
      stage
@@ -190,7 +191,7 @@
   [m legacy-key pMBQL-key]
   (cond-> m
     (contains? m legacy-key) (update legacy-key #(if (and (vector? %)
-                                                       (= (first %) :and))
+                                                          (= (first %) :and))
                                                    (vec (drop 1 %))
                                                    [%]))
     (contains? m legacy-key) (set/rename-keys {legacy-key pMBQL-key})))
@@ -344,12 +345,19 @@
         stages'                     (apply update (vec stages) stage-number' f args)]
     (assoc query :stages stages')))
 
+(defn native-stage?
+  "Is this query stage a native stage?"
+  ([stage]
+   (= (:lib/type stage) :mbql.stage/native))
+  ([query stage-number]
+   (native-stage? (query-stage query stage-number))))
+
 (mu/defn ensure-mbql-final-stage :- ::lib.schema/query
   "Convert query to a pMBQL (pipeline) query, and make sure the final stage is an `:mbql` one."
   [query]
   (let [query (pipeline query)]
     (cond-> query
-      (= (:lib/type (query-stage query -1)) :mbql.stage/native)
+      (native-stage? query -1)
       (update :stages conj {:lib/type :mbql.stage/mbql}))))
 
 (defn join-strings-with-conjunction
@@ -373,39 +381,6 @@
            conjunction
            (last coll)))))))
 
-(mu/defn ^:private string-byte-count :- [:int {:min 0}]
-  "Number of bytes in a string using UTF-8 encoding."
-  [s :- :string]
-  #?(:clj (count (.getBytes (str s) "UTF-8"))
-     :cljs (.. (js/TextEncoder.) (encode s) -length)))
-
-#?(:clj
-   (mu/defn ^:private string-character-at :- [:string {:min 0, :max 1}]
-     [s :- :string
-      i :-[:int {:min 0}]]
-     (str (.charAt ^String s i))))
-
-(mu/defn ^:private truncate-string-to-byte-count :- :string
-  "Truncate string `s` to `max-length-bytes` UTF-8 bytes (as opposed to truncating to some number of
-  *characters*)."
-  [s                :- :string
-   max-length-bytes :- [:int {:min 1}]]
-  #?(:clj
-     (loop [i 0, cumulative-byte-count 0]
-       (cond
-         (= cumulative-byte-count max-length-bytes) (subs s 0 i)
-         (> cumulative-byte-count max-length-bytes) (subs s 0 (dec i))
-         (>= i (count s))                           s
-         :else                                      (recur (inc i)
-                                                           (long (+
-                                                                  cumulative-byte-count
-                                                                  (string-byte-count (string-character-at s i)))))))
-
-     :cljs
-     (let [buf (js/Uint8Array. max-length-bytes)
-           result (.encodeInto (js/TextEncoder.) s buf)] ;; JS obj {read: chars_converted, write: bytes_written}
-       (subs s 0 (.-read result)))))
-
 (def ^:private truncate-alias-max-length-bytes
   "Length to truncate column and table identifiers to. See [[metabase.driver.impl/default-alias-max-length-bytes]] for
   reasoning."
@@ -416,7 +391,7 @@
   ;; 8 bytes for the CRC32 plus one for the underscore
   9)
 
-(mu/defn ^:private crc32-checksum :- [:string {:min 8, :max 8}]
+(mu/defn- crc32-checksum :- [:string {:min 8, :max 8}]
   "Return a 4-byte CRC-32 checksum of string `s`, encoded as an 8-character hex string."
   [s :- :string]
   (let [s #?(:clj (Long/toHexString (.getValue (doto (java.util.zip.CRC32.)
@@ -444,10 +419,10 @@
 
   ([s         :- ::lib.schema.common/non-blank-string
     max-bytes :- [:int {:min 0}]]
-   (if (<= (string-byte-count s) max-bytes)
+   (if (<= (u/string-byte-count s) max-bytes)
      s
      (let [checksum  (crc32-checksum s)
-           truncated (truncate-string-to-byte-count s (- max-bytes truncated-alias-hash-suffix-length))]
+           truncated (u/truncate-string-to-byte-count s (- max-bytes truncated-alias-hash-suffix-length))]
        (str truncated \_ checksum)))))
 
 (mu/defn legacy-string-table-id->card-id :- [:maybe ::lib.schema.id/card]
@@ -479,20 +454,11 @@
   [query :- :map]
   (= (first-stage-type query) :mbql.stage/native))
 
-(mu/defn ^:private escape-and-truncate :- :string
-  [database :- [:maybe ::lib.schema.metadata/database]
-   s        :- :string]
-  (->> s
-       (lib.database.methods/escape-alias database)
-       ;; truncate alias to 60 characters (actually 51 characters plus a hash).
-       truncate-alias))
-
-(mu/defn ^:private unique-alias :- :string
-  [database :- [:maybe ::lib.schema.metadata/database]
-   original :- :string
+(mu/defn- unique-alias :- :string
+  [original :- :string
    suffix   :- :string]
-  (->> (str original \_ suffix)
-       (escape-and-truncate database)))
+  (-> (str original \_ suffix)
+      (truncate-alias)))
 
 (mu/defn unique-name-generator :- [:function
                                    ;; (f str) => unique-str
@@ -519,32 +485,28 @@
 
   The two-arity version of the returned function can be used for idempotence. See docstring
   for [[metabase.legacy-mbql.util/unique-name-generator]] for more information."
-  ([metadata-provider :- [:maybe ::lib.schema.metadata/metadata-provider]]
-   (let [database     (some-> metadata-provider lib.metadata.protocols/database)
-         uniqify      (mbql.u/unique-name-generator
+  ([]
+   (let [uniqify      (mbql.u/unique-name-generator
                        ;; unique by lower-case name, e.g. `NAME` and `name` => `NAME` and `name_2`
                        ;;
                        ;; some databases treat aliases as case-insensitive so make sure the generated aliases are
                        ;; unique regardless of case
                        :name-key-fn     u/lower-case-en
-                       :unique-alias-fn (partial unique-alias database))]
+                       :unique-alias-fn unique-alias)]
      ;; I know we could just use `comp` here but it gets really hard to figure out where it's coming from when you're
      ;; debugging things; a named function like this makes it clear where this function came from
      (fn unique-name-generator-fn
        ([s]
         (->> s
-             (escape-and-truncate database)
-             uniqify
-             truncate-alias))
+             truncate-alias
+             uniqify))
        ([id s]
         (->> s
-             (escape-and-truncate database)
-             (uniqify id)
-             truncate-alias)))))
+             truncate-alias
+             (uniqify id))))))
 
-  ([metadata-provider :- [:maybe ::lib.schema.metadata/metadata-provider]
-    existing-names    :- [:sequential :string]]
-   (let [f (unique-name-generator metadata-provider)]
+  ([existing-names    :- [:sequential :string]]
+   (let [f (unique-name-generator)]
      (doseq [existing existing-names]
        (f existing))
      f)))
@@ -564,7 +526,7 @@
 
 (mu/defn add-summary-clause :- ::lib.schema/query
   "If the given stage has no summary, it will drop :fields, :order-by, and :join :fields from it,
-   as well as any subsequent stages."
+   as well as dropping any subsequent stages."
   [query :- ::lib.schema/query
    stage-number :- :int
    location :- [:enum :breakout :aggregation]
@@ -574,20 +536,22 @@
         stage (query-stage query stage-number)
         new-summary? (not (or (seq (:aggregation stage)) (seq (:breakout stage))))
         new-query (update-query-stage
-                    query stage-number
-                    update location
-                    (fn [summary-clauses]
-                      (conj (vec summary-clauses) (lib.common/->op-arg a-summary-clause))))]
+                   query stage-number
+                   update location
+                   (fn [summary-clauses]
+                     (->> a-summary-clause
+                          lib.common/->op-arg
+                          lib.common/ensure-ident
+                          (conj (vec summary-clauses)))))]
     (if new-summary?
       (-> new-query
           (update-query-stage
-            stage-number
-            (fn [stage]
-              (-> stage
-                  (dissoc :order-by :fields)
-                  (m/update-existing :joins (fn [joins] (mapv #(dissoc % :fields) joins))))))
-          ;; subvec holds onto references, so create a new vector
-          (update :stages (comp #(into [] %) subvec) 0 (inc (canonical-stage-index query stage-number))))
+           stage-number
+           (fn [stage]
+             (-> stage
+                 (dissoc :order-by :fields)
+                 (m/update-existing :joins (fn [joins] (mapv #(dissoc % :fields) joins))))))
+          (update :stages #(into [] (take (inc (canonical-stage-index query stage-number))) %)))
       new-query)))
 
 (defn fresh-uuids
@@ -660,3 +624,12 @@
    (into #{}
          (comp cat (filter some?))
          (lib.util.match/match coll [:field opts (id :guard int?)] [id (:source-field opts)]))))
+
+(defn collect-source-tables
+  "Return sequence of source tables from `query`."
+  [query]
+  (let [from-joins (mapcat collect-source-tables (:joins query))]
+    (if-let [source-query (:source-query query)]
+      (concat (collect-source-tables source-query) from-joins)
+      (cond->> from-joins
+        (:source-table query) (cons (:source-table query))))))

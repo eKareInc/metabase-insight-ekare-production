@@ -1,5 +1,5 @@
 import type { Ref } from "react";
-import { useCallback, useState, forwardRef, useImperativeHandle } from "react";
+import { forwardRef, useCallback, useImperativeHandle, useMemo } from "react";
 import { useDeepCompareEffect } from "react-use";
 
 import {
@@ -8,24 +8,25 @@ import {
   useGetDashboardQuery,
 } from "metabase/api";
 import { isValidCollectionId } from "metabase/collections/utils";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import { useSelector } from "metabase/lib/redux";
 import { getUserPersonalCollectionId } from "metabase/selectors/user";
-import type {
-  ListCollectionItemsRequest,
-  CollectionItemModel,
-  Dashboard,
-} from "metabase-types/api";
+import type { CollectionItemModel, Dashboard } from "metabase-types/api";
 
 import { CollectionItemPickerResolver } from "../../CollectionPicker/components/CollectionItemPickerResolver";
 import { getPathLevelForItem } from "../../CollectionPicker/utils";
+import { LoadingSpinner, NestedItemPicker } from "../../EntityPicker";
+import type {
+  DashboardPickerItem,
+  DashboardPickerOptions,
+  DashboardPickerStatePath,
+} from "../types";
 import {
-  LoadingSpinner,
-  NestedItemPicker,
-  type PickerState,
-} from "../../EntityPicker";
-import type { DashboardPickerOptions, DashboardPickerItem } from "../types";
-import { getCollectionIdPath, getStateFromIdPath, isFolder } from "../utils";
+  getCollectionIdPath,
+  getStateFromIdPath,
+  handleNewDashboard as handleNewDashboardUtil,
+  isFolder,
+} from "../utils";
 
 export const defaultOptions: DashboardPickerOptions = {
   showPersonalCollections: true,
@@ -34,11 +35,13 @@ export const defaultOptions: DashboardPickerOptions = {
 };
 
 interface DashboardPickerProps {
-  onItemSelect: (item: DashboardPickerItem) => void;
   initialValue?: Pick<DashboardPickerItem, "model" | "id">;
   options: DashboardPickerOptions;
   models?: CollectionItemModel[];
+  path: DashboardPickerStatePath | undefined;
   shouldDisableItem?: (item: DashboardPickerItem) => boolean;
+  onItemSelect: (item: DashboardPickerItem) => void;
+  onPathChange: (path: DashboardPickerStatePath) => void;
 }
 
 const useGetInitialCollection = (
@@ -67,7 +70,9 @@ const useGetInitialCollection = (
 
   const { data: currentCollection, error: collectionError } =
     useGetCollectionQuery(
-      !isDashboard || !!currentDashboard ? requestCollectionId : skipToken,
+      !isDashboard || !!currentDashboard
+        ? { id: requestCollectionId }
+        : skipToken,
     );
 
   return {
@@ -80,22 +85,20 @@ const useGetInitialCollection = (
 
 const DashboardPickerInner = (
   {
-    onItemSelect,
     initialValue,
     options,
     models = ["dashboard"],
+    path: pathProp,
     shouldDisableItem,
+    onItemSelect,
+    onPathChange,
   }: DashboardPickerProps,
   ref: Ref<unknown>,
 ) => {
-  const [path, setPath] = useState<
-    PickerState<DashboardPickerItem, ListCollectionItemsRequest>
-  >(() =>
-    getStateFromIdPath({
-      idPath: ["root"],
-      models,
-    }),
-  );
+  const defaultPath = useMemo(() => {
+    return getStateFromIdPath({ idPath: ["root"], models });
+  }, [models]);
+  const path = pathProp ?? defaultPath;
 
   const {
     currentCollection,
@@ -114,10 +117,10 @@ const DashboardPickerInner = (
         idPath,
         models,
       });
-      setPath(newPath);
+      onPathChange(newPath);
       onItemSelect(folder);
     },
-    [setPath, onItemSelect, userPersonalCollectionId, models],
+    [onPathChange, onItemSelect, userPersonalCollectionId, models],
   );
 
   const handleItemSelect = useCallback(
@@ -131,27 +134,33 @@ const DashboardPickerInner = (
 
       const newPath = path.slice(0, pathLevel + 1);
       newPath[newPath.length - 1].selectedItem = item;
-      setPath(newPath);
+      onPathChange(newPath);
       onItemSelect(item);
     },
-    [setPath, onItemSelect, path, userPersonalCollectionId],
+    [onPathChange, onItemSelect, path, userPersonalCollectionId],
   );
 
   const handleNewDashboard = useCallback(
     (newDashboard: Dashboard) => {
-      const newCollectionItem: DashboardPickerItem = {
-        id: newDashboard.id,
-        name: newDashboard.name,
-        collection_id: newDashboard.collection_id || "root",
-        model: "dashboard",
-      };
-
-      handleItemSelect(newCollectionItem);
+      handleNewDashboardUtil(
+        newDashboard,
+        path,
+        onItemSelect,
+        userPersonalCollectionId,
+        handleItemSelect,
+        onPathChange,
+      );
     },
-    [handleItemSelect],
+    [
+      path,
+      onItemSelect,
+      userPersonalCollectionId,
+      handleItemSelect,
+      onPathChange,
+    ],
   );
 
-  // Exposing onNewCollection so that parent can select newly created
+  // Exposing onNewDashboard so that parent can select newly created
   // folder
   useImperativeHandle(
     ref,
@@ -167,7 +176,7 @@ const DashboardPickerInner = (
         const idPath = getCollectionIdPath(
           {
             id: currentCollection.id,
-            location: currentCollection.location,
+            location: currentCollection.effective_location,
             is_personal: currentCollection.is_personal,
           },
           userPersonalCollectionId,
@@ -193,10 +202,10 @@ const DashboardPickerInner = (
               };
         }
 
-        setPath(newPath);
+        onPathChange(newPath);
       }
     },
-    [currentCollection, userPersonalCollectionId],
+    [currentCollection, userPersonalCollectionId, onPathChange],
   );
 
   if (error) {

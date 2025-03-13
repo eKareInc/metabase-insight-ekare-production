@@ -41,9 +41,7 @@
    [clojure.data :as data]
    [metabase-enterprise.audit-app.interface :as audit.i]
    [metabase.api.common.validation :as validation]
-   [metabase.public-settings.premium-features
-    :as premium-features
-    :refer [defenterprise]]
+   [metabase.premium-features.core :as premium-features :refer [defenterprise]]
    [metabase.query-processor.error-type :as qp.error-type]
    [metabase.query-processor.pipeline :as qp.pipeline]
    [metabase.query-processor.schema :as qp.schema]
@@ -71,9 +69,9 @@
   (for [[k v] metadata]
     (assoc v :name (name k))))
 
-(mu/defn ^:private format-results [{:keys [results metadata]} :- [:map
-                                                                  [:results  [:sequential :map]]
-                                                                  [:metadata audit.i/ResultsMetadata]]]
+(mu/defn- format-results [{:keys [results metadata]} :- [:map
+                                                         [:results  [:sequential :map]]
+                                                         [:metadata audit.i/ResultsMetadata]]]
   (check-results-and-metadata-keys-match results metadata)
   {:cols (metadata->cols metadata)
    :rows (for [row results]
@@ -121,7 +119,7 @@
      reduce-reducible-results
      reduce-legacy-results) rff results))
 
-(mu/defn ^:private process-internal-query
+(mu/defn- process-internal-query
   [{qualified-fn-str :fn, args :args, :as query} :- InternalQuery
    rff                                           :- ::qp.schema/rff]
   ;; Make sure current user is a superuser or has monitoring permissions

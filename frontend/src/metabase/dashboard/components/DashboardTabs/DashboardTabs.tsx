@@ -1,13 +1,15 @@
 import { t } from "ttag";
 
+import Button from "metabase/core/components/Button";
 import { Sortable } from "metabase/core/components/Sortable";
 import type { TabButtonMenuItem } from "metabase/core/components/TabButton";
 import { TabButton } from "metabase/core/components/TabButton";
 import { TabRow } from "metabase/core/components/TabRow";
+import { Flex } from "metabase/ui";
 import type { DashboardId } from "metabase-types/api";
 import type { SelectedTabId } from "metabase-types/store";
 
-import { Container, CreateTabButton } from "./DashboardTabs.styled";
+import S from "./DashboardTabs.module.css";
 import { useDashboardTabs } from "./use-dashboard-tabs";
 
 export type DashboardTabsProps = {
@@ -53,7 +55,7 @@ export function DashboardTabs({
   }
 
   return (
-    <Container className={className}>
+    <Flex align="start" gap="lg" w="100%" className={className}>
       <TabRow<SelectedTabId>
         value={selectedTabId}
         onChange={selectTab}
@@ -62,6 +64,7 @@ export function DashboardTabs({
       >
         {showPlaceholder ? (
           <TabButton
+            className={S.tabButton}
             label={t`Tab 1`}
             value={null}
             showMenu
@@ -69,7 +72,12 @@ export function DashboardTabs({
           />
         ) : (
           tabs.map(tab => (
-            <Sortable key={tab.id} id={tab.id} disabled={!isEditing}>
+            <Sortable
+              key={tab.id}
+              id={tab.id}
+              className={S.tabButton}
+              disabled={!isEditing}
+            >
               <TabButton.Renameable
                 value={tab.id}
                 label={tab.name}
@@ -82,14 +90,15 @@ export function DashboardTabs({
           ))
         )}
         {isEditing && (
-          <CreateTabButton
+          <Button
             icon="add"
             iconSize={12}
             onClick={createNewTab}
             aria-label={t`Create new tab`}
+            className={S.createTabButton}
           />
         )}
       </TabRow>
-    </Container>
+    </Flex>
   );
 }

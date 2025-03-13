@@ -1,5 +1,7 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
+import { EditableDescription } from "metabase/common/components/EditableDescription";
 import EditableText from "metabase/core/components/EditableText";
 
 export const CaptionTitleContainer = styled.div`
@@ -13,11 +15,13 @@ export const CaptionTitle = styled(EditableText)`
   font-weight: 900;
 `;
 
-export interface CaptionDescriptionProps {
+interface CaptionDescriptionProps {
   isVisible: boolean;
 }
 
-export const CaptionDescription = styled(EditableText)<CaptionDescriptionProps>`
+export const CaptionDescription = styled(
+  EditableDescription,
+)<CaptionDescriptionProps>`
   opacity: ${props => (props.isVisible ? 1 : 0)};
   max-width: 25rem;
   transition: opacity 400ms ease 1s;

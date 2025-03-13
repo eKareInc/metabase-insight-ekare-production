@@ -5,16 +5,16 @@ import { t } from "ttag";
 import {
   ActionCreatorBodyContainer,
   EditorContainer,
-  ModalRoot,
   ModalActions,
   ModalLeft,
   ModalRight,
+  ModalRoot,
 } from "metabase/actions/containers/ActionCreator/ActionCreator.styled";
 import ActionCreatorHeader from "metabase/actions/containers/ActionCreator/ActionCreatorHeader";
 import { FormCreator } from "metabase/actions/containers/ActionCreator/FormCreator";
 import {
-  DataReferenceTriggerButton,
   DataReferenceInline,
+  DataReferenceTriggerButton,
 } from "metabase/actions/containers/ActionCreator/InlineDataReference";
 import Button from "metabase/core/components/Button";
 import { isNotNull } from "metabase/lib/types";
@@ -126,16 +126,21 @@ export default function ActionCreatorView({
               formSettings={formSettings}
               isEditable={isEditable && canChangeFieldSettings}
               onChange={onChangeFormSettings}
+              onClose={onCloseModal}
             />
           ) : activeSideView === "dataReference" ? (
-            <DataReferenceInline onClose={closeSideView} />
+            <DataReferenceInline
+              onClose={onCloseModal}
+              onBack={closeSideView}
+            />
           ) : activeSideView === "actionSettings" ? (
             <InlineActionSettings
               action={action}
               formSettings={formSettings}
               isEditable={isEditable}
               onChangeFormSettings={onChangeFormSettings}
-              onClose={closeSideView}
+              onClose={onCloseModal}
+              onBack={closeSideView}
             />
           ) : null}
         </ModalRight>

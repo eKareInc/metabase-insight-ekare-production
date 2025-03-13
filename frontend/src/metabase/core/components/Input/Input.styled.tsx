@@ -1,4 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import IconButtonWrapper from "metabase/components/IconButtonWrapper";
@@ -12,7 +14,7 @@ import { monospaceFontFamily, space } from "metabase/styled-components/theme";
 
 import type { InputSize } from "../../style/types";
 
-export interface InputProps {
+interface InputProps {
   fieldSize?: InputSize;
   hasError?: boolean;
   fullWidth?: boolean;
@@ -23,7 +25,7 @@ export interface InputProps {
   colorScheme: string;
 }
 
-export interface InputRootProps {
+interface InputRootProps {
   fullWidth?: boolean;
 }
 
@@ -56,11 +58,13 @@ export const InputField = styled.input<InputProps>`
   ${props => inputPadding(props.fieldSize)}
   ${props => inputTypography(props.fieldSize)}
   font-family: inherit;
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-primary);
   border: 1px solid var(--mb-color-border);
   border-radius: ${space(1)};
   background-color: ${props =>
-    props.readOnly ? "var(--mb-color-bg-light)" : "var(--mb-color-bg-white)"};
+    props.readOnly
+      ? "var(--mb-color-background-disabled)"
+      : "var(--mb-color-background)"};
   outline: none;
   text-align: inherit;
 
@@ -116,7 +120,7 @@ type InputButtonProps = {
   size: InputSize;
 };
 
-export const InputButton = styled(IconButtonWrapper)<InputButtonProps>`
+const InputButton = styled(IconButtonWrapper)<InputButtonProps>`
   position: absolute;
   color: ${props => color(props.onClick != null ? "text-dark" : "text-light")};
   padding: ${props => (props.size === "small" ? "0.5rem" : "0.75rem")};
@@ -145,13 +149,12 @@ export const InputResetButton = styled(InputButton)<InputResetButtonProps>`
 `;
 
 export const InputSubtitle = styled.div`
-  color: ${color("text-light")};
+  color: var(--mb-color-text-light);
   position: absolute;
   top: 1.25em;
   left: 1.25em;
   font-family: ${monospaceFontFamily};
   font-size: 0.75em;
-
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;

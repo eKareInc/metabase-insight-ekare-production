@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { color } from "metabase/lib/colors";
@@ -10,11 +11,9 @@ export const Root = styled.div<{ isDashboard: boolean }>`
   align-items: center;
   justify-content: center;
   text-align: center;
-
   padding-left: 0.5rem;
   padding-right: 0.5rem;
   padding-bottom: 0.5rem;
-
   color: ${({ isDashboard }) =>
     isDashboard ? color("text-medium") : color("text-light")};
 `;

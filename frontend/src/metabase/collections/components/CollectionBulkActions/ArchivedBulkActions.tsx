@@ -2,16 +2,12 @@ import { useMemo } from "react";
 import { msgid, ngettext, t } from "ttag";
 import _ from "underscore";
 
-import { BulkDeleteConfirmModal } from "metabase/archive/components/BulkDeleteConfirmModal";
-import {
-  canDeleteItem,
-  canMoveItem,
-  isRootTrashCollection,
-} from "metabase/collections/utils";
+import { canMoveItem, isRootTrashCollection } from "metabase/collections/utils";
 import {
   BulkActionButton,
   BulkActionDangerButton,
 } from "metabase/components/BulkActionBar";
+import { ConfirmModal } from "metabase/components/ConfirmModal";
 import { useDispatch } from "metabase/lib/redux";
 import { addUndo } from "metabase/redux/undo";
 import type { Collection, CollectionItem } from "metabase-types/api";
@@ -64,8 +60,8 @@ export const ArchivedBulkActions = ({
 
   // delete
   const canDelete = useMemo(() => {
-    return selected.every(item => canDeleteItem(item, collection));
-  }, [selected, collection]);
+    return selected.every(item => item.can_delete);
+  }, [selected]);
 
   const handleBulkDeletePermanentlyStart = async () => {
     setSelectedItems(selected);
@@ -116,13 +112,21 @@ export const ArchivedBulkActions = ({
         {t`Delete permanently`}
       </BulkActionDangerButton>
 
-      {hasSelectedItems && selectedAction === "delete" && (
-        <BulkDeleteConfirmModal
-          selectedItemCount={selectedItemCount}
-          onCloseModal={handleCloseModal}
-          onBulkDeletePermanently={handleBulkDeletePermanently}
-        />
-      )}
+      {/* This should probably be external so that we can hide 
+          the bar when any other modals are displayed */}
+      <ConfirmModal
+        opened={hasSelectedItems && selectedAction === "delete"}
+        confirmButtonText={t`Delete permanently`}
+        data-testid="leave-confirmation"
+        message={t`This can't be undone.`}
+        title={ngettext(
+          msgid`Delete item permanently?`,
+          `Delete ${selectedItemCount} items permanently?`,
+          selectedItemCount,
+        )}
+        onConfirm={handleBulkDeletePermanently}
+        onClose={handleCloseModal}
+      />
     </>
   );
 };

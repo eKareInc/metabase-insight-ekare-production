@@ -6,16 +6,16 @@ import type NativeQuery from "metabase-lib/v1/queries/NativeQuery";
 import {
   createMockField,
   createMockNativeDatasetQuery,
-  createMockTable,
   createMockSavedQuestionsDatabase,
+  createMockTable,
 } from "metabase-types/api/mocks";
 import {
+  PRODUCTS_ID,
+  SAMPLE_DB_ID,
   createNativeModelCard,
   createProductsIdField,
   createSampleDatabase,
   createSavedNativeCard,
-  PRODUCTS_ID,
-  SAMPLE_DB_ID,
 } from "metabase-types/api/mocks/presets";
 
 import { getNativeQueryTable } from "./native-query-table";
@@ -64,7 +64,12 @@ const cardWithCollection = createSavedNativeCard({
 const card = createSavedNativeCard({ id: 3 });
 
 const metadata = createMockMetadata({
-  databases: [createSampleDatabase(), SAVED_QUESTIONS_DB],
+  databases: [
+    createSampleDatabase({
+      features: ["native-requires-specified-collection"],
+    }),
+    SAVED_QUESTIONS_DB,
+  ],
   tables: [modelTable],
   questions: [model, card, cardWithCollection],
 });

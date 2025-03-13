@@ -7,7 +7,7 @@ import {
   setupCardsEndpoints,
   setupCollectionsEndpoints,
   setupDatabasesEndpoints,
-  setupRecentViewsEndpoints,
+  setupRecentViewsAndSelectionsEndpoints,
 } from "__support__/server-mocks";
 import {
   mockGetBoundingClientRect,
@@ -22,12 +22,13 @@ import {
   createMockCard,
   createMockCardQueryMetadata,
   createMockCollection,
+  createMockGroup,
 } from "metabase-types/api/mocks";
 import {
-  createSampleDatabase,
   PEOPLE,
   PEOPLE_ID,
   SAMPLE_DB_ID,
+  createSampleDatabase,
 } from "metabase-types/api/mocks/presets";
 
 import EditSandboxingModal from "./EditSandboxingModal";
@@ -73,13 +74,17 @@ const setup = ({
     collections: [EDITABLE_ROOT_COLLECTION],
     rootCollection: EDITABLE_ROOT_COLLECTION,
   });
-  setupRecentViewsEndpoints([]);
+
+  setupRecentViewsAndSelectionsEndpoints([]);
   setupAdhocQueryMetadataEndpoint(
     createMockCardQueryMetadata({ databases: [database] }),
   );
 
   fetchMock.post("path:/api/mt/gtap/validate", 204);
-  fetchMock.get("path:/api/permissions/group/1", {});
+  fetchMock.get(
+    "path:/api/permissions/group/1",
+    createMockGroup({ members: [] }),
+  );
 
   if (shouldMockQuestions) {
     fetchMock.get("path:/api/collection/root/items", {
@@ -124,7 +129,7 @@ describe("EditSandboxingModal", () => {
         const { onSave } = setup();
 
         expect(
-          screen.getByText("Grant sandboxed access to this table"),
+          screen.getByText("Restrict access to this table"),
         ).toBeInTheDocument();
 
         expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
@@ -143,6 +148,7 @@ describe("EditSandboxingModal", () => {
               foo: [
                 "dimension",
                 ["field", PEOPLE.ID, { "base-type": "type/BigInteger" }],
+                { "stage-number": 0 },
               ],
             },
             card_id: null,
@@ -156,7 +162,7 @@ describe("EditSandboxingModal", () => {
         const { onSave } = setup({ shouldMockQuestions: true });
 
         expect(
-          screen.getByText("Grant sandboxed access to this table"),
+          screen.getByText("Restrict access to this table"),
         ).toBeInTheDocument();
 
         expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
@@ -170,7 +176,7 @@ describe("EditSandboxingModal", () => {
         await userEvent.click(await screen.findByText("Select a question"));
         await screen.findByTestId("entity-picker-modal");
         await userEvent.click(
-          await screen.findByRole("button", { name: /sandbox question/i }),
+          await screen.findByRole("link", { name: /sandbox question/i }),
         );
 
         await userEvent.click(screen.getByText("Save"));
@@ -206,7 +212,7 @@ describe("EditSandboxingModal", () => {
       });
 
       expect(
-        screen.getByText("Grant sandboxed access to this table"),
+        screen.getByText("Restrict access to this table"),
       ).toBeInTheDocument();
 
       expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
@@ -220,7 +226,7 @@ describe("EditSandboxingModal", () => {
       await userEvent.click(await screen.findByText("Select a question"));
       await screen.findByTestId("entity-picker-modal");
       await userEvent.click(
-        await screen.findByRole("button", { name: /sandbox question/i }),
+        await screen.findByRole("link", { name: /sandbox question/i }),
       );
 
       await userEvent.click(screen.getByText("Save"));

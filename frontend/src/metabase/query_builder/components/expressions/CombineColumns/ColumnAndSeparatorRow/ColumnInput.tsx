@@ -1,11 +1,11 @@
 import classNames from "classnames";
-import type { FocusEvent, MouseEvent, KeyboardEvent } from "react";
-import { useRef, useState, useMemo } from "react";
+import type { FocusEvent, KeyboardEvent, MouseEvent } from "react";
+import { useMemo, useRef, useState } from "react";
 import { t } from "ttag";
 
 import { QueryColumnPicker } from "metabase/common/components/QueryColumnPicker";
 import { color } from "metabase/lib/colors";
-import { Button, Icon, Input, Popover, FocusTrap } from "metabase/ui";
+import { Button, FocusTrap, Icon, Input, Popover } from "metabase/ui";
 import { getThemeOverrides } from "metabase/ui/theme";
 import * as Lib from "metabase-lib";
 
@@ -109,6 +109,7 @@ export function ColumnInput({
         closeOnClickOutside
         width="target"
         returnFocus
+        withinPortal={!open} // FIXME: portal situation not good
       >
         <Popover.Target>
           <Button
@@ -121,14 +122,12 @@ export function ColumnInput({
               root: classNames(styles.root, { [styles.open]: open }),
               inner: styles.button,
             }}
-            rightIcon={<Icon name="chevrondown" style={{ height: 14 }} />}
+            rightSection={<Icon name="chevrondown" style={{ height: 14 }} />}
           >
             {text}
           </Button>
         </Popover.Target>
-        <Popover.Dropdown setupSequencedCloseHandler={open}>
-          {dropdown}
-        </Popover.Dropdown>
+        <Popover.Dropdown>{dropdown}</Popover.Dropdown>
       </Popover>
     </Input.Wrapper>
   );

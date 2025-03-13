@@ -2,31 +2,16 @@
  * Just because an instance is using an Enterprise artifact (jar or Docker image),
  * doesn't mean that the token is active or that it has all feature flags enabled.
  *
- * `isEE` means enterprise instance without a token and `isOSS` means open-source instance.
+ * `IS_ENTERPRISE` means enterprise instance without a token and `isOSS` means open-source instance.
  */
-export const isEE = Cypress.env("IS_ENTERPRISE");
-export const isOSS = !isEE;
-
-/** run only if the test is running on an EE jar */
-export const onlyOnEE = () => cy.onlyOn(isEE);
-
-/** run only if the test is running on an OSS jar */
-export const onlyOnOSS = () => cy.onlyOn(isOSS);
-
-/**
- *
- * @param {boolean} cond
- */
-const conditionalDescribe = cond => (cond ? describe : describe.skip);
-
-export const describeEE = conditionalDescribe(isEE);
+const { IS_ENTERPRISE } = Cypress.env();
 
 /**
  *
  * @param {("all"|"none")} featuresScope
  */
 export const setTokenFeatures = featuresScope => {
-  if (!isEE) {
+  if (!IS_ENTERPRISE) {
     throw new Error(
       "You must run Metabase® Enterprise Edition™ for token to make sense.\nMake sure you have `MB_EDITION=ee` in your environment variables.",
     );
@@ -66,7 +51,7 @@ export const setTokenFeatures = featuresScope => {
 };
 
 export const deleteToken = () => {
-  if (!isEE) {
+  if (!IS_ENTERPRISE) {
     throw new Error(
       "You must run Metabase® Enterprise Edition™ for token to make sense.\nMake sure you have `MB_EDITION=ee` in your environment variables.",
     );
@@ -80,3 +65,32 @@ export const deleteToken = () => {
     },
   });
 };
+
+export const mockSessionPropertiesTokenFeatures = features => {
+  cy.intercept({ method: "GET", url: "/api/session/properties" }, request => {
+    request.on("response", response => {
+      if (typeof response.body === "object") {
+        response.body = {
+          ...response.body,
+          "token-features": {
+            ...response.body["token-features"],
+            ...features,
+          },
+        };
+      }
+    });
+  });
+};
+
+// Gets an object that reflects a *partial* premium feature error - it must
+// be a partial, otherwise we would need to have a stack trace in this error
+// object.
+export const getPartialPremiumFeatureError = name => ({
+  cause: `${name} is a paid feature not currently available to your instance. Please upgrade to use it. Learn more at metabase.com/upgrade/`,
+  data: {
+    "status-code": 402,
+    status: "error-premium-feature-not-available",
+  },
+  message: `${name} is a paid feature not currently available to your instance. Please upgrade to use it. Learn more at metabase.com/upgrade/`,
+  status: "error-premium-feature-not-available",
+});

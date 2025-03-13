@@ -2,12 +2,16 @@ import type { ColorName } from "metabase/lib/colors/types";
 import type { IconName, IconProps } from "metabase/ui";
 import type {
   CollectionEssentials,
+  Dashboard,
+  DashboardId,
   PaginationRequest,
   PaginationResponse,
+  VisualizationDisplay,
 } from "metabase-types/api";
 
-import type { CardDisplayType, CardType } from "./card";
+import type { CardId, CardType } from "./card";
 import type { DatabaseId } from "./database";
+import type { SortingOptions } from "./sorting";
 import type { TableId } from "./table";
 import type { UserId } from "./user";
 
@@ -58,14 +62,16 @@ export interface Collection {
   description: string | null;
   can_write: boolean;
   can_restore: boolean;
+  can_delete: boolean;
   archived: boolean;
   children?: Collection[];
-  authority_level?: "official" | null;
+  authority_level?: CollectionAuthorityLevel;
   type?: "instance-analytics" | "trash" | null;
 
   parent_id?: CollectionId | null;
   personal_owner_id?: UserId;
   is_personal?: boolean;
+  is_sample?: boolean; // true if the collection part of the sample content
 
   location: string | null;
   effective_location?: string; // location path containing only those collections that the user has permission to access
@@ -88,7 +94,7 @@ export const COLLECTION_ITEM_MODELS = [
   "collection",
   "indexed-entity",
 ] as const;
-export type CollectionItemModel = typeof COLLECTION_ITEM_MODELS[number];
+export type CollectionItemModel = (typeof COLLECTION_ITEM_MODELS)[number];
 
 export type CollectionItemId = number;
 
@@ -105,7 +111,7 @@ export interface CollectionItem {
   based_on_upload?: TableId | null; // only for models
   collection?: Collection | null;
   collection_id: CollectionId | null; // parent collection id
-  display?: CardDisplayType;
+  display?: VisualizationDisplay;
   personal_owner_id?: UserId;
   database_id?: DatabaseId;
   moderated_status?: string;
@@ -114,14 +120,22 @@ export interface CollectionItem {
   below?: CollectionItemModel[];
   can_write?: boolean;
   can_restore?: boolean;
+  can_delete?: boolean;
   "last-edit-info"?: LastEditInfo;
   location?: string;
   effective_location?: string;
+  authority_level?: CollectionAuthorityLevel;
+  dashboard_count?: number | null;
   getIcon: () => IconProps;
   getUrl: (opts?: Record<string, unknown>) => string;
-  setArchived?: (isArchived: boolean) => void;
+  setArchived?: (
+    isArchived: boolean,
+    opts?: Record<string, unknown>,
+  ) => Promise<void>;
   setPinned?: (isPinned: boolean) => void;
-  setCollection?: (collection: Pick<Collection, "id">) => void;
+  setCollection?: (
+    collection: Pick<Collection, "id"> | Pick<Dashboard, "id">,
+  ) => void;
   setCollectionPreview?: (isEnabled: boolean) => void;
 }
 
@@ -134,15 +148,19 @@ export interface CollectionListQuery {
   tree?: boolean;
 }
 
+export type getCollectionRequest = {
+  id: CollectionId;
+  namespace?: "snippets";
+};
+
 export type ListCollectionItemsRequest = {
   id: CollectionId;
   models?: CollectionItemModel[];
   archived?: boolean;
   pinned_state?: "all" | "is_pinned" | "is_not_pinned";
-  sort_column?: "name" | "last_edited_at" | "last_edited_by" | "model";
-  sort_direction?: "asc" | "desc";
   namespace?: "snippets";
-} & PaginationRequest;
+} & PaginationRequest &
+  Partial<SortingOptions>;
 
 export type ListCollectionItemsResponse = {
   data: CollectionItem[];
@@ -182,4 +200,34 @@ export interface ListCollectionsTreeRequest {
 
 export interface DeleteCollectionRequest {
   id: RegularCollectionId;
+}
+
+export interface DashboardQuestionCandidate {
+  id: CardId;
+  name: string;
+  description: string | null;
+  sole_dashboard_info: {
+    id: DashboardId;
+    name: string;
+    description: string | null;
+  };
+}
+
+export interface GetCollectionDashboardQuestionCandidatesRequest
+  extends PaginationRequest {
+  collectionId: CollectionId;
+}
+
+export interface GetCollectionDashboardQuestionCandidatesResult {
+  total: number;
+  data: DashboardQuestionCandidate[];
+}
+
+export interface MoveCollectionDashboardCandidatesRequest {
+  collectionId: CollectionId;
+  cardIds: CardId[];
+}
+
+export interface MoveCollectionDashboardCandidatesResult {
+  moved: CardId[];
 }

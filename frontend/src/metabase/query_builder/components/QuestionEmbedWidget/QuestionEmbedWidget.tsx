@@ -1,5 +1,11 @@
-import type { ExportFormatType } from "metabase/dashboard/components/PublicLinkPopover/types";
-import { useDispatch, useSelector } from "metabase/lib/redux";
+import {
+  useCreateCardPublicLinkMutation,
+  useDeleteCardPublicLinkMutation,
+  useUpdateCardEmbeddingParamsMutation,
+  useUpdateCardEnableEmbeddingMutation,
+} from "metabase/api";
+import type { ExportFormatType } from "metabase/embedding/components/PublicLinkPopover/types";
+import { useSelector } from "metabase/lib/redux";
 import { publicQuestion } from "metabase/lib/urls";
 import {
   EmbedModal,
@@ -8,14 +14,6 @@ import {
 import { getMetadata } from "metabase/selectors/metadata";
 import { getCardUiParameters } from "metabase-lib/v1/parameters/utils/cards";
 import type { Card } from "metabase-types/api";
-import type { EmbedOptions } from "metabase-types/store";
-
-import {
-  createPublicLink,
-  deletePublicLink,
-  updateEmbeddingParams,
-  updateEnableEmbedding,
-} from "../../actions";
 
 type QuestionEmbedWidgetProps = {
   className?: string;
@@ -27,13 +25,10 @@ export const QuestionEmbedWidget = (props: QuestionEmbedWidgetProps) => {
 
   const metadata = useSelector(getMetadata);
 
-  const dispatch = useDispatch();
-  const createPublicQuestionLink = () => dispatch(createPublicLink(card));
-  const deletePublicQuestionLink = () => dispatch(deletePublicLink(card));
-  const updateQuestionEnableEmbedding = (enableEmbedding: boolean) =>
-    dispatch(updateEnableEmbedding(card, enableEmbedding));
-  const updateQuestionEmbeddingParams = (embeddingParams: EmbedOptions) =>
-    dispatch(updateEmbeddingParams(card, embeddingParams));
+  const [updateEnableEmbedding] = useUpdateCardEnableEmbeddingMutation();
+  const [updateEmbeddingParams] = useUpdateCardEmbeddingParamsMutation();
+  const [createPublicQuestionLink] = useCreateCardPublicLinkMutation();
+  const [deletePublicQuestionLink] = useDeleteCardPublicLinkMutation();
 
   const getPublicQuestionUrl = (
     publicUuid: string,
@@ -50,10 +45,14 @@ export const QuestionEmbedWidget = (props: QuestionEmbedWidgetProps) => {
           resource={card}
           resourceType="question"
           resourceParameters={getCardUiParameters(card, metadata)}
-          onCreatePublicLink={createPublicQuestionLink}
-          onDeletePublicLink={deletePublicQuestionLink}
-          onUpdateEnableEmbedding={updateQuestionEnableEmbedding}
-          onUpdateEmbeddingParams={updateQuestionEmbeddingParams}
+          onCreatePublicLink={() => createPublicQuestionLink({ id: card.id })}
+          onDeletePublicLink={() => deletePublicQuestionLink({ id: card.id })}
+          onUpdateEnableEmbedding={enable_embedding =>
+            updateEnableEmbedding({ id: card.id, enable_embedding })
+          }
+          onUpdateEmbeddingParams={embedding_params =>
+            updateEmbeddingParams({ id: card.id, embedding_params })
+          }
           getPublicUrl={getPublicQuestionUrl}
         />
       )}

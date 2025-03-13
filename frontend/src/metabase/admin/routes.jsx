@@ -1,11 +1,10 @@
 import { Fragment } from "react";
-import { IndexRoute, IndexRedirect } from "react-router";
-import { routerActions } from "react-router-redux";
-import { connectedReduxRedirect } from "redux-auth-wrapper/history3/redirect";
+import { IndexRedirect, IndexRoute } from "react-router";
 import { t } from "ttag";
 
 import AdminApp from "metabase/admin/app/components/AdminApp";
-import DatabaseEditApp from "metabase/admin/databases/containers/DatabaseEditApp";
+import { DatabaseConnectionModal } from "metabase/admin/databases/containers/DatabaseConnectionModal";
+import { DatabaseEditApp } from "metabase/admin/databases/containers/DatabaseEditApp";
 import DatabaseListApp from "metabase/admin/databases/containers/DatabaseListApp";
 import DataModelApp from "metabase/admin/datamodel/containers/DataModelApp";
 import RevisionHistoryApp from "metabase/admin/datamodel/containers/RevisionHistoryApp";
@@ -26,50 +25,32 @@ import getAdminPermissionsRoutes from "metabase/admin/permissions/routes";
 import { SettingsEditor } from "metabase/admin/settings/app/components/SettingsEditor";
 import { Help } from "metabase/admin/tasks/components/Help";
 import { Logs } from "metabase/admin/tasks/components/Logs";
-import JobInfoApp from "metabase/admin/tasks/containers/JobInfoApp";
-import JobTriggersModal from "metabase/admin/tasks/containers/JobTriggersModal";
+import { JobInfoApp } from "metabase/admin/tasks/containers/JobInfoApp";
+import { JobTriggersModal } from "metabase/admin/tasks/containers/JobTriggersModal";
 import {
-  ModelCacheRefreshJobs,
   ModelCacheRefreshJobModal,
+  ModelCacheRefreshJobs,
 } from "metabase/admin/tasks/containers/ModelCacheRefreshJobs";
 import { TaskModal } from "metabase/admin/tasks/containers/TaskModal";
 import { TasksApp } from "metabase/admin/tasks/containers/TasksApp";
 import TroubleshootingApp from "metabase/admin/tasks/containers/TroubleshootingApp";
 import Tools from "metabase/admin/tools/containers/Tools";
-import {
-  createAdminRouteGuard,
-  createAdminRedirect,
-} from "metabase/admin/utils";
+import { createAdminRouteGuard } from "metabase/admin/utils";
 import CS from "metabase/css/core/index.css";
 import { withBackground } from "metabase/hoc/Background";
 import { ModalRoute } from "metabase/hoc/ModalRoute";
 import { Route } from "metabase/hoc/Title";
 import {
   PLUGIN_ADMIN_ROUTES,
-  PLUGIN_ADMIN_USER_MENU_ROUTES,
   PLUGIN_ADMIN_TOOLS,
+  PLUGIN_ADMIN_TROUBLESHOOTING,
+  PLUGIN_ADMIN_USER_MENU_ROUTES,
+  PLUGIN_CACHING,
 } from "metabase/plugins";
-import { getSetting } from "metabase/selectors/settings";
 
+import { PerformanceTabId } from "./performance/types";
 import RedirectToAllowedSettings from "./settings/containers/RedirectToAllowedSettings";
-
-const UserCanAccessTools = connectedReduxRedirect({
-  wrapperDisplayName: "UserCanAccessTools",
-  redirectPath: "/admin",
-  allowRedirectBack: false,
-  authenticatedSelector: state => {
-    if (PLUGIN_ADMIN_TOOLS.EXTRA_ROUTES.length > 0) {
-      return true;
-    }
-    const isModelPersistenceEnabled = getSetting(
-      state,
-      "persisted-models-enabled",
-    );
-    const hasLoadedSettings = typeof isModelPersistenceEnabled === "boolean";
-    return !hasLoadedSettings || isModelPersistenceEnabled;
-  },
-  redirectAction: routerActions.replace,
-});
+import { ToolsUpsell } from "./tools/components/ToolsUpsell";
 
 const getRoutes = (store, CanAccessSettings, IsAdmin) => (
   <Route
@@ -84,8 +65,14 @@ const getRoutes = (store, CanAccessSettings, IsAdmin) => (
         component={createAdminRouteGuard("databases")}
       >
         <IndexRoute component={DatabaseListApp} />
-        <Route path="create" component={DatabaseEditApp} />
-        <Route path=":databaseId" component={DatabaseEditApp} />
+        <Route component={DatabaseListApp}>
+          <Route component={IsAdmin}>
+            <ModalRoute path="create" modal={DatabaseConnectionModal} noWrap />
+          </Route>
+        </Route>
+        <Route path=":databaseId" component={DatabaseEditApp}>
+          <ModalRoute path="edit" modal={DatabaseConnectionModal} />
+        </Route>
       </Route>
       <Route path="datamodel" component={createAdminRouteGuard("data-model")}>
         <Route title={t`Table Metadata`} component={DataModelApp}>
@@ -143,11 +130,12 @@ const getRoutes = (store, CanAccessSettings, IsAdmin) => (
             />
           </Route>
           <Route path="logs" component={Logs} />
+          {PLUGIN_ADMIN_TROUBLESHOOTING.EXTRA_ROUTES}
         </Route>
       </Route>
       {/* SETTINGS */}
       <Route path="settings" component={createAdminRouteGuard("settings")}>
-        <IndexRoute component={createAdminRedirect("setup", "general")} />
+        <IndexRedirect to="general" />
         <Route title={t`Settings`}>
           <Route path="*" component={SettingsEditor} />
         </Route>
@@ -161,14 +149,31 @@ const getRoutes = (store, CanAccessSettings, IsAdmin) => (
         path="performance"
         component={createAdminRouteGuard("performance")}
       >
-        <IndexRoute title={t`Performance`} path="" component={PerformanceApp} />
+        <Route title={t`Performance`}>
+          <IndexRedirect to={PerformanceTabId.Databases} />
+          {PLUGIN_CACHING.getTabMetadata().map(({ name, key, tabId }) => (
+            <Route
+              component={routeProps => (
+                <PerformanceApp {...routeProps} tabId={tabId} />
+              )}
+              title={name}
+              path={tabId}
+              key={key}
+            />
+          ))}
+        </Route>
       </Route>
-      <Route
-        path="tools"
-        component={UserCanAccessTools(createAdminRouteGuard("tools"))}
-      >
+      <Route path="tools" component={createAdminRouteGuard("tools")}>
         <Route title={t`Tools`} component={Tools}>
-          <IndexRedirect to={PLUGIN_ADMIN_TOOLS.INDEX_ROUTE} />
+          <IndexRedirect to="errors" />
+          <Route
+            key="error-overview"
+            path="errors"
+            title={t`Erroring Questions`}
+            // If the audit_app feature flag is present, our enterprise plugin system kicks in and we render the
+            // appropriate enterprise component. The upsell component is shown in all other cases.
+            component={PLUGIN_ADMIN_TOOLS.COMPONENT || ToolsUpsell}
+          />
           <Route
             path="model-caching"
             title={t`Model Caching Log`}
@@ -176,7 +181,6 @@ const getRoutes = (store, CanAccessSettings, IsAdmin) => (
           >
             <ModalRoute path=":jobId" modal={ModelCacheRefreshJobModal} />
           </Route>
-          {PLUGIN_ADMIN_TOOLS.EXTRA_ROUTES}
         </Route>
       </Route>
       {/* PLUGINS */}

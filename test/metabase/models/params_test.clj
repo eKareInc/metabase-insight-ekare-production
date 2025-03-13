@@ -2,13 +2,11 @@
   "Tests for the utility functions for dealing with parameters in `metabase.models.params`."
   (:require
    [clojure.test :refer :all]
-   [metabase.api.public-test :as public-test]
    [metabase.legacy-mbql.util :as mbql.u]
-   [metabase.models :refer [Card Field]]
    [metabase.models.params :as params]
+   [metabase.public-sharing.api-test :as public-test]
    [metabase.test :as mt]
-   [toucan2.core :as t2]
-   [toucan2.tools.with-temp :as t2.with-temp]))
+   [toucan2.core :as t2]))
 
 (deftest ^:parallel wrap-field-id-if-needed-test
   (doseq [[x expected] {10                                      [:field 10 nil]
@@ -18,7 +16,6 @@
       (is (= expected
              (mbql.u/wrap-field-id-if-needed x))))))
 
-
 ;;; ---------------------------------------------- name_field hydration ----------------------------------------------
 
 (deftest ^:parallel hydrate-name-field-test
@@ -26,18 +23,20 @@
     (is (= {:name          "ID"
             :table_id      (mt/id :venues)
             :semantic_type :type/PK
-            :name_field    {:id               (mt/id :venues :name)
-                            :table_id         (mt/id :venues)
-                            :display_name     "Name"
-                            :base_type        :type/Text
-                            :semantic_type    :type/Name
-                            :has_field_values :list}}
-           (-> (t2/select-one [Field :name :table_id :semantic_type], :id (mt/id :venues :id))
+            :name_field    {:id                 (mt/id :venues :name)
+                            :table_id           (mt/id :venues)
+                            :name               "NAME"
+                            :display_name       "Name"
+                            :base_type          :type/Text
+                            :semantic_type      :type/Name
+                            :has_field_values   :list
+                            :fk_target_field_id nil}}
+           (-> (t2/select-one [:model/Field :name :table_id :semantic_type], :id (mt/id :venues :id))
                (t2/hydrate :name_field)
                mt/derecordize))))
 
   (testing "make sure it works for multiple fields efficiently. Should only require one DB call to hydrate many Fields"
-    (let [venues-fields (t2/select Field :table_id (mt/id :venues))]
+    (let [venues-fields (t2/select :model/Field :table_id (mt/id :venues))]
       (t2/with-call-count [call-count]
         (t2/hydrate venues-fields :name_field)
         (is (= 1
@@ -48,7 +47,7 @@
             :table_id      (mt/id :venues)
             :semantic_type :type/Category
             :name_field    nil}
-           (-> (t2/select-one [Field :name :table_id :semantic_type], :id (mt/id :venues :price))
+           (-> (t2/select-one [:model/Field :name :table_id :semantic_type], :id (mt/id :venues :price))
                (t2/hydrate :name_field)
                mt/derecordize))))
 
@@ -57,56 +56,65 @@
             :table_id      (mt/id :checkins)
             :semantic_type :type/PK
             :name_field    nil}
-           (-> (t2/select-one [Field :name :table_id :semantic_type], :id (mt/id :checkins :id))
+           (-> (t2/select-one [:model/Field :name :table_id :semantic_type], :id (mt/id :checkins :id))
                (t2/hydrate :name_field)
                mt/derecordize)))))
-
 
 ;;; -------------------------------------------------- param_fields --------------------------------------------------
 
 (deftest ^:parallel hydrate-param-fields-for-card-test
   (testing "check that we can hydrate param_fields for a Card"
-    (t2.with-temp/with-temp [Card card {:dataset_query
-                                        {:database (mt/id)
-                                         :type     :native
-                                         :native   {:query         "SELECT COUNT(*) FROM VENUES WHERE {{x}}"
-                                                    :template-tags {"name" {:name         "name"
-                                                                            :display_name "Name"
-                                                                            :type         :dimension
-                                                                            :dimension    [:field (mt/id :venues :id) nil]}}}}}]
-      (is (= {(mt/id :venues :id) {:id               (mt/id :venues :id)
-                                   :table_id         (mt/id :venues)
-                                   :display_name     "ID"
-                                   :base_type        :type/BigInteger
-                                   :semantic_type    :type/PK
-                                   :has_field_values :none
-                                   :name_field       {:id               (mt/id :venues :name)
-                                                      :table_id         (mt/id :venues)
-                                                      :display_name     "Name"
-                                                      :base_type        :type/Text
-                                                      :semantic_type    :type/Name
-                                                      :has_field_values :list}
-                                   :dimensions       []}}
+    (mt/with-temp [:model/Card card {:dataset_query
+                                     {:database (mt/id)
+                                      :type     :native
+                                      :native   {:query         "SELECT COUNT(*) FROM VENUES WHERE {{x}}"
+                                                 :template-tags {"name" {:name         "name"
+                                                                         :display_name "Name"
+                                                                         :type         :dimension
+                                                                         :dimension    [:field (mt/id :venues :id) nil]}}}}}]
+      (is (= {(mt/id :venues :id) {:id                 (mt/id :venues :id)
+                                   :table_id           (mt/id :venues)
+                                   :display_name       "ID"
+                                   :name               "ID"
+                                   :base_type          :type/BigInteger
+                                   :semantic_type      :type/PK
+                                   :has_field_values   :none
+                                   :fk_target_field_id nil
+                                   :target nil
+                                   :name_field         {:id                (mt/id :venues :name)
+                                                        :table_id          (mt/id :venues)
+                                                        :display_name      "Name"
+                                                        :name              "NAME"
+                                                        :base_type         :type/Text
+                                                        :semantic_type     :type/Name
+                                                        :has_field_values  :list
+                                                        :fk_target_field_id nil}
+                                   :dimensions         []}}
              (-> (t2/hydrate card :param_fields)
                  :param_fields
                  mt/derecordize))))))
 
 (deftest hydate-param-fields-for-dashboard-test
   (testing "check that we can hydrate param_fields for a Dashboard"
-    (public-test/with-sharing-enabled-and-temp-dashcard-referencing :venues :id [dashboard]
-      (is (= {(mt/id :venues :id) {:id               (mt/id :venues :id)
-                                   :table_id         (mt/id :venues)
-                                   :display_name     "ID"
-                                   :base_type        :type/BigInteger
-                                   :semantic_type    :type/PK
-                                   :has_field_values :none
-                                   :name_field       {:id               (mt/id :venues :name)
-                                                      :table_id         (mt/id :venues)
-                                                      :display_name     "Name"
-                                                      :base_type        :type/Text
-                                                      :semantic_type    :type/Name
-                                                      :has_field_values :list}
-                                   :dimensions       []}}
+    (public-test/with-sharing-enabled-and-temp-dashcard-referencing! :venues :id [dashboard]
+      (is (= {(mt/id :venues :id) {:id                 (mt/id :venues :id)
+                                   :table_id           (mt/id :venues)
+                                   :display_name       "ID"
+                                   :name               "ID"
+                                   :base_type          :type/BigInteger
+                                   :semantic_type      :type/PK
+                                   :has_field_values   :none
+                                   :fk_target_field_id nil
+                                   :target             nil
+                                   :name_field         {:id                (mt/id :venues :name)
+                                                        :table_id          (mt/id :venues)
+                                                        :display_name      "Name"
+                                                        :name              "NAME"
+                                                        :base_type         :type/Text
+                                                        :semantic_type     :type/Name
+                                                        :has_field_values  :list
+                                                        :fk_target_field_id nil}
+                                   :dimensions         []}}
              (-> (t2/hydrate dashboard :param_fields)
                  :param_fields
                  mt/derecordize))))))

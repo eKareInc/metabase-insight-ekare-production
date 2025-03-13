@@ -1,15 +1,15 @@
-import type { ComponentStory } from "@storybook/react";
+import type { StoryFn } from "@storybook/react";
 
 import { Form, FormProvider } from "metabase/forms";
 
 import FormTextArea from "./FormTextArea";
 
 export default {
-  title: "Core/FormTextArea",
+  title: "Components/Ask Before Using/FormTextArea",
   component: FormTextArea,
 };
 
-const Template: ComponentStory<typeof FormTextArea> = args => {
+const Template: StoryFn<typeof FormTextArea> = args => {
   const initialValues = { value: false };
   const handleSubmit = () => undefined;
 
@@ -22,13 +22,19 @@ const Template: ComponentStory<typeof FormTextArea> = args => {
   );
 };
 
-export const Default = Template.bind({});
-Default.args = {
-  title: "Title",
+export const Default = {
+  render: Template,
+
+  args: {
+    title: "Title",
+  },
 };
 
-export const WithDescription = Template.bind({});
-WithDescription.args = {
-  title: "Title",
-  description: "Description",
+export const WithDescription = {
+  render: Template,
+
+  args: {
+    title: "Title",
+    description: "Description",
+  },
 };

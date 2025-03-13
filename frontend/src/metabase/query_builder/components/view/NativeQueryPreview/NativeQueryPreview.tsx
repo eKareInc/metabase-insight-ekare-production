@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { t } from "ttag";
 
 import { color } from "metabase/lib/colors";
-import { rem, Flex, Box, Icon, Loader } from "metabase/ui";
+import { Box, Flex, Icon, Loader, rem } from "metabase/ui";
 
 import { NativeCodePanel } from "../NativeCodePanel";
 
@@ -32,7 +32,7 @@ const ModalWarningIcon = () => (
 
 const Title = ({ children }: { children: string }) => (
   <Box
-    c={color("text-dark")}
+    c="text-dark"
     fz={rem(20)}
     lh={rem(24)}
     fw="bold"

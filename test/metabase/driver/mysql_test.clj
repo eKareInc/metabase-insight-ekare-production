@@ -1,11 +1,12 @@
 (ns metabase.driver.mysql-test
   (:require
    [clojure.java.jdbc :as jdbc]
+   [clojure.set :as set]
    [clojure.string :as str]
    [clojure.test :refer :all]
    [honey.sql :as sql]
    [metabase.actions.error :as actions.error]
-   [metabase.config :as config]
+   [metabase.actions.models :as action]
    [metabase.db.metadata-queries :as metadata-queries]
    [metabase.driver :as driver]
    [metabase.driver.mysql :as mysql]
@@ -16,16 +17,13 @@
    [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
    [metabase.driver.sql-jdbc.sync :as sql-jdbc.sync]
    [metabase.driver.sql.query-processor :as sql.qp]
-   [metabase.models.action :as action]
-   [metabase.models.database :refer [Database]]
-   [metabase.models.field :refer [Field]]
-   [metabase.models.table :refer [Table]]
+   [metabase.lib.core :as lib]
+   [metabase.lib.metadata :as lib.metadata]
    [metabase.query-processor :as qp]
-   [metabase.query-processor-test.string-extracts-test
-    :as string-extracts-test]
+   [metabase.query-processor-test.string-extracts-test :as string-extracts-test]
    [metabase.query-processor.compile :as qp.compile]
-   [metabase.sync :as sync]
    [metabase.sync.analyze.fingerprint :as sync.fingerprint]
+   [metabase.sync.core :as sync]
    [metabase.sync.sync-metadata.tables :as sync-tables]
    [metabase.sync.util :as sync-util]
    [metabase.test :as mt]
@@ -33,8 +31,7 @@
    [metabase.util :as u]
    [metabase.util.honey-sql-2 :as h2x]
    [metabase.util.log :as log]
-   [toucan2.core :as t2]
-   [toucan2.tools.with-temp :as t2.with-temp]))
+   [toucan2.core :as t2]))
 
 (set! *warn-on-reflection* true)
 
@@ -70,13 +67,29 @@
                      "INSERT INTO `exciting-moments-in-history` (`id`, `moment`) VALUES (1, '0000-00-00');"]]
           (jdbc/execute! spec [sql]))
         ;; create & sync MB DB
-        (t2.with-temp/with-temp [Database database {:engine "mysql", :details details}]
+        (mt/with-temp [:model/Database database {:engine "mysql", :details details}]
           (sync/sync-database! database)
           (mt/with-db database
             ;; run the query
             (is (= [[1 nil]]
                    (mt/rows
                     (mt/run-mbql-query exciting-moments-in-history))))))))))
+
+(deftest multiple-schema-test
+  (testing "Make sure that we filter databases (schema) with :db or :dbname (#50072)"
+    (mt/test-driver :mysql
+      (drop-if-exists-and-create-db! "dbone")
+      (drop-if-exists-and-create-db! "dbtwo")
+      (doseq [dbname ["dbone" "dbtwo"]
+              :let [details (tx/dbdef->connection-details :mysql :db {:database-name dbname})
+                    spec    (sql-jdbc.conn/connection-details->spec :mysql details)]]
+        (jdbc/execute! spec [(format "CREATE TABLE same_table_name (%s_a integer, %s_b integer, %s_c integer);" dbname dbname dbname)]))
+      (doseq [details [(tx/dbdef->connection-details :mysql :db {:database-name "dbone"})
+                       (set/rename-keys (tx/dbdef->connection-details :mysql :db {:database-name "dbone"}) {:db :dbname})]]
+        (mt/with-temp [:model/Database database {:engine "mysql", :details details}]
+          (sync/sync-database! database)
+          (is (= #{"dbone_a" "dbone_b" "dbone_c"}
+                 (into #{} (map :name) (driver/describe-fields :mysql database)))))))))
 
 (deftest date-test
   ;; make sure stuff at least compiles. Even if the result probably isn't as concise as it could be.
@@ -131,8 +144,8 @@
 (defn db->fields
   "Given a DB return its fields as a set."
   [db]
-  (let [table-ids (t2/select-pks-set Table :db_id (u/the-id db))]
-    (set (map (partial into {}) (t2/select [Field :name :base_type :semantic_type] :table_id [:in table-ids])))))
+  (let [table-ids (t2/select-pks-set :model/Table :db_id (u/the-id db))]
+    (set (map (partial into {}) (t2/select [:model/Field :name :base_type :semantic_type] :table_id [:in table-ids])))))
 
 (deftest tiny-int-1-test
   (mt/test-driver :mysql
@@ -146,9 +159,9 @@
                (db->fields (mt/db)))))
 
       (testing "if someone says specifies `tinyInt1isBit=false`, it should come back as a number instead"
-        (t2.with-temp/with-temp [Database db {:engine  "mysql"
-                                              :details (assoc (:details (mt/db))
-                                                              :additional-options "tinyInt1isBit=false")}]
+        (mt/with-temp [:model/Database db {:engine  "mysql"
+                                           :details (assoc (:details (mt/db))
+                                                           :additional-options "tinyInt1isBit=false")}]
           (sync/sync-database! db)
           (is (= #{{:name "number-of-cans", :base_type :type/Integer, :semantic_type :type/Quantity}
                    {:name "id", :base_type :type/Integer, :semantic_type :type/PK}
@@ -167,14 +180,14 @@
         (is (= #{{:name "year_column", :base_type :type/Integer, :semantic_type nil}
                  {:name "id", :base_type :type/Integer, :semantic_type :type/PK}}
                (db->fields (mt/db)))))
-      (let [table  (t2/select-one Table :db_id (u/id (mt/db)))
-            fields (t2/select Field :table_id (u/id table) :name "year_column")]
+      (let [table  (t2/select-one :model/Table :db_id (u/id (mt/db)))
+            fields (t2/select :model/Field :table_id (u/id table) :name "year_column")]
         (testing "Can select from this table"
           (is (= [[2001] [2002] [1999]]
                  (metadata-queries/table-rows-sample table fields (constantly conj)))))
         (testing "We can fingerprint this table"
           (is (= 1
-                 (:updated-fingerprints (#'sync.fingerprint/fingerprint-table! table fields)))))))))
+                 (:updated-fingerprints (#'sync.fingerprint/fingerprint-fields! table fields)))))))))
 
 (deftest db-default-timezone-test
   (mt/test-driver :mysql
@@ -223,13 +236,13 @@
       (letfn [(run-query-with-report-timezone [report-timezone]
                 (mt/with-temporary-setting-values [report-timezone report-timezone]
                   (mt/first-row
-                    (qp/process-query
-                     {:database   (mt/id)
-                      :type       :native
-                      :settings   {:report-timezone "UTC"}
-                      :native     {:query         "SELECT cast({{date}} as date)"
-                                   :template-tags {:date {:name "date" :display_name "Date" :type "date"}}}
-                      :parameters [{:type "date/single" :target ["variable" ["template-tag" "date"]] :value "2018-04-18"}]}))))]
+                   (qp/process-query
+                    {:database   (mt/id)
+                     :type       :native
+                     :settings   {:report-timezone "UTC"}
+                     :native     {:query         "SELECT cast({{date}} as date)"
+                                  :template-tags {:date {:name "date" :display_name "Date" :type "date"}}}
+                     :parameters [{:type "date/single" :target ["variable" ["template-tag" "date"]] :value "2018-04-18"}]}))))]
         (testing "date formatting when system-timezone == report-timezone"
           (is (= ["2018-04-18T00:00:00+08:00"]
                  (run-query-with-report-timezone "Asia/Hong_Kong"))))
@@ -255,45 +268,35 @@
 (def ^:private sample-connection-details
   {:db "my_db", :host "localhost", :port "3306", :user "cam", :password "bad-password"})
 
-(def ^:private sample-jdbc-spec
-  {:password             "bad-password"
-   :characterSetResults  "UTF8"
-   :characterEncoding    "UTF8"
-   :classname            "org.mariadb.jdbc.Driver"
-   :subprotocol          "mysql"
-   :zeroDateTimeBehavior "convertToNull"
-   :user                 "cam"
-   :subname              "//localhost:3306/my_db"
-   :connectionAttributes (str "program_name:" config/mb-version-and-process-identifier)
-   :useCompression       true
-   :useUnicode           true})
-
-(deftest connection-spec-test
+(deftest ^:parallel connection-spec-test
   (testing "Do `:ssl` connection details give us the connection spec we'd expect?"
-    (is (= (assoc sample-jdbc-spec :useSSL true :serverSslCert "sslCert")
-           (sql-jdbc.conn/connection-details->spec :mysql (assoc sample-connection-details :ssl      true
-                                                                                           :ssl-cert "sslCert")))))
+    (is (=? {:useSSL true, :serverSslCert "sslCert"}
+            (sql-jdbc.conn/connection-details->spec :mysql (assoc sample-connection-details :ssl      true
+                                                                  :ssl-cert "sslCert"))))))
 
+(deftest ^:parallel connection-spec-test-2
   (testing "what about non-SSL connections?"
-    (is (= (assoc sample-jdbc-spec :useSSL false)
-           (sql-jdbc.conn/connection-details->spec :mysql sample-connection-details))))
+    (is (=? {:useSSL false}
+            (sql-jdbc.conn/connection-details->spec :mysql sample-connection-details)))))
 
+(deftest ^:parallel connection-spec-test-3
   (testing "Connections that are `:ssl false` but with `useSSL` in the additional options should be treated as SSL (see #9629)"
-    (is (= (assoc sample-jdbc-spec :useSSL  true
-                                   :subname "//localhost:3306/my_db?useSSL=true&trustServerCertificate=true")
-           (sql-jdbc.conn/connection-details->spec :mysql
-             (assoc sample-connection-details
-                    :ssl false
-                    :additional-options "useSSL=true&trustServerCertificate=true")))))
+    (is (=? {:useSSL true, :subname "//localhost:3306/my_db?useSSL=true&trustServerCertificate=true"}
+            (sql-jdbc.conn/connection-details->spec :mysql
+                                                    (assoc sample-connection-details
+                                                           :ssl false
+                                                           :additional-options "useSSL=true&trustServerCertificate=true"))))))
+
+(deftest ^:parallel connection-spec-test-4
   (testing "A program_name specified in additional-options is not overwritten by us"
     (let [conn-attrs "connectionAttributes=program_name:my_custom_value"]
-      (is (= (-> sample-jdbc-spec
-                 (assoc :subname (str "//localhost:3306/my_db?" conn-attrs), :useSSL false)
-                 ;; because program_name was in additional-options, we shouldn't use emit :connectionAttributes
-                 (dissoc :connectionAttributes))
-             (sql-jdbc.conn/connection-details->spec
-              :mysql
-              (assoc sample-connection-details :additional-options conn-attrs)))))))
+      (is (=? {:subname (str "//localhost:3306/my_db?" conn-attrs)
+               :useSSL false
+               ;; because program_name was in additional-options, we shouldn't use emit :connectionAttributes
+               :connectionAttributes (symbol "nil #_\"key is not present.\"")}
+              (sql-jdbc.conn/connection-details->spec
+               :mysql
+               (assoc sample-connection-details :additional-options conn-attrs)))))))
 
 (deftest read-timediffs-test
   (mt/test-driver :mysql
@@ -332,22 +335,22 @@
       (let [details (tx/dbdef->connection-details :mysql :db {:database-name "versioned_tables"})
             spec    (sql-jdbc.conn/connection-details->spec :mysql details)
             compat  (try
-                     (doseq [sql ["CREATE TABLE IF NOT EXISTS src1 (id INTEGER, t TEXT);"
-                                  "CREATE TABLE IF NOT EXISTS src2 (id INTEGER, t TEXT);"
-                                  "ALTER TABLE src2 ADD SYSTEM VERSIONING;"
-                                  "INSERT INTO src1 VALUES (1, '2020-03-01 12:20:35');"
-                                  "INSERT INTO src2 VALUES (1, '2020-03-01 12:20:35');"]]
-                       (jdbc/execute! spec [sql]))
-                     true
-                     (catch java.sql.SQLSyntaxErrorException se
+                      (doseq [sql ["CREATE TABLE IF NOT EXISTS src1 (id INTEGER, t TEXT);"
+                                   "CREATE TABLE IF NOT EXISTS src2 (id INTEGER, t TEXT);"
+                                   "ALTER TABLE src2 ADD SYSTEM VERSIONING;"
+                                   "INSERT INTO src1 VALUES (1, '2020-03-01 12:20:35');"
+                                   "INSERT INTO src2 VALUES (1, '2020-03-01 12:20:35');"]]
+                        (jdbc/execute! spec [sql]))
+                      true
+                      (catch java.sql.SQLSyntaxErrorException se
                        ;; if an error is received with SYSTEM VERSIONING mentioned, the version
                        ;; of mysql or mariadb being tested against does not support system versioning,
                        ;; so do not continue
-                       (if (re-matches #".*VERSIONING'.*" (.getMessage se))
-                         false
-                         (throw se))))]
+                        (if (re-matches #".*VERSIONING'.*" (.getMessage se))
+                          false
+                          (throw se))))]
         (when compat
-          (t2.with-temp/with-temp [Database database {:engine "mysql", :details details}]
+          (mt/with-temp [:model/Database database {:engine "mysql", :details details}]
             (sync/sync-database! database)
             (is (= [{:name   "src1"
                      :fields [{:name      "id"
@@ -359,7 +362,7 @@
                                :base_type :type/Integer}
                               {:name      "t"
                                :base_type :type/Text}]}]
-                   (->> (t2/hydrate (t2/select Table :db_id (:id database) {:order-by [:name]}) :fields)
+                   (->> (t2/hydrate (t2/select :model/Table :db_id (:id database) {:order-by [:name]}) :fields)
                         (map table-fingerprint))))))))))
 
 (defn- create-enums-table! [db]
@@ -370,13 +373,19 @@
 
 (deftest enums-test
   (mt/test-driver :mysql
-    (testing "ENUM columns are synced with the correct base and semantic types"
-      (mt/with-empty-db
-        (create-enums-table! (mt/db))
-        (sync/sync-database! (mt/db))
+    (mt/with-empty-db
+      (create-enums-table! (mt/db))
+      (sync/sync-database! (mt/db))
+      (testing "ENUM columns are synced with the correct base and semantic types"
         (is (=? {:base_type     :type/MySQLEnum
                  :semantic_type :type/Category}
-                (t2/select-one :model/Field :name "bird_type")))))))
+                (t2/select-one :model/Field :name "bird_type"))))
+      (testing "string functions work on ENUM fields"
+        (let [query (mt/mbql-query birds
+                      {:expressions {"typ" [:replace $bird_type "ou" "hree"]}})]
+          (mt/with-native-query-testing-context query
+            (is (= [["Rasta" "toucan" "threecan"]]
+                   (mt/rows (qp/process-query query))))))))))
 
 (deftest enums-actions-test
   (mt/test-driver :mysql
@@ -502,7 +511,7 @@
                                                                        [4 6 "{\"int_turn_string\":5}"]]]
                                         (format "INSERT INTO `json_table` (first_id, second_id, json_val) VALUES (%d, %d, '%s');" first-id second-id json)))]
               (jdbc/execute! spec [statement]))
-            (t2.with-temp/with-temp
+            (mt/with-temp
               [:model/Database database {:name "composite_pks_test" :engine driver/*driver* :details details}]
               (mt/with-db database
                 (sync-tables/sync-tables-and-database! database)
@@ -516,31 +525,30 @@
                        (sql-jdbc.sync/describe-nested-field-columns
                         driver/*driver*
                         database
-                        (t2/select-one Table :db_id (mt/id) :name "json_table"))))))))))))
+                        (t2/select-one :model/Table :db_id (mt/id) :name "json_table"))))))))))))
 
 (deftest json-alias-test
   (mt/test-driver :mysql
     (when (not (mysql/mariadb? (mt/db)))
       (testing "json breakouts and order bys have alias coercion"
         (mt/dataset json
-          (let [table  (t2/select-one Table :db_id (u/id (mt/db)) :name "json")]
+          (let [table  (t2/select-one :model/Table :db_id (u/id (mt/db)) :name "json")]
             (sync/sync-table! table)
-            (let [field (t2/select-one Field :table_id (u/id table) :name "json_bit → 1234")
+            (let [field (t2/select-one :model/Field :table_id (u/id table) :name "json_bit → 1234")
                   compile-res (qp.compile/compile
-                               {:database (u/the-id (mt/db))
-                                :type     :query
-                                :query    {:source-table (u/the-id table)
-                                           :aggregation  [[:count]]
-                                           :breakout     [[:field (u/the-id field) nil]]}})]
+                               (mt/mbql-query nil
+                                 {:source-table (u/the-id table)
+                                  :aggregation  [[:count]]
+                                  :breakout     [[:field (u/the-id field) nil]]}))]
               (is (= ["SELECT"
-                      "  CONVERT(JSON_EXTRACT(`json`.`json_bit`, ?), UNSIGNED) AS `json_bit → 1234`,"
+                      "  CONVERT(JSON_EXTRACT(`json`.`json_bit`, ?), DECIMAL) AS `json_bit → 1234`,"
                       "  COUNT(*) AS `count`"
                       "FROM"
                       "  `json`"
                       "GROUP BY"
-                      "  CONVERT(JSON_EXTRACT(`json`.`json_bit`, ?), UNSIGNED)"
+                      "  CONVERT(JSON_EXTRACT(`json`.`json_bit`, ?), DECIMAL)"
                       "ORDER BY"
-                      "  CONVERT(JSON_EXTRACT(`json`.`json_bit`, ?), UNSIGNED) ASC"]
+                      "  CONVERT(JSON_EXTRACT(`json`.`json_bit`, ?), DECIMAL) ASC"]
                      (str/split-lines (driver/prettify-native-form :mysql (:query compile-res)))))
               (is (= '("$.\"1234\"" "$.\"1234\"" "$.\"1234\"") (:params compile-res))))))))))
 
@@ -550,9 +558,9 @@
       (testing "Deal with complicated identifier (#22967, but for mysql)"
         (mt/dataset json
           (let [database (mt/db)
-                table    (t2/select-one Table :db_id (u/id database) :name "json")]
+                table    (t2/select-one :model/Table :db_id (u/id database) :name "json")]
             (sync/sync-table! table)
-            (let [field    (t2/select-one Field :table_id (u/id table) :name "json_bit → 1234")]
+            (let [field    (t2/select-one :model/Field :table_id (u/id table) :name "json_bit → 1234")]
               (mt/with-metadata-provider (mt/id)
                 (let [field-clause [:field (u/the-id field) {:binning
                                                              {:strategy :num-bins,
@@ -560,7 +568,7 @@
                                                               :min-value 0.75,
                                                               :max-value 54.0,
                                                               :bin-width 0.75}}]]
-                  (is (= ["((FLOOR(((CONVERT(JSON_EXTRACT(`json`.`json_bit`, ?), UNSIGNED) - 0.75) / 0.75)) * 0.75) + 0.75)"
+                  (is (= ["((FLOOR(((CONVERT(JSON_EXTRACT(`json`.`json_bit`, ?), DECIMAL) - 0.75) / 0.75)) * 0.75) + 0.75)"
                           "$.\"1234\""]
                          (sql.qp/format-honeysql :mysql (sql.qp/->honeysql :mysql field-clause)))))))))))))
 
@@ -570,9 +578,9 @@
       (let [db-spec (sql-jdbc.conn/db->pooled-connection-spec (mt/db))]
         (testing "When the query takes longer that the timeout, it is killed."
           (is (thrown-with-msg?
-                Exception
-                #"Killed MySQL process id [\d,]+ due to timeout."
-                (#'mysql.ddl/execute-with-timeout! :mysql db-spec db-spec 10 ["select sleep(5)"]))))
+               Exception
+               #"Killed MySQL process id [\d,]+ due to timeout."
+               (#'mysql.ddl/execute-with-timeout! :mysql db-spec db-spec 10 ["select sleep(5)"]))))
         (testing "When the query takes less time than the timeout, it is successful."
           (is (some? (#'mysql.ddl/execute-with-timeout! :mysql db-spec db-spec 5000 ["select sleep(0.1) as val"]))))))))
 
@@ -585,16 +593,17 @@
 
 ;;; ------------------------------------------------ Actions related ------------------------------------------------
 
-;; API tests are in [[metabase.api.action-test]]
-(deftest actions-maybe-parse-sql-error-test
+;; API tests are in [[metabase.actions.api-test]]
+(deftest ^:parallel actions-maybe-parse-sql-error-test
   (testing "violate not null constraint"
     (is (= {:type :metabase.actions.error/violate-not-null-constraint
             :message "F1 must have values."
             :errors {"f1" "You must provide a value."}}
            (sql-jdbc.actions/maybe-parse-sql-error
             :mysql actions.error/violate-not-null-constraint nil nil
-            "Column 'f1' cannot be null"))))
+            "Column 'f1' cannot be null")))))
 
+(deftest actions-maybe-parse-sql-error-test-2
   (testing "violate unique constraint"
     (with-redefs [mysql.actions/constraint->column-names (constantly ["PRIMARY"])]
       (is (= {:type :metabase.actions.error/violate-unique-constraint,
@@ -602,31 +611,37 @@
               :errors {"PRIMARY" "This Primary value already exists."}}
              (sql-jdbc.actions/maybe-parse-sql-error
               :mysql actions.error/violate-unique-constraint nil nil
-              "(conn=10) Duplicate entry 'ID' for key 'string_pk.PRIMARY'")))))
+              "(conn=10) Duplicate entry 'ID' for key 'string_pk.PRIMARY'"))))))
 
+(deftest ^:parallel actions-maybe-parse-sql-error-test-3
   (testing "incorrect type"
     (is (= {:type :metabase.actions.error/incorrect-value-type,
             :message "Some of your values aren’t of the correct type for the database."
             :errors {"id" "This value should be of type Integer."}}
            (sql-jdbc.actions/maybe-parse-sql-error
             :mysql actions.error/incorrect-value-type nil nil
-            "(conn=183) Incorrect integer value: 'STRING' for column `table`.`id` at row 1"))))
+            "(conn=183) Incorrect integer value: 'STRING' for column `table`.`id` at row 1")))))
 
+(deftest ^:parallel actions-maybe-parse-sql-error-test-4
   (testing "violate fk constraints"
     (is (= {:type :metabase.actions.error/violate-foreign-key-constraint
             :message "Unable to create a new record."
             :errors {"group-id" "This Group-id does not exist."}}
            (sql-jdbc.actions/maybe-parse-sql-error
             :mysql actions.error/violate-foreign-key-constraint nil :row/create
-            "(conn=45) Cannot add or update a child row: a foreign key constraint fails (`action-error-handling`.`user`, CONSTRAINT `user_group-id_group_-159406530` FOREIGN KEY (`group-id`) REFERENCES `group` (`id`))")))
+            "(conn=45) Cannot add or update a child row: a foreign key constraint fails (`action-error-handling`.`user`, CONSTRAINT `user_group-id_group_-159406530` FOREIGN KEY (`group-id`) REFERENCES `group` (`id`))")))))
 
+(deftest ^:parallel actions-maybe-parse-sql-error-test-5
+  (testing "violate fk constraints"
     (is (= {:type :metabase.actions.error/violate-foreign-key-constraint,
             :message "Unable to update the record.",
             :errors {"group" "This Group does not exist."}}
            (sql-jdbc.actions/maybe-parse-sql-error
             :mysql actions.error/violate-foreign-key-constraint nil :row/update
-            "(conn=21) Cannot delete or update a parent row: a foreign key constraint fails (`action-error-handling`.`user`, CONSTRAINT `user_group-id_group_-159406530` FOREIGN KEY (`group-id`) REFERENCES `group` (`id`))")))
+            "(conn=21) Cannot delete or update a parent row: a foreign key constraint fails (`action-error-handling`.`user`, CONSTRAINT `user_group-id_group_-159406530` FOREIGN KEY (`group-id`) REFERENCES `group` (`id`))")))))
 
+(deftest ^:parallel actions-maybe-parse-sql-error-test-6
+  (testing "violate fk constraints"
     (is (= {:type :metabase.actions.error/violate-foreign-key-constraint
             :message "Other tables rely on this row so it cannot be deleted."
             :errors {}}
@@ -650,7 +665,7 @@
                       "INSERT INTO mytable (id, column1, column2)
                       VALUES  (1, 'A', 'A'), (2, 'B', 'B');"]]
           (jdbc/execute! (sql-jdbc.conn/connection-details->spec driver/*driver* details) [stmt]))
-        (t2.with-temp/with-temp [:model/Database database {:engine driver/*driver* :details details}]
+        (mt/with-temp [:model/Database database {:engine driver/*driver* :details details}]
           (mt/with-db database
             (sync/sync-database! database)
             (mt/with-actions-enabled
@@ -739,20 +754,20 @@
         (let [details          (tx/dbdef->connection-details :mysql :db {:database-name "table_privileges_test"})
               spec             (sql-jdbc.conn/connection-details->spec :mysql details)
               get-privileges   (fn []
-                                 (let [new-connection-details (cond-> (assoc details
-                                                                             :user "table_privileges_test_user",
-                                                                             :password "password"
-                                                                             :ssl true
-                                                                             :additional-options "trustServerCertificate=true"))]
+                                 (let [new-connection-details (assoc details
+                                                                     :user "table_privileges_test_user",
+                                                                     :password "password"
+                                                                     :ssl true
+                                                                     :additional-options "trustServerCertificate=true")]
                                    (sql-jdbc.conn/with-connection-spec-for-testing-connection
-                                     [spec [:mysql new-connection-details]]
+                                    [spec [:mysql new-connection-details]]
                                      (with-redefs [sql-jdbc.conn/db->pooled-connection-spec (fn [_] spec)]
                                        (sql-jdbc.sync/current-user-table-privileges driver/*driver* spec {})))))]
           (try
             (doseq [stmt ["CREATE TABLE `bar` (id INTEGER);"
                           "CREATE TABLE `baz` (id INTEGER);"
                           "CREATE USER 'table_privileges_test_user' IDENTIFIED BY 'password';"
-                          (str "GRANT SELECT ON table_privileges_test.`bar` TO 'table_privileges_test_user'")]]
+                          "GRANT SELECT ON table_privileges_test.`bar` TO 'table_privileges_test_user'"]]
               (jdbc/execute! spec stmt))
             (testing "should return privileges on the table"
               (is (= [{:role   nil
@@ -764,13 +779,13 @@
                        :delete false}]
                      (get-privileges))))
             (testing "should return privileges on the database"
-              (jdbc/execute! spec (str "GRANT UPDATE ON `table_privileges_test`.* TO 'table_privileges_test_user'"))
+              (jdbc/execute! spec "GRANT UPDATE ON `table_privileges_test`.* TO 'table_privileges_test_user'")
               (is (= [{:role nil, :schema nil, :table "bar", :select true, :update true, :insert false, :delete false}
                       {:role nil, :schema nil, :table "baz", :select false, :update true, :insert false, :delete false}]
                      (get-privileges))))
             (testing "should return privileges on roles that the user has been granted"
               (doseq [stmt ["CREATE ROLE 'table_privileges_test_role'"
-                            (str "GRANT INSERT ON `bar` TO 'table_privileges_test_role'")
+                            "GRANT INSERT ON `bar` TO 'table_privileges_test_role'"
                             "GRANT 'table_privileges_test_role' TO 'table_privileges_test_user'"]]
                 (jdbc/execute! spec stmt))
               (is (= [{:role nil, :schema nil, :table "bar", :select true, :update true, :insert true, :delete false}
@@ -782,3 +797,21 @@
                             "DROP ROLE IF EXISTS 'table_privileges_test_role_2';"
                             "DROP ROLE IF EXISTS 'table_privileges_test_role_3';"]]
                 (jdbc/execute! spec stmt)))))))))
+
+(deftest ^:parallel temporal-column-with-binning-keeps-type
+  (mt/test-driver :mysql
+    (let [mp (mt/metadata-provider)]
+      (doseq [[field bins] [[:birth_date [:year :quarter :month :week :day]]
+                            [:created_at [:year :quarter :month :week :day :hour :minute]]]
+              bin bins]
+        (testing (str "field " (name field) " for temporal bucket " (name bin))
+          (let [field-md (lib.metadata/field mp (mt/id :people field))
+                unbinned-query (-> (lib/query mp (lib.metadata/table mp (mt/id :people)))
+                                   (lib/with-fields [field-md])
+                                   (lib/limit 1))
+                binned-query (-> unbinned-query
+                                 (lib/breakout (lib/with-temporal-bucket field-md bin)))]
+            ;; mysql has no way to cast to TIMESTAMP, so if you do anything to it, it becomes a DATETIME
+            (is (= (->> unbinned-query qp/process-query mt/cols (map :database_type)
+                        (map #(get {"TIMESTAMP" "DATETIME"} % %)))
+                   (->> binned-query   qp/process-query mt/cols (map :database_type))))))))))

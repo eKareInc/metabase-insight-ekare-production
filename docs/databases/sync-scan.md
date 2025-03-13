@@ -6,7 +6,7 @@ title: Syncing and scanning databases
 
 Metabase runs different types of queries to stay up to date with your database.
 
-- [Syncs](#how-database-syncs-work) get updated schemas to display in the [Data Browser](https://www.metabase.com/learn/getting-started/data-browser).
+- [Syncs](#how-database-syncs-work) get updated schemas to display in the [Data Browser](https://www.metabase.com/learn/metabase-basics/querying-and-dashboards/data-browser).
 - [Scans](#how-database-scans-work) take samples of column values to populate filter dropdown menus and suggest helpful visualizations. Metabase does not store _complete_ tables from your database.
 - [Fingerprinting](#how-database-fingerprinting-works) takes an additional sample of column values to help with smart behavior, such as auto-binning for bar charts.
 
@@ -39,12 +39,12 @@ If you've turned ON [Choose when syncs and scans happen](#choose-when-metabase-s
 
 - **Regularly, on a schedule** allows you to run [scan queries](#how-database-scans-work) at a frequency that matches the rate of change to your database. The time is set in the timezone of the server where your Metabase app is running. This is the best option for a small database, or tables with distinct values that get updated often.
 - **Only when adding a new filter widget** is a great option if you want scan queries to run on demand. Turning this option **ON** means that Metabase will only scan and cache the values of the field(s) that are used when a new filter is added to a dashboard or SQL question.
-- **Never, I'll do this manually if I need to** is an option for databases that are either prohibitively large, or which never really have new values added. Use the [Re-scan field values now](#manually-scanning-column-values) button to run a manual scan and bring your filter values up to date.
+- **Never, I'll do this manually if I need to** is an option for databases that are either prohibitively large, or which never really have new values added. Use the [Re-scan field values](#manually-scanning-column-values) button to run a manual scan and bring your filter values up to date.
 
 ## Manually syncing tables and columns
 
 1. Go to **Admin settings** > **Databases** > your database.
-2. Click **Sync database schema now**.
+2. Click **Sync database schema**.
 
 ## Manually scanning column values
 
@@ -82,14 +82,14 @@ To prevent Metabase from running syncs and scans against a specific table, chang
 2. Hover over the table name in the sidebar.
 3. Click the **eye** icon.
 
-> Hiding a table will also prevent it from showing up in the [query builder](../questions/query-builder/introduction.md) and [data reference](../exploration-and-organization/data-model-reference.md). People can still query hidden tables from the [SQL editor](../questions/native-editor/writing-sql.md).
+> Hiding a table will also prevent it from showing up in the [query builder](../questions/query-builder/editor.md) and [data reference](../exploration-and-organization/data-model-reference.md). People can still query hidden tables from the [SQL editor](../questions/native-editor/writing-sql.md).
 
 ## Syncing and scanning using the API
 
-Metabase syncs and scans regularly, but if the database administrator has just changed the database schema, or if a lot of data is added automatically at specific times, you may want to write a script that uses the [Metabase API](https://www.metabase.com/learn/administration/metabase-api) to force a sync or scan. [Our API](../api-documentation.md) provides two ways to initiate a sync or scan of a database:
+Metabase syncs and scans regularly, but if the database administrator has just changed the database schema, or if a lot of data is added automatically at specific times, you may want to write a script that uses the [Metabase API](https://www.metabase.com/learn/metabase-basics/administration/administration-and-operation/metabase-api) to force a sync or scan. [Our API](../api.html) provides two ways to initiate a sync or scan of a database:
 
-1. Using a session token: the `/api/database/:id/sync_schema` or `api/database/:id/rescan_values` endpoints. These endpoints do the same things as going to the database in the Admin Panel and choosing **Sync database schema now** or **Re-scan field values now** respectively. To use these endpoints, you have to authenticate with a user ID and pass a session token in the header of your request.
-2. Using an API key: `/api/notify/db/:id`. We created this endpoint so that people could notify their Metabase to sync after an [ETL operation](https://www.metabase.com/learn/analytics/etl-landscape) finishes. To use this endpoint, you must pass an API key by defining the `MB_API_KEY` environment variable.
+1. Using a session token: the `/api/database/:id/sync_schema` or `api/database/:id/rescan_values` endpoints. These endpoints do the same things as going to the database in the Admin Panel and choosing **Sync database schema** or **Re-scan field values** respectively. To use these endpoints, you have to authenticate with a user ID and pass a session token in the header of your request.
+2. Using an API key: `/api/notify/db/:id`. We created this endpoint so that people could notify their Metabase to sync after an [ETL operation](https://www.metabase.com/learn/grow-your-data-skills/data-landscape/etl-landscape) finishes. To use this endpoint, you must pass an API key by defining the `MB_API_KEY` environment variable.
 
 ## How database syncs work
 

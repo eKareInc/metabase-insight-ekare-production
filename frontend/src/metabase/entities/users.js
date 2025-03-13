@@ -1,7 +1,13 @@
 import { assocIn } from "icepick";
 
-import { userApi, sessionApi } from "metabase/api";
-import * as MetabaseAnalytics from "metabase/lib/analytics";
+import {
+  sessionApi,
+  skipToken,
+  useGetUserQuery,
+  useListUserRecipientsQuery,
+  useListUsersQuery,
+  userApi,
+} from "metabase/api";
 import { createEntity, entityCompatibleQuery } from "metabase/lib/entities";
 import { generatePassword } from "metabase/lib/security";
 import MetabaseSettings from "metabase/lib/settings";
@@ -33,6 +39,13 @@ const Users = createEntity({
   schema: UserSchema,
 
   path: "/api/user",
+
+  rtk: {
+    getUseGetQuery: () => ({
+      useGetQuery,
+    }),
+    useListQuery,
+  },
 
   api: {
     list: ({ recipients = false, ...args }, dispatch) =>
@@ -105,10 +118,6 @@ const Users = createEntity({
     resetPasswordEmail:
       ({ email }) =>
       async dispatch => {
-        MetabaseAnalytics.trackStructEvent(
-          "People Admin",
-          "Trigger User Password Reset",
-        );
         await entityCompatibleQuery(
           email,
           dispatch,
@@ -119,10 +128,6 @@ const Users = createEntity({
     resetPasswordManual:
       async ({ id }, password = generatePassword()) =>
       async dispatch => {
-        MetabaseAnalytics.trackStructEvent(
-          "People Admin",
-          "Manual Password Reset",
-        );
         await entityCompatibleQuery(
           { id, password },
           dispatch,
@@ -133,8 +138,6 @@ const Users = createEntity({
     deactivate:
       ({ id }) =>
       async dispatch => {
-        MetabaseAnalytics.trackStructEvent("People Admin", "User Removed");
-
         await entityCompatibleQuery(
           id,
           dispatch,
@@ -145,8 +148,6 @@ const Users = createEntity({
     reactivate:
       ({ id }) =>
       async dispatch => {
-        MetabaseAnalytics.trackStructEvent("People Admin", "User Reactivated");
-
         const user = await entityCompatibleQuery(
           id,
           dispatch,
@@ -172,5 +173,20 @@ const Users = createEntity({
     }
   },
 });
+
+const useGetQuery = ({ id }, options) => {
+  return useGetUserQuery(id, options);
+};
+
+function useListQuery({ recipients = false, ...args } = {}, options) {
+  const usersList = useListUsersQuery(recipients ? skipToken : args, options);
+
+  const recipientsList = useListUserRecipientsQuery(
+    recipients ? args : skipToken,
+    options,
+  );
+
+  return recipients ? recipientsList : usersList;
+}
 
 export default Users;

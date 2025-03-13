@@ -1,13 +1,12 @@
-import Text from "metabase/components/type/Text";
 import Button from "metabase/core/components/Button";
 import Link from "metabase/core/components/Link";
 import CS from "metabase/css/core/index.css";
 import type { IconName } from "metabase/ui";
-import { Icon, isValidIconName } from "metabase/ui";
+import { Flex, Icon, Text, isValidIconName } from "metabase/ui";
 
+import S from "./EmptyState.module.css";
 import {
   EmptyStateActions,
-  EmptyStateFooter,
   EmptyStateHeader,
   EmptyStateIllustration,
 } from "./EmptyState.styled";
@@ -80,7 +79,7 @@ const EmptyState = ({
         </h2>
       )}
       {message && (
-        <Text role="status" color="medium" className="empty-state-message">
+        <Text role="status" color="text-medium" mt="xs">
           {message}
         </Text>
       )}
@@ -88,8 +87,8 @@ const EmptyState = ({
     {/* TODO - we should make this children or some other more flexible way to
       add actions
       */}
-    <EmptyStateFooter>
-      <EmptyStateActions>
+    <Flex>
+      <EmptyStateActions className={S.EmptyStateFooter}>
         {action && link && (
           <Link to={link} target={link.startsWith("http") ? "_blank" : ""}>
             <Button primary>{action}</Button>
@@ -101,7 +100,7 @@ const EmptyState = ({
           </Button>
         )}
       </EmptyStateActions>
-    </EmptyStateFooter>
+    </Flex>
   </div>
 );
 

@@ -1,7 +1,8 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import { color } from "metabase/lib/colors";
 import { Icon } from "metabase/ui";
 
 interface SidebarButtonProps {
@@ -23,14 +24,16 @@ interface SidebarIconProps {
   isLogoVisible?: boolean;
 }
 
-export const SidebarIcon = styled(Icon)<SidebarIconProps>`
+export const SidebarIcon = styled(Icon, {
+  shouldForwardProp: propName => propName !== "isLogoVisible",
+})<SidebarIconProps>`
   color: var(--mb-color-brand);
   display: block;
 
   ${props =>
     !props.isLogoVisible &&
     css`
-      color: ${color("text-medium")};
+      color: var(--mb-color-text-medium);
 
       &:hover {
         color: var(--mb-color-brand);

@@ -6,7 +6,7 @@ import {
   setupNativeQuerySnippetEndpoints,
 } from "__support__/server-mocks";
 import { renderWithProviders } from "__support__/ui";
-import DatasetEditor from "metabase/query_builder/components/DatasetEditor";
+import { DatasetEditor } from "metabase/query_builder/components/DatasetEditor";
 import Question from "metabase-lib/v1/Question";
 import type { Card, UnsavedCard } from "metabase-types/api";
 import {
@@ -48,11 +48,11 @@ const defaultDatasetEditorProps = {
   updateQuestion: noop,
   handleResize: noop,
   onCancelCreateNewModel: noop,
-  onCancelDatasetChanges: noop,
+  cancelQuestionChanges: noop,
   onOpenModal: noop,
   onSave: noop,
   runQuestionQuery: noop,
-  setFieldMetadata: noop,
+  setMetadataDiff: noop,
   setQueryBuilderMode: noop,
   toggleDataReference: noop,
   toggleSnippetSidebar: noop,
@@ -75,9 +75,11 @@ describe("DatasetEditor", () => {
     fetchMock.get("path:/api/search", () => ({ body: { data: [] } }));
     fetchMock.get("path:/api/model-index", () => ({ body: { data: [] } }));
   });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
+
   it("tries to load a model index for a saved model", () => {
     renderDatasetEditor(mockSavedModel);
     const calls = fetchMock.calls("path:/api/model-index");
@@ -86,16 +88,19 @@ describe("DatasetEditor", () => {
       new URL(calls[0]?.request?.url ?? "").searchParams.get("model_id"),
     ).toBe(`${mockSavedModel.id}`);
   });
+
   it("does not try to load a model index for a saved question", () => {
     renderDatasetEditor(mockSavedCard);
     const calls = fetchMock.calls("path:/api/model-index");
     expect(calls).toHaveLength(0);
   });
+
   it("does not try to load a model index for a saved metric", () => {
     renderDatasetEditor(mockSavedMetric);
     const calls = fetchMock.calls("path:/api/model-index");
     expect(calls).toHaveLength(0);
   });
+
   it("does not try to load a model index when card is unsaved", () => {
     renderDatasetEditor(mockUnsavedCard);
     const calls = fetchMock.calls("path:/api/model-index");

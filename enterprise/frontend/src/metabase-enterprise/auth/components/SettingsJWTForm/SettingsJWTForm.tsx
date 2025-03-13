@@ -1,25 +1,25 @@
 import { useCallback, useMemo } from "react";
-import { connect } from "react-redux";
 import { t } from "ttag";
 import _ from "underscore";
 
-import SettingHeader from "metabase/admin/settings/components/SettingHeader";
+import { SettingHeader } from "metabase/admin/settings/components/SettingHeader";
 import GroupMappingsWidget from "metabase/admin/settings/containers/GroupMappingsWidget";
 import { updateSettings } from "metabase/admin/settings/settings";
 import type { SettingElement } from "metabase/admin/settings/types";
 import Breadcrumbs from "metabase/components/Breadcrumbs";
 import CS from "metabase/css/core/index.css";
 import {
-  FormSection,
   Form,
   FormErrorMessage,
   FormProvider,
   FormSecretKey,
+  FormSection,
   FormSubmitButton,
   FormSwitch,
   FormTextInput,
 } from "metabase/forms";
-import { rem, Flex, Stack } from "metabase/ui";
+import { connect } from "metabase/lib/redux";
+import { Flex, Stack, rem } from "metabase/ui";
 import type { SettingValue } from "metabase-types/api";
 
 type SettingValues = { [key: string]: SettingValue };
@@ -89,10 +89,13 @@ export const SettingsJWTForm = ({
               [t`JWT`],
             ]}
           />
-          <Stack spacing={rem(12)} m={`${rem(40)} 0`}>
+          <Stack gap={rem(12)} m={`${rem(40)} 0`}>
             <SettingHeader
               id="jwt-user-provisioning-enabled?"
-              setting={settings["jwt-user-provisioning-enabled?"]}
+              title={settings["jwt-user-provisioning-enabled?"].display_name}
+              description={
+                settings["jwt-user-provisioning-enabled?"].description
+              }
             />
             <FormSwitch
               id="jwt-user-provisioning-enabled?"
@@ -100,7 +103,7 @@ export const SettingsJWTForm = ({
             />
           </Stack>
           <FormSection title={"Server Settings"}>
-            <Stack spacing="md">
+            <Stack gap="md">
               <FormTextInput {...fields["jwt-identity-provider-uri"]} />
               <FormSecretKey
                 {...fields["jwt-shared-secret"]}
@@ -115,7 +118,7 @@ export const SettingsJWTForm = ({
             title={"User attribute configuration (optional)"}
             collapsible
           >
-            <Stack spacing="md">
+            <Stack gap="md">
               <FormTextInput {...fields["jwt-attribute-email"]} />
               <FormTextInput {...fields["jwt-attribute-firstname"]} />
               <FormTextInput {...fields["jwt-attribute-lastname"]} />
@@ -166,7 +169,7 @@ const getAttributeValues = (
     JWT_ATTRS.map(key => [
       key,
       DEFAULTABLE_JWT_ATTRS.has(key)
-        ? values[key] ?? settings[key]?.default
+        ? (values[key] ?? settings[key]?.default)
         : values[key],
     ]),
   );

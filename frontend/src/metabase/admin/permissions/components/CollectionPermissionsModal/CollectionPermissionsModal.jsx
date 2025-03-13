@@ -1,6 +1,5 @@
 import PropTypes from "prop-types";
-import { useEffect, useCallback } from "react";
-import { connect } from "react-redux";
+import { useCallback, useEffect } from "react";
 import { t } from "ttag";
 import _ from "underscore";
 
@@ -11,18 +10,19 @@ import Link from "metabase/core/components/Link";
 import CS from "metabase/css/core/index.css";
 import Collections from "metabase/entities/collections";
 import Groups from "metabase/entities/groups";
+import { connect } from "metabase/lib/redux";
 import * as Urls from "metabase/lib/urls";
 
 import {
   initializeCollectionPermissions,
-  updateCollectionPermission,
   saveCollectionPermissions,
+  updateCollectionPermission,
 } from "../../permissions";
 import {
-  getIsDirty,
-  getCollectionsPermissionEditor,
   collectionsQuery,
   getCollectionEntity,
+  getCollectionsPermissionEditor,
+  getIsDirty,
 } from "../../selectors/collection-permissions";
 import { permissionEditorPropTypes } from "../PermissionsEditor";
 import { PermissionsTable } from "../PermissionsTable";

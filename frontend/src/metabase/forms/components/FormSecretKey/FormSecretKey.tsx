@@ -7,7 +7,7 @@ import Confirm from "metabase/components/Confirm";
 import CS from "metabase/css/core/index.css";
 import { UtilApi } from "metabase/services";
 import type { TextInputProps } from "metabase/ui";
-import { Flex, TextInput, Button } from "metabase/ui";
+import { Button, Flex, TextInput } from "metabase/ui";
 
 export interface FormSecretKeyProps
   extends Omit<TextInputProps, "value" | "error"> {
@@ -80,6 +80,7 @@ export const FormSecretKey = forwardRef(function FormSecretKey(
         </Confirm>
       ) : (
         <Button
+          className={CS.flexNoShrink}
           variant="filled"
           onClick={generateToken}
         >{t`Generate key`}</Button>

@@ -1,6 +1,7 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-export interface GaugeArcPathProps {
+interface GaugeArcPathProps {
   isClickable: boolean;
 }
 

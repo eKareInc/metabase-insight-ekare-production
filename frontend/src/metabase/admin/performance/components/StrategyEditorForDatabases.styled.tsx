@@ -1,11 +1,11 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
-
-import { color } from "metabase/lib/colors";
 
 export const Panel = styled.section<{ hasLeftBorder?: boolean }>`
   overflow-y: auto;
-  background-color: ${color("white")};
+  background-color: var(--mb-color-bg-white);
   height: 100%;
 
   ${props =>
@@ -18,21 +18,17 @@ export const Panel = styled.section<{ hasLeftBorder?: boolean }>`
 export const RoundedBox = styled.div<{ twoColumns?: boolean }>`
   margin-bottom: 1rem;
   width: 100%;
-
   display: grid;
   grid-template-columns: minmax(5rem, 30rem) ${props =>
       props.twoColumns ? "minmax(5rem, auto)" : ""};
   max-width: ${props => (props.twoColumns ? "100%" : "30rem")};
-
   overflow: hidden;
-
   border-radius: 1rem;
   border: 2px solid var(--mb-color-border);
 `;
 
-export const TabWrapper = styled.div`
+export const TabWrapper = styled.main`
   display: grid;
   grid-template-rows: auto 1fr;
-  min-width: calc(min(50rem, 100vw));
   width: calc(min(65rem, 100vw));
 `;

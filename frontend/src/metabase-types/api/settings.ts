@@ -1,3 +1,7 @@
+import type { ReactNode } from "react";
+
+import type { InputSettingType } from "./actions";
+
 export interface FormattingSettings {
   "type/Temporal"?: DateFormattingSettings;
   "type/Number"?: NumberFormattingSettings;
@@ -112,6 +116,8 @@ export interface VersionInfoRecord {
 }
 
 export interface VersionInfo {
+  nightly?: VersionInfoRecord;
+  beta?: VersionInfoRecord;
   latest?: VersionInfoRecord;
   older?: VersionInfoRecord[];
 }
@@ -125,12 +131,52 @@ export type LoadingMessage =
 
 export type TokenStatusStatus = "unpaid" | "past-due" | "invalid" | string;
 
+const tokenStatusFeatures = [
+  "advanced-config",
+  "advanced-permissions",
+  "audit-app",
+  "cache-granular-controls",
+  "collection-cleanup",
+  "config-text-file",
+  "content-management",
+  "content-verification",
+  "dashboard-subscription-filters",
+  "database-auth-providers",
+  "disable-password-login",
+  "email-allow-list",
+  "email-restrict-recipients",
+  "embedding-sdk",
+  "embedding",
+  "hosting",
+  "metabase-store-managed",
+  "metabot-v3",
+  "no-upsell",
+  "official-collections",
+  "query-reference-validation",
+  "question-error-logs",
+  "sandboxes",
+  "scim",
+  "serialization",
+  "session-timeout-config",
+  "snippet-collections",
+  "sso-google",
+  "sso-jwt",
+  "sso-ldap",
+  "sso-saml",
+  "sso",
+  "upload-management",
+  "whitelabel",
+] as const;
+
+export type TokenStatusFeature = (typeof tokenStatusFeatures)[number];
+
 export interface TokenStatus {
-  status?: TokenStatusStatus;
+  status: TokenStatusStatus;
   valid: boolean;
   "valid-thru"?: string;
   "error-details"?: string;
-  trial: boolean;
+  trial?: boolean;
+  features?: TokenStatusFeature[];
 }
 
 export type DayOfWeekId =
@@ -143,29 +189,37 @@ export type DayOfWeekId =
   | "saturday";
 
 export const tokenFeatures = [
+  "attached_dwh",
   "advanced_permissions",
   "audit_app",
   "cache_granular_controls",
   "disable_password_login",
   "content_verification",
   "embedding",
+  "embedding_sdk",
   "hosting",
   "llm_autodescription",
   "official_collections",
   "sandboxes",
+  "scim",
   "sso_google",
   "sso_jwt",
   "sso_ldap",
   "sso_saml",
   "session_timeout_config",
   "whitelabel",
+  "serialization",
   "dashboard_subscription_filters",
   "snippet_collections",
   "email_allow_list",
   "email_restrict_recipients",
+  "upload_management",
+  "collection_cleanup",
+  "query_reference_validation",
+  "cache_preemptive",
 ] as const;
 
-export type TokenFeature = typeof tokenFeatures[number];
+export type TokenFeature = (typeof tokenFeatures)[number];
 export type TokenFeatures = Record<TokenFeature, boolean>;
 
 export type PasswordComplexity = {
@@ -175,13 +229,18 @@ export type PasswordComplexity = {
 
 export type SessionCookieSameSite = "lax" | "strict" | "none";
 
-export interface SettingDefinition {
-  key: string;
+export interface SettingDefinition<Key extends SettingKey = SettingKey> {
+  key: Key;
   env_name?: string;
-  is_env_setting: boolean;
-  value?: unknown;
-  default?: unknown;
+  is_env_setting?: boolean;
+  value?: SettingValue<Key>;
+  default?: SettingValue<Key>;
+  display_name?: string;
+  description?: string | ReactNode | null;
+  type?: InputSettingType;
 }
+
+export type UpdateChannel = "latest" | "beta" | "nightly";
 
 export interface OpenAiModel {
   id: string;
@@ -189,6 +248,8 @@ export interface OpenAiModel {
 }
 
 export type HelpLinkSetting = "metabase" | "hidden" | "custom";
+
+export type AutocompleteMatchStyle = "off" | "prefix" | "substring";
 
 export interface UploadsSettings {
   db_id: number | null;
@@ -200,24 +261,29 @@ interface InstanceSettings {
   "admin-email": string;
   "email-smtp-host": string | null;
   "email-smtp-port": number | null;
-  "email-smtp-security": "None" | "SSL" | "TLS" | "STARTTLS";
+  "email-smtp-security": "none" | "ssl" | "tls" | "starttls";
   "email-smtp-username": string | null;
   "email-smtp-password": string | null;
   "enable-embedding": boolean;
+  "enable-embedding-static": boolean;
+  "enable-embedding-sdk": boolean;
+  "enable-embedding-interactive": boolean;
   "enable-nested-queries": boolean;
-  "enable-query-caching"?: boolean;
   "enable-public-sharing": boolean;
   "enable-xrays": boolean;
   "example-dashboard-id": number | null;
+  "instance-creation": string;
   "read-only-mode": boolean;
   "search-typeahead-enabled": boolean;
   "show-homepage-data": boolean;
   "show-homepage-pin-message": boolean;
   "show-homepage-xrays": boolean;
+  "site-name": string;
   "site-uuid": string;
   "subscription-allowed-domains": string | null;
   "uploads-settings": UploadsSettings;
   "user-visibility": string | null;
+  "query-analysis-enabled": boolean;
 }
 
 export type EmbeddingHomepageDismissReason =
@@ -242,17 +308,18 @@ interface AdminSettings {
   "premium-embedding-token": string | null;
   "saml-configured"?: boolean;
   "saml-enabled"?: boolean;
+  "saml-identity-provider-uri": string | null;
+  "other-sso-enabled?"?: boolean; // yes the question mark is in the variable name
   "show-database-syncing-modal": boolean;
   "token-status": TokenStatus | null;
   "version-info": VersionInfo | null;
   "last-acknowledged-version": string | null;
   "show-static-embed-terms": boolean | null;
+  "show-sdk-embed-terms": boolean | null;
   "embedding-homepage": EmbeddingHomepageStatus;
-  "setup-embedding-autoenabled": boolean;
   "setup-license-active-at-setup": boolean;
   "store-url": string;
 }
-
 interface SettingsManagerSettings {
   "bcc-enabled?": boolean;
   "ee-openai-api-key"?: string;
@@ -262,7 +329,7 @@ interface SettingsManagerSettings {
   "openai-organization": string | null;
   "session-cookie-samesite": SessionCookieSameSite;
   "slack-app-token": string | null;
-  "slack-files-channel": string | null;
+  "slack-bug-report-channel": string | null;
   "slack-token": string | null;
   "slack-token-valid?": boolean;
 }
@@ -270,36 +337,49 @@ interface SettingsManagerSettings {
 type PrivilegedSettings = AdminSettings & SettingsManagerSettings;
 
 interface PublicSettings {
+  "allowed-iframe-hosts": string;
   "anon-tracking-enabled": boolean;
   "application-font": string;
   "application-font-files": FontFile[] | null;
   "application-name": string;
+  "application-favicon-url": string;
   "available-fonts": string[];
   "available-locales": LocaleData[] | null;
+  "bug-reporting-enabled": boolean;
+  "check-for-updates": boolean;
   "cloud-gateway-ips": string[] | null;
   "custom-formatting": FormattingSettings;
   "custom-homepage": boolean;
   "custom-homepage-dashboard": number | null;
   "ee-ai-features-enabled"?: boolean;
   "email-configured?": boolean;
-  "embedding-app-origin": string;
+  "embedding-app-origin": string | null;
+  "embedding-app-origins-sdk": string | null;
+  "embedding-app-origins-interactive": string | null;
   "enable-enhancements?": boolean;
   "enable-password-login": boolean;
+  "enable-pivoted-exports": boolean;
   engines: Record<string, Engine>;
   "google-auth-client-id": string | null;
   "google-auth-enabled": boolean;
+  gsheets: {
+    status: "not-connected" | "loading" | "complete" | "error";
+    folder_url: string | null;
+    error?: string;
+  };
   "has-user-setup": boolean;
   "help-link": HelpLinkSetting;
   "help-link-custom-destination": string;
+  "humanization-strategy": "simple" | "none";
   "hide-embed-branding?": boolean;
   "is-hosted?": boolean;
-  "is-metabot-enabled": boolean;
   "ldap-configured?": boolean;
   "ldap-enabled": boolean;
   "ldap-port": number;
   "ldap-group-membership-filter": string;
   "loading-message": LoadingMessage;
   "map-tile-server-url": string;
+  "native-query-autocomplete-match-style": AutocompleteMatchStyle;
   "other-sso-enabled?": boolean | null; // TODO: FIXME! This is an enterprise-only setting!
   "password-complexity": PasswordComplexity;
   "persisted-models-enabled": boolean;
@@ -310,27 +390,65 @@ interface PublicSettings {
   "setup-token": string | null;
   "show-metabase-links": boolean;
   "show-metabot": boolean;
+  "show-google-sheets-integration": boolean;
   "site-locale": string;
   "site-url": string;
   "snowplow-enabled": boolean;
   "snowplow-url": string;
   "start-of-week": DayOfWeekId;
   "token-features": TokenFeatures;
+  "update-channel": UpdateChannel;
   version: Version;
   "version-info-last-checked": string | null;
+  "airgap-enabled": boolean;
 }
 
 export type UserSettings = {
+  "dismissed-collection-cleanup-banner"?: boolean;
   "dismissed-browse-models-banner"?: boolean;
   "dismissed-custom-dashboard-toast"?: boolean;
+  "dismissed-onboarding-sidebar-link"?: boolean;
   "last-used-native-database-id"?: number | null;
   "notebook-native-preview-shown"?: boolean;
   "notebook-native-preview-sidebar-width"?: number | null;
   "expand-browse-in-nav"?: boolean;
   "expand-bookmarks-in-nav"?: boolean;
   "browse-filter-only-verified-models"?: boolean;
+  "browse-filter-only-verified-metrics"?: boolean;
+  "show-updated-permission-modal": boolean;
+  "show-updated-permission-banner": boolean;
+  "trial-banner-dismissal-timestamp"?: string | null;
 };
 
+/**
+ * Important distinction between `null` and `undefined` settings values.
+ *  - `null` means that the setting actually has a value of `null`.
+ *  - `undefined` means that the setting is not available in a certain context.
+ *
+ * Further longer explanation:
+ *
+ * Clojure doesn't have `undefined`. It uses `nil` to set (the default) value to (JS) `null`.
+ * This can backfire on frontend if we are not aware of this distinction!
+ *
+ * Do not use `undefined` when checking for a setting value! Use `null` instead.
+ * Use `undefined` only when checking does the setting (key) exist in a certain context.
+ *
+ * Contexts / Scopes:
+ * Settings types are divided into contexts to make this more explicit:
+ *  - `PublicSettings` will always be available to everyone.
+ *  - `InstanceSettings` are settings that are available to all **authenticated** users.
+ *  - `AdminSettings` are settings that are available only to **admins**.
+ *  - `SettingsManagerSettings` are settings that are available only to **settings managers**.
+ *  - `UserSettings` are settings that are available only to **regular users**.
+ *
+ * Each new scope is more strict than the previous one.
+ *
+ * To further complicate things, there are two endpoints for fetching settings:
+ *  - `GET /api/setting` that _can only be used by admins!_
+ *  - `GET /api/session/properties` that can be used by any user, but some settings might be omitted (unavailable).
+ *
+ * SettingsApi will return `403` for non-admins, while SessionApi will return `200`!
+ */
 export type Settings = InstanceSettings &
   PublicSettings &
   UserSettings &
@@ -338,4 +456,4 @@ export type Settings = InstanceSettings &
 
 export type SettingKey = keyof Settings;
 
-export type SettingValue = Settings[SettingKey];
+export type SettingValue<Key extends SettingKey = SettingKey> = Settings[Key];

@@ -9,7 +9,7 @@ import {
   screen,
   waitForLoaderToBeRemoved,
 } from "__support__/ui";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import Databases from "metabase/entities/databases";
 import Tables from "metabase/entities/tables";
 import type Database from "metabase-lib/v1/metadata/Database";
@@ -86,7 +86,7 @@ describe("useEntityQuery", () => {
   it("should be initially loading", () => {
     setup();
 
-    expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
+    expect(screen.getByTestId("loading-indicator")).toBeInTheDocument();
   });
 
   it("should initially load data only once the reload flag", async () => {

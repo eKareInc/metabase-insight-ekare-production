@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from "react";
-import { connect } from "react-redux";
 import { t } from "ttag";
 import _ from "underscore";
 import type { TestConfig } from "yup";
@@ -11,15 +10,16 @@ import type { SettingElement } from "metabase/admin/settings/types";
 import Breadcrumbs from "metabase/components/Breadcrumbs";
 import CS from "metabase/css/core/index.css";
 import {
-  FormSection,
   Form,
   FormErrorMessage,
   FormProvider,
   FormRadioGroup,
+  FormSection,
   FormSubmitButton,
   FormSwitch,
   FormTextInput,
 } from "metabase/forms";
+import { connect } from "metabase/lib/redux";
 import { PLUGIN_LDAP_FORM_FIELDS } from "metabase/plugins";
 import { Group, Radio, Stack } from "metabase/ui";
 import type { SettingKey, Settings } from "metabase-types/api";
@@ -161,7 +161,7 @@ export const SettingsLdapFormView = ({
             settings={settings}
           />
           <FormSection title={"Server Settings"}>
-            <Stack spacing="md">
+            <Stack gap="md">
               <FormTextInput {...fields["ldap-host"]} />
               <FormTextInput {...fields["ldap-port"]} />
               <FormRadioGroup {...fields["ldap-security"]}>
@@ -176,20 +176,20 @@ export const SettingsLdapFormView = ({
             </Stack>
           </FormSection>
           <FormSection title={"User Schema"}>
-            <Stack spacing="md">
+            <Stack gap="md">
               <FormTextInput {...fields["ldap-user-base"]} />
               <FormTextInput {...fields["ldap-user-filter"]} />
             </Stack>
           </FormSection>
           <FormSection title={"Attributes"} collapsible>
-            <Stack spacing="md">
+            <Stack gap="md">
               <FormTextInput {...fields["ldap-attribute-email"]} />
               <FormTextInput {...fields["ldap-attribute-firstname"]} />
               <FormTextInput {...fields["ldap-attribute-lastname"]} />
             </Stack>
           </FormSection>
           <FormSection title={"Group Schema"}>
-            <Stack spacing={"md"}>
+            <Stack gap={"md"}>
               <GroupMappingsWidget
                 isFormik
                 setting={{ key: "ldap-group-sync" }}
@@ -210,7 +210,7 @@ export const SettingsLdapFormView = ({
                 )}
             </Stack>
           </FormSection>
-          <Stack align="start" spacing="1rem" mb="1rem">
+          <Stack align="start" gap="1rem" mb="1rem">
             <FormErrorMessage />
             <FormSubmitButton
               disabled={!dirty}
@@ -234,7 +234,7 @@ const getAttributeValues = (
     ldapAttributes.map(key => [
       key,
       defaultableAttrs.has(key)
-        ? values[key] ?? settings[key]?.default
+        ? (values[key] ?? settings[key]?.default)
         : values[key],
     ]),
   );

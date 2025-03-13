@@ -77,7 +77,7 @@
   To return a uniquified version of `original-alias`. Memoized by `position`, so duplicate calls will result in the
   same unique alias."
   []
-  (let [unique-name-fn (lib.util/unique-name-generator (qp.store/metadata-provider))]
+  (let [unique-name-fn (lib.util/unique-name-generator)]
     (fn unique-alias-fn [position original-alias]
       (assert (string? original-alias)
               (format "unique-alias-fn expected string, got: %s" (pr-str original-alias)))
@@ -168,7 +168,7 @@
   (when join-alias
     ((this-level-join-aliases inner-query) join-alias)))
 
-(mu/defn ^:private field-instance :- [:maybe ::lib.schema.metadata/column]
+(mu/defn- field-instance :- [:maybe ::lib.schema.metadata/column]
   [[_ id-or-name :as _field-clause] :- mbql.s/field]
   (when (integer? id-or-name)
     (lib.metadata/field (qp.store/metadata-provider) id-or-name)))
@@ -176,10 +176,10 @@
 (defn- field-table-id [field-clause]
   (:table-id (field-instance field-clause)))
 
-(mu/defn ^:private field-source-table-alias :- [:or
-                                                ::lib.schema.common/non-blank-string
-                                                ::lib.schema.id/table
-                                                [:= ::source]]
+(mu/defn- field-source-table-alias :- [:or
+                                       ::lib.schema.common/non-blank-string
+                                       ::lib.schema.id/table
+                                       [:= ::source]]
   "Determine the appropriate `::source-table` alias for a `field-clause`."
   [{:keys [source-table source-query], :as inner-query} [_ _id-or-name {:keys [join-alias]}, :as field-clause]]
   (let [table-id            (field-table-id field-clause)
@@ -211,6 +211,36 @@
   [field-clause]
   [(second field-clause) (get-in field-clause [2 :join-alias])])
 
+(defn- field-name-match [field-name all-exports source-metadata field-exports]
+  ;; First, look for Expressions or fields from the source query stage whose `::desired-alias` matches the
+  ;; name we're searching for.
+  (or (m/find-first (fn [[tag _id-or-name {::keys [desired-alias], :as _opts} :as _ref]]
+                      (when (#{:expression :field} tag)
+                        (= desired-alias field-name)))
+                    all-exports)
+      ;; Expressions by exact name.
+      (m/find-first (fn [[_ expression-name :as _expression-clause]]
+                      (= expression-name field-name))
+                    (filter (partial mbql.u/is-clause? :expression) all-exports))
+      ;; aggregation clauses from the previous stage based on their `::desired-alias`. If THAT doesn't work,
+      ;; then try to match based on their `::source-alias` (not 100% sure why we're checking `::source-alias` at
+      ;; all TBH -- Cam)
+      (when-let [ag-clauses (seq (filter (partial mbql.u/is-clause? :aggregation-options) all-exports))]
+        (some (fn [k]
+                (m/find-first (fn [[_tag _ag-clause opts :as _aggregation-options-clause]]
+                                (= (get opts k) field-name))
+                              ag-clauses))
+              [::desired-alias ::source-alias]))
+      ;; look for a field referenced by the name in source-metadata
+      (when-let [column (m/find-first #(= (:name %) field-name) source-metadata)]
+        (let [signature (field-signature (:field_ref column))]
+          (or ;; First try to match with the join alias.
+           (m/find-first #(= (field-signature %) signature) field-exports)
+              ;; Then just the names, but if the match is ambiguous, warn and return nil.
+           (let [matches (filter #(= (second %) field-name) field-exports)]
+             (when (= (count matches) 1)
+               (first matches))))))))
+
 (defn- matching-field-in-source-query*
   [source-query source-metadata field-clause & {:keys [normalize-fn]
                                                 :or   {normalize-fn normalize-clause}}]
@@ -230,41 +260,18 @@
         ;; if still no match try looking based for a matching Field based on ID.
         (let [[_field id-or-name _opts] field-clause]
           (when (integer? id-or-name)
-            (m/find-first (fn [[_field an-id-or-name _opts]]
-                            (= an-id-or-name id-or-name))
-                          field-exports)))
+            (or (m/find-first (fn [[_field an-id-or-name _opts]]
+                                (= an-id-or-name id-or-name))
+                              field-exports)
+                ;; look for a field referenced by the ID in source-metadata
+                (when-let [column (m/find-first #(= (:id %) id-or-name) source-metadata)]
+                  (let [signature (field-signature (:field_ref column))]
+                    (m/find-first #(= (field-signature %) signature) field-exports))))))
         ;; otherwise if this is a nominal field literal ref then look for matches based on the string name used
-        (when-let [field-name (let [[_ id-or-name] field-clause]
-                                (when (string? id-or-name)
-                                  id-or-name))]
-          (or ;; First, look for Expressions or fields from the source query stage whose `::desired-alias` matches the
-              ;; name we're searching for.
-              (m/find-first (fn [[tag _id-or-name {::keys [desired-alias], :as _opts} :as _ref]]
-                              (when (#{:expression :field} tag)
-                                (= desired-alias field-name)))
-                            all-exports)
-              ;; Expressions by exact name.
-              (m/find-first (fn [[_ expression-name :as _expression-clause]]
-                              (= expression-name field-name))
-                            (filter (partial mbql.u/is-clause? :expression) all-exports))
-              ;; aggregation clauses from the previous stage based on their `::desired-alias`. If THAT doesn't work,
-              ;; then try to match based on their `::source-alias` (not 100% sure why we're checking `::source-alias` at
-              ;; all TBH -- Cam)
-              (when-let [ag-clauses (seq (filter (partial mbql.u/is-clause? :aggregation-options) all-exports))]
-                (some (fn [k]
-                        (m/find-first (fn [[_tag _ag-clause opts :as _aggregation-options-clause]]
-                                        (= (get opts k) field-name))
-                                      ag-clauses))
-                      [::desired-alias ::source-alias]))
-              ;; look for a field referenced by the name in source-metadata
-              (when-let [column (m/find-first #(= (:name %) field-name) source-metadata)]
-                (let [signature (field-signature (:field_ref column))]
-                  (or ;; First try to match with the join alias.
-                   (m/find-first #(= (field-signature %) signature) field-exports)
-                   ;; Then just the names, but if the match is ambiguous, warn and return nil.
-                   (let [matches (filter #(= (second %) field-name) field-exports)]
-                     (when (= (count matches) 1)
-                       (first matches)))))))))))
+        (when-let [field-names (let [[_ id-or-name] field-clause]
+                                 (when (string? id-or-name)
+                                   [id-or-name (some-> driver/*driver* (driver/escape-alias id-or-name))]))]
+          (some #(field-name-match % all-exports source-metadata field-exports) field-names)))))
 
 (defn- matching-field-in-join-at-this-level
   "If `field-clause` is the result of a join *at this level* with a `:source-query`, return the 'source' `:field` clause
@@ -331,10 +338,15 @@
                        (qp.store/->legacy-metadata field)))
     (:name field)))
 
+(defn- field-nfc-path
+  "Nested field components path for field, so drivers can use in identifiers."
+  [field-clause]
+  (some-> field-clause field-instance :nfc-path not-empty vec))
+
 (defn- field-requires-original-field-name
   "JSON extraction fields need to be named with their outer `field-name`, not use any existing `::desired-alias`."
   [field-clause]
-  (boolean (some-> field-clause field-instance :nfc-path)))
+  (boolean (field-nfc-path field-clause)))
 
 (defn- field-name
   "*Actual* name of a `:field` from the database or source query (for Field literals)."
@@ -349,11 +361,14 @@
   "Calculate extra stuff about `field-clause` that's a little expensive to calculate. This is done once so we can pass
   it around instead of recalculating it a bunch of times."
   [inner-query field-clause]
-  {:field-name              (field-name inner-query field-clause)
-   :override-alias?         (field-requires-original-field-name field-clause)
-   :join-is-this-level?     (field-is-from-join-in-this-level? inner-query field-clause)
-   :alias-from-join         (field-alias-in-join-at-this-level inner-query field-clause)
-   :alias-from-source-query (field-alias-in-source-query inner-query field-clause)})
+  (merge
+   {:field-name              (field-name inner-query field-clause)
+    :override-alias?         (field-requires-original-field-name field-clause)
+    :join-is-this-level?     (field-is-from-join-in-this-level? inner-query field-clause)
+    :alias-from-join         (field-alias-in-join-at-this-level inner-query field-clause)
+    :alias-from-source-query (field-alias-in-source-query inner-query field-clause)}
+   (when-let [nfc-path (field-nfc-path field-clause)]
+     {:nfc-path nfc-path})))
 
 (defn- field-source-alias
   "Determine the appropriate `::source-alias` for a `field-clause`."
@@ -402,6 +417,8 @@
   (let [expensive-info (expensive-field-info inner-query field-clause)]
     (merge {::source-table (field-source-table-alias inner-query field-clause)
             ::source-alias (field-source-alias inner-query field-clause expensive-info)}
+           (when-let [nfc-path (:nfc-path expensive-info)]
+             {::nfc-path nfc-path})
            (when-let [position (clause->position inner-query field-clause)]
              {::desired-alias (unique-alias-fn position (field-desired-alias inner-query field-clause expensive-info))
               ::position      position}))))

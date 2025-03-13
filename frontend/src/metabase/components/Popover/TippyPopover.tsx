@@ -1,19 +1,18 @@
 import * as TippyReact from "@tippyjs/react";
 import cx from "classnames";
 import { merge } from "icepick";
-import PropTypes from "prop-types";
-import { useState, useMemo, useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type * as tippy from "tippy.js";
 
-import { EMBEDDING_SDK_ROOT_ELEMENT_ID } from "embedding-sdk/config";
 import EventSandbox from "metabase/components/EventSandbox";
+import { getPortalRootElement } from "metabase/css/core/overlays/utils";
+import ZIndex from "metabase/css/core/z-index.module.css";
 import { isCypressActive } from "metabase/env";
 import useSequencedContentCloseHandler from "metabase/hooks/use-sequenced-content-close-handler";
 import { isReducedMotionPreferred } from "metabase/lib/dom";
 
 import type { SizeToFitOptions } from "./SizeToFitModifier";
 import { sizeToFitModifierFn } from "./SizeToFitModifier";
-import { DEFAULT_Z_INDEX } from "./constants";
 
 const TippyComponent = TippyReact.default;
 type TippyProps = TippyReact.TippyProps;
@@ -28,18 +27,6 @@ export interface ITippyPopoverProps extends TippyProps {
 }
 
 const OFFSET: [number, number] = [0, 5];
-
-const propTypes = {
-  disablContentSandbox: PropTypes.bool,
-  lazy: PropTypes.bool,
-  ...TippyComponent.propTypes,
-};
-
-function appendTo() {
-  return (
-    document.getElementById(EMBEDDING_SDK_ROOT_ELEMENT_ID) || document.body
-  );
-}
 
 function getPopperOptions({
   flip,
@@ -138,12 +125,13 @@ function TippyPopover({
 
   return (
     <TippyComponent
-      className={cx("popover", className)}
+      className={cx("popover", ZIndex.Overlay, className)}
       theme="popover"
-      zIndex={DEFAULT_Z_INDEX}
+      // Tippy's type definition does not support string z-index values
+      zIndex={"var(--mb-overlay-z-index)" as unknown as number}
       arrow={false}
       offset={OFFSET}
-      appendTo={appendTo}
+      appendTo={getPortalRootElement}
       plugins={plugins}
       {...props}
       popperOptions={computedPopperOptions}
@@ -162,8 +150,6 @@ function TippyPopover({
     />
   );
 }
-
-TippyPopover.propTypes = propTypes;
 
 // eslint-disable-next-line import/no-default-export -- deprecated usage
 export default TippyPopover;

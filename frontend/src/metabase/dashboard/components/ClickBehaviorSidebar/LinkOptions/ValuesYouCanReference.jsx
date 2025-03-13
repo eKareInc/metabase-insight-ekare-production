@@ -4,12 +4,12 @@ import PopoverWithTrigger from "metabase/components/PopoverWithTrigger";
 import AccordionList from "metabase/core/components/AccordionList";
 import CS from "metabase/css/core/index.css";
 import {
-  withUserAttributes,
   isMappableColumn,
+  withUserAttributes,
 } from "metabase/dashboard/components/ClickMappings";
-import { Icon } from "metabase/ui";
+import { Flex, Icon } from "metabase/ui";
 
-import { PopoverTrigger } from "./ValuesYouCanReference.styled";
+import S from "./ValuesYouCanReference.module.css";
 
 function prefixIfNeeded(values, prefix, otherLists) {
   const otherValues = otherLists.flat().map(s => s.toLowerCase());
@@ -54,10 +54,10 @@ export const ValuesYouCanReference = withUserAttributes(
     return (
       <PopoverWithTrigger
         triggerElement={
-          <PopoverTrigger>
+          <Flex align="center" my="md" className={S.PopoverTrigger}>
             <h4>{t`Values you can reference`}</h4>
             <Icon name="chevrondown" className={CS.ml1} size={12} />
-          </PopoverTrigger>
+          </Flex>
         }
       >
         <AccordionList

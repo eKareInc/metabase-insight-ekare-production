@@ -1,4 +1,7 @@
 import type Database from "metabase-lib/v1/metadata/Database";
+import type { DatabaseFeature } from "metabase-types/api";
+
+import type { OPERATOR, TOKEN } from "./tokenizer";
 
 export interface HelpText {
   name: string;
@@ -36,7 +39,7 @@ export type MBQLClauseFunctionConfig = {
   displayName: string;
   type: MBQLClauseFunctionReturnType;
   args: string[];
-  requiresFeature?: string;
+  requiresFeature?: DatabaseFeature;
   hasOptions?: boolean;
   multiple?: boolean;
   tokenName?: string;
@@ -51,3 +54,34 @@ export type ErrorWithMessage = {
   pos?: number | null;
   len?: number | null;
 };
+
+export type Token =
+  | {
+      type: TOKEN.Operator;
+      start: number;
+      end: number;
+      op: OPERATOR;
+    }
+  | {
+      type: TOKEN.Number;
+      start: number;
+      end: number;
+    }
+  | {
+      type: TOKEN.String;
+      start: number;
+      end: number;
+      value: string;
+    }
+  | {
+      type: TOKEN.Identifier;
+      start: number;
+      end: number;
+      isReference: boolean;
+    }
+  | {
+      type: TOKEN.Boolean;
+      start: number;
+      end: number;
+      op: "true" | "false";
+    };

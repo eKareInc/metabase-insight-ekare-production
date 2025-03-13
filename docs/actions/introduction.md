@@ -45,7 +45,7 @@ There are two types of actions:
 
 There are multiple ways to run actions:
 
-- [From the model details page](../data-modeling/models.md#model-detail-page) by clicking the **run** button.
+- [From the model details page](../data-modeling/models.md#model-details) by clicking the **run** button.
 - From a [public form](./custom.md#make-public) of an action.
 - From a [button on dashboard](../dashboards/actions.md).
 
@@ -62,6 +62,7 @@ Before using actions in production, consider playing around with actions on some
 - If caching is enabled for the relevant table or model, you may not see the effects of an action in Metabase until Metabase refreshes the data (though you can always manually refresh the data).
 - When creating records on a table that lacks an automatically generated primary key, you'll need to input an available ID (i.e., an ID not already in use by another record).
 - You can't "undo" actions. You can, however, create and run an action to recreate a deleted record, or change an updated record back to its original values (provided you know the original values).
+- Actions are unavailable for public dashboards, and dashboards in [static embeds](../embedding/static-embedding.md).
 
 ## Further reading
 

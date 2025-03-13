@@ -1,16 +1,26 @@
+// eslint-disable-next-line no-restricted-imports
+import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
+import { RawMaybeLink } from "metabase/components/Badge/Badge.styled";
 import Card from "metabase/components/Card";
-import Link from "metabase/core/components/Link";
 import { MarkdownPreview } from "metabase/core/components/MarkdownPreview";
-import { color } from "metabase/lib/colors";
-import { Icon } from "metabase/ui";
+import { Box, type BoxProps, Icon } from "metabase/ui";
 
 export const ItemCard = styled(Card)``;
 
-export const ItemLink = styled(Link)`
+export const ItemLink = styled(RawMaybeLink)<{ to?: string }>`
   display: block;
   height: min-content;
+  ${props =>
+    props.to
+      ? ""
+      : css`
+          ${Body} {
+            cursor: default;
+          }
+        `}
 `;
 
 export const ItemIcon = styled(Icon)`
@@ -19,19 +29,18 @@ export const ItemIcon = styled(Icon)`
   width: 1.5rem;
 `;
 
-export const ActionsContainer = styled.div`
+export const ActionsContainer = styled(Box)<BoxProps>`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-
   visibility: hidden;
-`;
+` as unknown as typeof Box;
 
 export const Title = styled.div`
   font-weight: bold;
   font-size: 1rem;
   line-height: 1.5rem;
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-dark);
   transition: color 0.2s ease;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -39,7 +48,7 @@ export const Title = styled.div`
 `;
 
 export const Description = styled(MarkdownPreview)`
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
 `;
 
 export const Body = styled.div`

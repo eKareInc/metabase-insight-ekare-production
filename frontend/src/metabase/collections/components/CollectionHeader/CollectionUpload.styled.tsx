@@ -1,26 +1,13 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
-
-import { color } from "metabase/lib/colors";
-
-export const UploadInput = styled.input`
-  display: none;
-`;
-
-export const LoadingStateContainer = styled.div`
-  display: flex;
-  transform: translateY(10px);
-  align-items: center;
-  height: 16px;
-  color: var(--mb-color-brand);
-`;
 
 export const InfoModalTitle = styled.h2`
   text-align: center;
-  font-size: 1.375rem; // 22px 🤦‍♀️
+  font-size: 1.375rem; /* 22px 🤦‍♀️ */
 `;
 
 export const InfoModalBody = styled.div`
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
 `;
 
 export const NewBadge = styled.div`

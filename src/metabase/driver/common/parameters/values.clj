@@ -17,7 +17,6 @@
    [metabase.lib.schema.common :as lib.schema.common]
    [metabase.lib.schema.id :as lib.schema.id]
    [metabase.lib.schema.template-tag :as lib.schema.template-tag]
-   [metabase.models.native-query-snippet :refer [NativeQuerySnippet]]
    [metabase.query-processor.compile :as qp.compile]
    [metabase.query-processor.error-type :as qp.error-type]
    [metabase.query-processor.middleware.limit :as limit]
@@ -27,11 +26,10 @@
    [metabase.util.i18n :refer [tru]]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
-   #_{:clj-kondo/ignore [:discouraged-namespace]}
+   ^{:clj-kondo/ignore [:discouraged-namespace]}
    [toucan2.core :as t2])
   (:import
    (clojure.lang ExceptionInfo)
-   (java.text NumberFormat)
    (java.util UUID)))
 
 (set! *warn-on-reflection* true)
@@ -76,7 +74,7 @@
     [:sequential SingleValue]
     :map]])
 
-(mu/defn ^:private tag-targets
+(mu/defn- tag-targets
   "Given a template tag, returns a set of `target` structures that can be used to target the tag.
   Potential targets look something like:
 
@@ -95,13 +93,28 @@
     #{[target-type [:template-tag (:name tag)]]
       [target-type [:template-tag {:id (:id tag)}]]}))
 
-(mu/defn ^:private tag-params
+(defn- tag-target-pred
+  "Returns a predicate recognizing parameter targets pointing to `tag`."
+  [tag]
+  (let [targets (tag-targets tag)]
+    (fn tag-target? [param-target]
+      (and (vector? param-target)
+           (> (count param-target) 1)
+           (targets (subvec param-target 0 2))
+           ;; legacy dimension params come without stage-number, 0 is the default
+           (= (get-in param-target [2 :stage-number] 0)
+              ;; Currently, we have no multi-stage native queries, so the stage-number is always 0.
+              ;; If in the future we introduce such queries, we can specify the stage-number of tags
+              ;; and they should match the stage-number of the parameter target.
+              (get tag :stage-number 0))))))
+
+(mu/defn- tag-params
   "Return params from the provided `params` list targeting the provided `tag`."
   [tag    :- mbql.s/TemplateTag
    params :- [:maybe [:sequential mbql.s/Parameter]]]
-  (let [targets (tag-targets tag)]
+  (let [tag-target? (tag-target-pred tag)]
     (seq (for [param params
-               :when (contains? targets (:target param))]
+               :when (tag-target? (:target param))]
            param))))
 
 ;;; FieldFilter Params (Field Filters) (e.g. WHERE {{x}})
@@ -111,11 +124,11 @@
                 param-display-name)
            {:type qp.error-type/missing-required-parameter}))
 
-(mu/defn ^:private field-filter->field-id :- ::lib.schema.id/field
+(mu/defn- field-filter->field-id :- ::lib.schema.id/field
   [field-filter]
   (second field-filter))
 
-(mu/defn ^:private field-filter-value
+(mu/defn- field-filter-value
   "Get parameter value(s) for a Field filter. Returns map if there is a normal single value, or a vector of maps for
   multiple values."
   [tag    :- mbql.s/TemplateTag
@@ -153,9 +166,13 @@
       ;; so that this filter can be substituted with "1 = 1" regardless of whether or not this tag has default value
       (and (not (:required tag)) nil-value?)
       params/no-value
-      ;; When a FieldFilter has value=nil and is required, throw an exception
+      ;; When a FieldFilter has value=nil and is required, use the default value or throw an exception
       (and (:required tag) nil-value?)
-      (throw (missing-required-param-exception (:display-name tag)))
+      (if-let [tag-default (:default tag)]
+        (cond-> {:type    (:widget-type tag :dimension) ; widget-type is the actual type of the default value if set
+                 :value   tag-default}
+          tag-opts (assoc :options tag-opts))
+        (throw (missing-required-param-exception (:display-name tag))))
       ;; otherwise, attempt to fall back to the default value specified as part of the template tag.
       (some? (:default tag))
       (cond-> {:type    (:widget-type tag :dimension) ; widget-type is the actual type of the default value if set
@@ -220,7 +237,7 @@
   (let [snippet-id (or snippet-id
                        (throw (ex-info (tru "Unable to resolve Snippet: missing `:snippet-id`")
                                        {:tag tag, :type qp.error-type/invalid-parameter})))
-        snippet    (or (t2/select-one NativeQuerySnippet :id snippet-id)
+        snippet    (or (t2/select-one :model/NativeQuerySnippet :id snippet-id)
                        (throw (ex-info (tru "Snippet {0} {1} not found." snippet-id (pr-str snippet-name))
                                        {:snippet-id   snippet-id
                                         :snippet-name snippet-name
@@ -230,10 +247,9 @@
      {:snippet-id (:id snippet)
       :content    (:content snippet)})))
 
-
 ;;; Non-FieldFilter Params (e.g. WHERE x = {{x}})
 
-(mu/defn ^:private param-value-for-raw-value-tag
+(mu/defn- param-value-for-raw-value-tag
   "Get the value that should be used for a raw value (i.e., non-Field filter) template tag from `params`."
   [tag    :- mbql.s/TemplateTag
    params :- [:maybe [:sequential mbql.s/Parameter]]]
@@ -251,8 +267,6 @@
     ;; If the param is not present in `params` use a default from either the tag or the Dashboard parameter.
     ;; If both the tag and Dashboard parameter specify a default value, prefer the default value from the tag.
     (or (:value matching-param)
-        (when (and nil-value? (:required tag))
-          (throw (missing-required-param-exception (:display-name tag))))
         (when (and nil-value? (not (:required tag)))
           params/no-value)
         (:default tag)
@@ -273,16 +287,18 @@
   [tag params]
   (param-value-for-raw-value-tag tag params))
 
-
 ;;; Parsing Values
 
-(mu/defn ^:private parse-number :- number?
+(mu/defn- parse-number :- number?
   "Parse a string like `1` or `2.0` into a valid number. Done mostly to keep people from passing in
-   things that aren't numbers, like SQL identifiers."
+  things that aren't numbers, like SQL identifiers. When the value is an integer outside the Long range, BigInteger
+  is returned."
   [s :- :string]
-  (.parse (NumberFormat/getInstance) ^String s))
+  (if (re-find #"\." s)
+    (Double/parseDouble s)
+    (or (parse-long s) (biginteger s))))
 
-(mu/defn ^:private value->number :- [:or number? [:sequential {:min 1} number?]]
+(mu/defn- value->number :- [:or number? [:sequential {:min 1} number?]]
   "Parse a 'numeric' param value. Normally this returns an integer or floating-point number, but as a somewhat
   undocumented feature it also accepts comma-separated lists of numbers. This was a side-effect of the old parameter
   code that unquestioningly substituted any parameter passed in as a number directly into the SQL. This has long been
@@ -301,7 +317,7 @@
     (string? value)
     (u/many-or-one (mapv parse-number (str/split value #",")))))
 
-(mu/defn ^:private parse-value-for-field-type :- :any
+(mu/defn- parse-value-for-field-type :- :any
   "Do special parsing for value for a (presumably textual) FieldFilter (`:type` = `:dimension`) param (i.e., attempt
   to parse it as appropriate based on the base type and semantic type of the Field associated with it). These are
   special cases for handling types that do not have an associated parameter type (such as `date` or `number`), such as
@@ -317,7 +333,7 @@
     :else
     value))
 
-(mu/defn ^:private update-filter-for-field-type :- ParsedParamValue
+(mu/defn- update-filter-for-field-type :- ParsedParamValue
   "Update a Field Filter with a textual, or sequence of textual, values. The base type and semantic type of the field
   are used to determine what 'semantic' type interpretation is required (e.g. for UUID fields)."
   [{field :field, {value :value} :value, :as field-filter} :- FieldFilter]
@@ -335,7 +351,7 @@
     (cond-> field-filter
       new-value (assoc-in [:value :value] new-value))))
 
-(mu/defn ^:private parse-value-for-type :- ParsedParamValue
+(mu/defn- parse-value-for-type :- ParsedParamValue
   "Parse a `value` based on the type chosen for the param, such as `text` or `number`. (Depending on the type of param
   created, `value` here might be a raw value or a map including information about the Field it references as well as a
   value.) For numbers, dates, and the like, this will parse the string appropriately; for `text` parameters, this will
@@ -368,7 +384,7 @@
     :else
     value))
 
-(mu/defn ^:private value-for-tag :- ParsedParamValue
+(mu/defn- value-for-tag :- ParsedParamValue
   "Given a map `tag` (a value in the `:template-tags` dictionary) return the corresponding value from the `params`
    sequence. The `value` is something that can be compiled to SQL via `->replacement-snippet-info`."
   [tag    :- mbql.s/TemplateTag
@@ -404,3 +420,13 @@
                        :tags   tags
                        :params params}
                       e)))))
+
+(mu/defn referenced-card-ids :- [:set ::lib.schema.id/card]
+  "Return a set of all Card IDs referenced in the parameters in `params-map`. This should be added to the (inner) query
+  under the `:metabase.models.query.permissions/referenced-card-ids` key when doing parameter expansion."
+  [params-map :- [:map-of ::lib.schema.common/non-blank-string ParsedParamValue]]
+  (into #{}
+        (keep (fn [param]
+                (when (params/ReferencedCardQuery? param)
+                  (:card-id param))))
+        (vals params-map)))

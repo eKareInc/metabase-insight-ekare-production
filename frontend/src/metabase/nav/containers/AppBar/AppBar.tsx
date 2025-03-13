@@ -1,16 +1,16 @@
-import { connect } from "react-redux";
 import { withRouter } from "react-router";
 import _ from "underscore";
 
 import { logout } from "metabase/auth/actions";
 import Collections from "metabase/entities/collections";
+import { connect } from "metabase/lib/redux";
 import { closeNavbar, toggleNavbar } from "metabase/redux/app";
 import type { RouterProps } from "metabase/selectors/app";
 import {
-  getIsNavbarOpen,
   getIsCollectionPathVisible,
   getIsLogoVisible,
   getIsNavBarEnabled,
+  getIsNavbarOpen,
   getIsNewButtonVisible,
   getIsProfileLinkVisible,
   getIsQuestionLineageVisible,

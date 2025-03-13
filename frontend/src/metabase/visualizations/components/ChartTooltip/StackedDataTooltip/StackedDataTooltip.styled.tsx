@@ -1,4 +1,6 @@
-import { css, type Theme } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
+import { type Theme, css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { darken } from "metabase/lib/colors";

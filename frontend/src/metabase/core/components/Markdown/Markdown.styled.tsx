@@ -1,4 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 import type { FC, ReactElement } from "react";
 import ReactMarkdown from "react-markdown";
@@ -31,7 +33,8 @@ export const MarkdownRoot = styled(getComponent(ReactMarkdown))<MarkdownProps>`
   a {
     cursor: pointer;
     text-decoration: none;
-    color: ${props => (props.unstyleLinks ? color("white") : color("brand"))};
+    color: ${props =>
+      props.unstyleLinks ? color("text-white") : color("brand")};
   }
 
   a:hover {

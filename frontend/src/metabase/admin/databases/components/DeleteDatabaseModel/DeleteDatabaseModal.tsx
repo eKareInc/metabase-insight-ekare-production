@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useAsync } from "react-use";
 import { jt, t } from "ttag";
 
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import ModalContent from "metabase/components/ModalContent";
 import Alert from "metabase/core/components/Alert";
 import Button from "metabase/core/components/Button";
@@ -111,6 +111,7 @@ const DeleteDatabaseModal = ({
               <Alert icon="info">
                 {jt`If you’re trying to migrate from a development DB to a production one, you don’t need to do this. You can just ${(
                   <Button
+                    key="button"
                     onlyText
                     onClick={handleEditConnectionDetailsClick}
                   >{t`edit your connection details.`}</Button>
@@ -146,7 +147,7 @@ const DeleteDatabaseModal = ({
           >
             <p>
               {jt`If you’re sure, please type ${(
-                <strong>{database.name}</strong>
+                <strong key="name">{database.name}</strong>
               )} in this box:`}
             </p>
             <DatabaseNameInputContainer>

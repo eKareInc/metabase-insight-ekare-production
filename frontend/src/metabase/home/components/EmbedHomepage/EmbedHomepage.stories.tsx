@@ -1,16 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import type { ComponentProps } from "react";
 
 import { EmbedHomepageView } from "./EmbedHomepageView";
 
-type Args = Omit<
-  React.ComponentProps<typeof EmbedHomepageView>,
-  "exampleDashboardId"
-> & {
+type Args = ComponentProps<typeof EmbedHomepageView> & {
   hasExampleDashboard: boolean;
 };
 
 const meta: Meta<Args> = {
-  title: "FEATURES/EmbedHomepage",
+  title: "App/FEATURES/EmbedHomepage",
   component: EmbedHomepageView,
   parameters: {
     controls: {
@@ -28,15 +26,12 @@ export const Default: Story = {
       <EmbedHomepageView
         {...args}
         exampleDashboardId={args.hasExampleDashboard ? 1 : null}
-        key={args.initialTab}
       />
     );
   },
   args: {
-    embeddingAutoEnabled: true,
     hasExampleDashboard: true,
     licenseActiveAtSetup: true,
-    initialTab: "interactive",
     interactiveEmbeddingQuickstartUrl:
       "https://www.metabase.com/docs/latest/embedding/interactive-embedding-quick-start-guide.html",
     embeddingDocsUrl:

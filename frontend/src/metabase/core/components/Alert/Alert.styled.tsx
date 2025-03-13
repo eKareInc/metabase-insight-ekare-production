@@ -1,4 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { color, lighten } from "metabase/lib/colors";
@@ -6,7 +8,7 @@ import { Icon } from "metabase/ui";
 
 import type { AlertVariant } from "./Alert";
 
-export interface AlertRootProps {
+interface AlertRootProps {
   hasBorder?: boolean;
   variant: AlertVariant;
 }
@@ -14,17 +16,17 @@ export interface AlertRootProps {
 const colorsByVariant = {
   border: {
     info: "var(--mb-color-bg-medium)",
-    error: color("error"),
+    error: "var(--mb-color-error)",
     warning: color("warning"),
   },
   background: {
     info: "var(--mb-color-bg-light)",
-    error: lighten("error", 0.4),
+    error: "var(--mb-color-bg-error)",
     warning: lighten("warning", 0.5),
   },
   icon: {
     info: color("text-dark"),
-    error: color("error"),
+    error: "var(--mb-color-error)",
     warning: color("warning"),
   },
 };
@@ -34,7 +36,7 @@ export const AlertRoot = styled.div<AlertRootProps>`
   align-items: center;
   padding: 1.25rem 1rem;
   line-height: 1.4rem;
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-dark);
   ${props =>
     props.hasBorder
       ? css`
@@ -50,13 +52,8 @@ interface AlertIconProps {
 }
 
 export const AlertIcon = styled(Icon)<AlertIconProps>`
+  box-sizing: content-box;
   flex-shrink: 0;
   padding: 0.5rem 1rem 0.5rem 0.5rem;
   color: ${props => colorsByVariant.icon[props.variant]};
-`;
-
-export const AlertLink = styled.a`
-  color: var(--mb-color-brand);
-  cursor: pointer;
-  font-weight: bold;
 `;

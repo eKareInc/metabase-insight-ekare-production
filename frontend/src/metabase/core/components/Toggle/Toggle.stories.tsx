@@ -1,21 +1,24 @@
-import { useArgs } from "@storybook/addons";
-import type { ComponentStory } from "@storybook/react";
+import { useArgs } from "@storybook/preview-api";
+import type { StoryFn } from "@storybook/react";
 
 import Toggle from "./Toggle";
 
 export default {
-  title: "Core/Toggle",
+  title: "Deprecated/Components/Toggle",
   component: Toggle,
 };
 
-const Template: ComponentStory<typeof Toggle> = args => {
+const Template: StoryFn<typeof Toggle> = args => {
   const [{ value }, updateArgs] = useArgs();
   const handleChange = (value: boolean) => updateArgs({ value });
 
   return <Toggle {...args} value={value} onChange={handleChange} />;
 };
 
-export const Default = Template.bind({});
-Default.args = {
-  value: false,
+export const Default = {
+  render: Template,
+
+  args: {
+    value: false,
+  },
 };

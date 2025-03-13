@@ -1,6 +1,6 @@
-import Tooltip from "metabase/core/components/Tooltip";
+import { useDispatch } from "metabase/lib/redux";
 import type { IconName } from "metabase/ui";
-import { Icon, Button } from "metabase/ui";
+import { Button, Icon, Tooltip } from "metabase/ui";
 import {
   type ClickAction,
   type CustomClickAction,
@@ -16,9 +16,9 @@ import {
   FormattingControl,
   InfoControl,
   SortControl,
+  Subtitle,
   TokenActionButton,
   TokenFilterActionButton,
-  Subtitle,
 } from "./ClickActionControl.styled";
 
 interface Props {
@@ -32,6 +32,8 @@ export const ClickActionControl = ({
   close,
   onClick,
 }: Props): JSX.Element | null => {
+  const dispatch = useDispatch();
+
   if (
     !isRegularClickAction(action) &&
     !isCustomClickAction(action) &&
@@ -42,11 +44,15 @@ export const ClickActionControl = ({
 
   const handleClick =
     isCustomClickAction(action) && action.onClick
-      ? () => (action as CustomClickAction).onClick?.({ closePopover: close })
+      ? () =>
+          (action as CustomClickAction).onClick?.({
+            dispatch,
+            closePopover: close,
+          })
       : () => onClick(action);
 
   if (isCustomClickActionWithView(action)) {
-    return action.view({ closePopover: close });
+    return action.view({ dispatch, closePopover: close });
   }
 
   const { buttonType } = action;
@@ -78,8 +84,12 @@ export const ClickActionControl = ({
 
     case "sort":
       return (
-        <Tooltip tooltip={action.tooltip}>
-          <SortControl onlyIcon onClick={handleClick}>
+        <Tooltip label={action.tooltip}>
+          <SortControl
+            onlyIcon
+            onClick={handleClick}
+            data-testid={`click-actions-sort-control-${action.name}`}
+          >
             {typeof action.icon === "string" && (
               <Icon size={14} name={action.icon as unknown as IconName} />
             )}
@@ -89,7 +99,7 @@ export const ClickActionControl = ({
 
     case "formatting":
       return (
-        <Tooltip tooltip={action.tooltip}>
+        <Tooltip label={action.tooltip}>
           <FormattingControl onlyIcon onClick={handleClick}>
             {typeof action.icon === "string" && (
               <Icon size={16} name={action.icon as unknown as IconName} />
@@ -101,21 +111,22 @@ export const ClickActionControl = ({
     case "horizontal":
       return (
         <Button
+          size="xs"
+          p="0.5rem"
+          mx="-0.5rem"
+          variant="inverse"
           classNames={{
             root: styles.horizontalButton,
             label: styles.label,
             inner: styles.inner,
           }}
-          leftIcon={
+          leftSection={
             action.iconText ? (
-              <ClickActionButtonTextIcon className={styles.nested}>
+              <ClickActionButtonTextIcon>
                 {action.iconText}
               </ClickActionButtonTextIcon>
             ) : action.icon ? (
-              <ClickActionButtonIcon
-                name={action.icon}
-                className={styles.nested}
-              />
+              <ClickActionButtonIcon name={action.icon} />
             ) : null
           }
           onClick={handleClick}
@@ -130,6 +141,4 @@ export const ClickActionControl = ({
     case "info":
       return <InfoControl>{action.title}</InfoControl>;
   }
-
-  return null;
 };

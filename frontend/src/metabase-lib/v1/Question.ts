@@ -1,71 +1,68 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck
 import { assoc, assocIn, chain, dissoc, getIn } from "icepick";
-import _ from "underscore";
-/* eslint-disable import/order */
-// NOTE: the order of these matters due to circular dependency issues
 import slugg from "slugg";
-import * as Lib from "metabase-lib";
-import StructuredQuery, {
-  STRUCTURED_QUERY_TEMPLATE,
-} from "metabase-lib/v1/queries/StructuredQuery";
-import NativeQuery, {
-  NATIVE_QUERY_TEMPLATE,
-} from "metabase-lib/v1/queries/NativeQuery";
-import type AtomicQuery from "metabase-lib/v1/queries/AtomicQuery";
-import InternalQuery from "metabase-lib/v1/queries/InternalQuery";
-import type BaseQuery from "metabase-lib/v1/queries/Query";
-import Metadata from "metabase-lib/v1/metadata/Metadata";
-import type Database from "metabase-lib/v1/metadata/Database";
-import type Table from "metabase-lib/v1/metadata/Table";
-import { sortObject } from "metabase-lib/v1/utils";
+import _ from "underscore";
 
-import type {
-  Card as CardObject,
-  CardDisplayType,
-  CardType,
-  CollectionId,
-  DatabaseId,
-  Dataset,
-  DatasetData,
-  DatasetQuery,
-  Parameter as ParameterObject,
-  ParameterId,
-  ParameterValues,
-  TableId,
-  VisualizationSettings,
-} from "metabase-types/api";
-
-// TODO: remove these dependencies
-import { getCardUiParameters } from "metabase-lib/v1/parameters/utils/cards";
 import { utf8_to_b64url } from "metabase/lib/encoding";
-
-import { getTemplateTagParametersFromCard } from "metabase-lib/v1/parameters/utils/template-tags";
-import {
-  applyFilterParameter,
-  applyTemporalUnitParameter,
-} from "metabase-lib/v1/parameters/utils/mbql";
-import { getQuestionVirtualTableId } from "metabase-lib/v1/metadata/utils/saved-questions";
-import { isTransientId } from "metabase-lib/v1/queries/utils/card";
+import { applyParameter } from "metabase/querying/parameters/utils/query";
+import * as Lib from "metabase-lib";
 import {
   ALERT_TYPE_PROGRESS_BAR_GOAL,
   ALERT_TYPE_ROWS,
   ALERT_TYPE_TIMESERIES_GOAL,
 } from "metabase-lib/v1/Alert";
+import type { NotificationTriggerType } from "metabase-lib/v1/Alert/constants";
+import type Database from "metabase-lib/v1/metadata/Database";
+import Metadata from "metabase-lib/v1/metadata/Metadata";
+import type Table from "metabase-lib/v1/metadata/Table";
+import { getQuestionVirtualTableId } from "metabase-lib/v1/metadata/utils/saved-questions";
+import { getCardUiParameters } from "metabase-lib/v1/parameters/utils/cards";
+import { getTemplateTagParametersFromCard } from "metabase-lib/v1/parameters/utils/template-tags";
+import type AtomicQuery from "metabase-lib/v1/queries/AtomicQuery";
+import InternalQuery from "metabase-lib/v1/queries/InternalQuery";
+import NativeQuery, {
+  NATIVE_QUERY_TEMPLATE,
+} from "metabase-lib/v1/queries/NativeQuery";
+import type BaseQuery from "metabase-lib/v1/queries/Query";
+import StructuredQuery, {
+  STRUCTURED_QUERY_TEMPLATE,
+} from "metabase-lib/v1/queries/StructuredQuery";
+import { isTransientId } from "metabase-lib/v1/queries/utils/card";
+import { sortObject } from "metabase-lib/v1/utils";
+import type {
+  CardDisplayType,
+  Card as CardObject,
+  CardType,
+  CollectionId,
+  DashCardId,
+  Dashboard,
+  DashboardId,
+  DatabaseId,
+  DatasetData,
+  DatasetQuery,
+  Field,
+  LastEditInfo,
+  ParameterDimensionTarget,
+  ParameterId,
+  Parameter as ParameterObject,
+  ParameterValuesMap,
+  TableId,
+  UserInfo,
+  VisualizationSettings,
+} from "metabase-types/api";
+import { isDimensionTarget } from "metabase-types/guards";
 
 import type { Query } from "../types";
-import {
-  isFilterParameter,
-  isTemporalUnitParameter,
-} from "metabase-lib/v1/parameters/utils/parameter-type";
 
 export type QuestionCreatorOpts = {
   databaseId?: DatabaseId;
   cardType?: CardType;
   tableId?: TableId;
   collectionId?: CollectionId;
+  dashboardId?: DashboardId;
   metadata?: Metadata;
-  parameterValues?: ParameterValues;
+  parameterValues?: ParameterValuesMap;
   type?: "query" | "native";
   name?: string;
   display?: CardDisplayType;
@@ -94,7 +91,7 @@ class Question {
    * Parameter values mean either the current values of dashboard filters or SQL editor template parameters.
    * They are in the grey area between UI state and question state, but having them in Question wrapper is convenient.
    */
-  _parameterValues: ParameterValues;
+  _parameterValues: ParameterValuesMap;
 
   private __mlv2Query: Lib.Query | undefined;
 
@@ -106,7 +103,7 @@ class Question {
   constructor(
     card: any,
     metadata?: Metadata,
-    parameterValues?: ParameterValues,
+    parameterValues?: ParameterValuesMap,
   ) {
     this._card = card;
     this._metadata =
@@ -230,20 +227,12 @@ class Question {
   /**
    * The visualization type of the question
    */
-  display(): string {
+  display(): CardDisplayType {
     return this._card && this._card.display;
   }
 
-  setDisplay(display) {
+  setDisplay(display: CardDisplayType) {
     return this.setCard(assoc(this.card(), "display", display));
-  }
-
-  cacheTTL(): number | null {
-    return this._card?.cache_ttl;
-  }
-
-  setCacheTTL(cache) {
-    return this.setCard(assoc(this.card(), "cache_ttl", cache));
   }
 
   type(): CardType {
@@ -373,16 +362,6 @@ class Question {
     return this._card && this._card.can_write;
   }
 
-  canRunAdhocQuery(): boolean {
-    if (this.isSaved()) {
-      return this._card.can_run_adhoc_query;
-    }
-
-    const query = this.query();
-    const { isEditable } = Lib.queryDisplayInfo(query);
-    return isEditable;
-  }
-
   canWriteActions(): boolean {
     const database = this.database();
 
@@ -420,7 +399,7 @@ class Question {
    * so you can provide the complete visualization settings object to `alertType`
    * for taking those into account
    */
-  alertType(visualizationSettings) {
+  alertType(visualizationSettings): NotificationTriggerType | null {
     const display = this.display();
 
     if (!this.canRun()) {
@@ -467,6 +446,10 @@ class Question {
     const metadata = this.metadataProvider();
     const tableId = getQuestionVirtualTableId(this.id());
     const table = Lib.tableOrCardMetadata(metadata, tableId);
+    if (!table) {
+      return this;
+    }
+
     const query = Lib.queryFromTableOrCardMetadata(metadata, table);
     return this.setQuery(query);
   }
@@ -478,26 +461,6 @@ class Question {
 
     const query = this.composeQuestion().query();
     return Question.create({ metadata: this.metadata() }).setQuery(query);
-  }
-
-  syncColumnsAndSettings(
-    queryResults?: Dataset,
-    prevQueryResults?: Dataset,
-    options?: Lib.SettingsSyncOptions,
-  ) {
-    const settings = this.settings();
-    const newSettings = Lib.syncColumnSettings(
-      settings,
-      queryResults,
-      prevQueryResults,
-      options,
-    );
-
-    if (newSettings !== settings) {
-      return this.setSettings(newSettings);
-    } else {
-      return this;
-    }
   }
 
   /**
@@ -515,12 +478,36 @@ class Question {
     return this.setCard(assoc(this.card(), "name", name));
   }
 
+  collection(): Collection | null | undefined {
+    return this?._card?.collection;
+  }
+
   collectionId(): CollectionId | null | undefined {
     return this._card && this._card.collection_id;
   }
 
   setCollectionId(collectionId: CollectionId | null | undefined) {
     return this.setCard(assoc(this.card(), "collection_id", collectionId));
+  }
+
+  dashboard(): Dashboard | undefined {
+    return this._card.dashboard;
+  }
+
+  dashboardId(): DashboardId | null {
+    return this._card.dashboard_id;
+  }
+
+  dashboardName(): string | undefined {
+    return this._card?.dashboard?.name ?? undefined;
+  }
+
+  dashboardCount(): number {
+    return this._card.dashboard_count;
+  }
+
+  setDashboardId(dashboardId: DashboardId | null | undefined) {
+    return this.setCard(assoc(this.card(), "dashboard_id", dashboardId));
   }
 
   id(): number {
@@ -541,7 +528,7 @@ class Question {
     dashboardId,
     dashcardId,
   }:
-    | { dashboardId: number; dashcardId: number }
+    | { dashboardId: DashboardId; dashcardId: DashCardId }
     | { dashboardId: undefined; dashcardId: undefined }): Question {
     const card = chain(this.card())
       .assoc("dashboardId", dashboardId)
@@ -559,7 +546,7 @@ class Question {
     return this.setCard(assoc(this.card(), "description", description));
   }
 
-  lastEditInfo() {
+  lastEditInfo(): LastEditInfo {
     return this._card && this._card["last-edit-info"];
   }
 
@@ -608,6 +595,10 @@ class Question {
     return this._card && this._card.archived;
   }
 
+  getResultMetadata() {
+    return this.card().result_metadata ?? [];
+  }
+
   setResultsMetadata(resultsMetadata) {
     const metadataColumns = resultsMetadata && resultsMetadata.columns;
     return this.setCard({
@@ -616,8 +607,13 @@ class Question {
     });
   }
 
-  getResultMetadata() {
-    return this.card().result_metadata ?? [];
+  setResultMetadataDiff(metadataDiff: Record<string, Partial<Field>>) {
+    const metadata = this.getResultMetadata();
+    const newMetadata = metadata.map(column => {
+      const columnDiff = metadataDiff[column.name];
+      return columnDiff ? { ...column, ...columnDiff } : column;
+    });
+    return this.setResultsMetadata({ columns: newMetadata });
   }
 
   /**
@@ -669,7 +665,7 @@ class Question {
     return question;
   }
 
-  parameters({ collectionPreview } = {}): ParameterObject[] {
+  private _getParameters = _.memoize((collectionPreview: boolean) => {
     return getCardUiParameters(
       this.card(),
       this.metadata(),
@@ -677,6 +673,10 @@ class Question {
       undefined,
       collectionPreview,
     );
+  });
+
+  parameters({ collectionPreview } = {}): ParameterObject[] {
+    return this._getParameters(collectionPreview);
   }
 
   // predicate function that determines if the question is "dirty" compared to the given question
@@ -715,6 +715,13 @@ class Question {
     return a.isDirtyComparedTo(b);
   }
 
+  isQueryDirtyComparedTo(originalQuestion: Question) {
+    return !Lib.areLegacyQueriesEqual(
+      this.datasetQuery(),
+      originalQuestion.datasetQuery(),
+    );
+  }
+
   // Internal methods
   _serializeForUrl({
     includeOriginalCardId = true,
@@ -727,6 +734,7 @@ class Question {
       name: this._card.name,
       description: this._card.description,
       collection_id: this._card.collection_id,
+      dashboard_id: this._card.dashboard_id,
       dataset_query: Lib.toLegacyQuery(query),
       display: this._card.display,
       ...(_.isEmpty(this._card.parameters)
@@ -760,30 +768,49 @@ class Question {
     return utf8_to_b64url(JSON.stringify(sortObject(cardCopy)));
   }
 
-  _convertParametersToMbql(): Question {
+  _convertParametersToMbql({ isComposed }: { isComposed: boolean }): Question {
     const query = this.query();
-    const stageIndex = -1;
     const { isNative } = Lib.queryDisplayInfo(query);
 
     if (isNative) {
       return this;
     }
 
-    const newQuery = this.parameters().reduce((query, parameter) => {
-      if (isFilterParameter(parameter)) {
-        return applyFilterParameter(query, stageIndex, parameter);
-      } else if (isTemporalUnitParameter(parameter)) {
-        return applyTemporalUnitParameter(query, stageIndex, parameter);
-      } else {
-        return query;
-      }
-    }, query);
-    const newQuestion = this.setQuery(newQuery)
+    // If the query is composed (models or metrics) we cannot add filters to the underlying query since that query is used for data source.
+    // Pivot tables cannot work when there is an extra stage added on top of breakouts and aggregations.
+    const queryWithExtraStage =
+      !isComposed && this.display() !== "pivot"
+        ? Lib.ensureFilterStage(query)
+        : query;
+    const queryWithFilters = this.parameters().reduce((newQuery, parameter) => {
+      const stageIndex =
+        isDimensionTarget(parameter.target) && !isComposed
+          ? getParameterDimensionTargetStageIndex(parameter.target)
+          : -1;
+      return applyParameter(
+        newQuery,
+        stageIndex,
+        parameter.type,
+        parameter.target,
+        parameter.value,
+      );
+    }, queryWithExtraStage);
+    const queryWithFiltersWithoutExtraStage =
+      Lib.dropEmptyStages(queryWithFilters);
+
+    const newQuestion = this.setQuery(queryWithFiltersWithoutExtraStage)
       .setParameters(undefined)
       .setParameterValues(undefined);
 
-    const hasQueryBeenAltered = query !== newQuery;
+    const hasQueryBeenAltered = queryWithExtraStage !== queryWithFilters;
     return hasQueryBeenAltered ? newQuestion.markDirty() : newQuestion;
+
+    function getParameterDimensionTargetStageIndex(
+      target: ParameterDimensionTarget,
+    ) {
+      const [_type, _variableTarget, options] = target;
+      return options?.["stage-number"] ?? -1;
+    }
   }
 
   query(): Query {
@@ -828,12 +855,27 @@ class Question {
     return getIn(this, ["_card", "moderation_reviews"]) || [];
   }
 
-  getCreator(): string {
+  getCreator(): UserInfo {
     return getIn(this, ["_card", "creator"]) || "";
   }
 
   getCreatedAt(): string {
     return getIn(this, ["_card", "created_at"]) || "";
+  }
+
+  canManageDB(): boolean {
+    return this.card().can_manage_db || false;
+  }
+
+  /** Applies the template tag parameters from the card to the question. */
+  applyTemplateTagParameters(): Question {
+    const { isNative } = Lib.queryDisplayInfo(this.query());
+
+    if (!isNative) {
+      return this;
+    }
+
+    return this.setParameters(getTemplateTagParametersFromCard(this.card()));
   }
 
   /**
@@ -844,6 +886,7 @@ class Question {
     databaseId,
     tableId,
     collectionId,
+    dashboardId,
     metadata,
     parameterValues,
     type = "query",
@@ -858,6 +901,7 @@ class Question {
     let card: CardObject = {
       name,
       collection_id: collectionId,
+      dashboard_id: dashboardId,
       display,
       visualization_settings,
       dataset_query,

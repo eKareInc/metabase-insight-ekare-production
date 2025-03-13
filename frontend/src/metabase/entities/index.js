@@ -1,11 +1,9 @@
 export { default as actions } from "./actions";
-export { default as alerts } from "./alerts";
 export { default as collections } from "./collections";
 export { default as snippetCollections } from "./snippet-collections";
 export { default as dashboards } from "./dashboards";
 export { default as pulses } from "./pulses";
 export { default as questions } from "./questions";
-export { ModelIndexes as modelIndexes } from "./model-indexes";
 export { IndexedEntities as indexedEntities } from "./indexed-entities";
 
 export { default as timelines } from "./timelines";

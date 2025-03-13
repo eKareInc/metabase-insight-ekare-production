@@ -4,15 +4,16 @@
   data from an application database to any empty application database for all combinations of supported application
   database types."
   (:require
-   #_{:clj-kondo/ignore [:deprecated-namespace]}
    [clojure.java.jdbc :as jdbc]
    [honey.sql :as sql]
    [metabase.config :as config]
    [metabase.db :as mdb]
    [metabase.db.setup :as mdb.setup]
+   [metabase.models.init]
    [metabase.plugins.classloader :as classloader]
    [metabase.util :as u]
    [metabase.util.i18n :refer [trs]]
+   [metabase.util.jvm :as u.jvm]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
    [metabase.util.malli.schema :as ms]
@@ -21,6 +22,11 @@
    (java.sql SQLException)))
 
 (set! *warn-on-reflection* true)
+
+(comment
+  ;; need at least basic model dynamic resolution stuff loaded. This SHOULD already be loaded by [[metabase.core.init]]
+  ;; but we'll include it here too for the benefit of tests.
+  metabase.models.init/keep-me)
 
 (defn- log-ok []
   (log/info (u/colorize 'green "[OK]")))
@@ -46,7 +52,9 @@
   "Entities in the order they should be serialized/deserialized. This is done so we make sure that we load
   instances of entities before others that might depend on them, e.g. `Databases` before `Tables` before `Fields`."
   (concat
-   [:model/Database
+   [:model/Channel
+    :model/ChannelTemplate
+    :model/Database
     :model/User
     :model/Setting
     :model/Table
@@ -96,7 +104,13 @@
     :model/TablePrivileges
     :model/AuditLog
     :model/RecentViews
-    :model/UserParameterValue]
+    :model/UserParameterValue
+    ;; 51+
+    :model/Notification
+    :model/NotificationSubscription
+    :model/NotificationHandler
+    :model/NotificationRecipient
+    :model/NotificationCard]
    (when config/ee-available?
      [:model/GroupTableAccessPolicy
       :model/ConnectionImpersonation])))
@@ -157,15 +171,18 @@
     ;; Sample Database, the correct details are reset automatically on every
     ;; launch (see [[metabase.sample-data/update-sample-database-if-needed!]]), and we don't support connecting other H2
     ;; Databases in prod anyway, so this ultimately shouldn't cause anyone any problems.
-    (if *copy-h2-database-details*
-      identity
-      (map (fn [database]
-             (cond-> database
-               (= (:engine database) "h2") (assoc :details "{}")))))
+    (map (fn [database]
+           (cond-> database
+             (or (:is_attached_dwh database)
+                 (and (not *copy-h2-database-details*)
+                      (= (:engine database) "h2"))) (assoc :details "{}"))))
     :model/Setting
     ;; Never create dumps with read-only-mode turned on.
     ;; It will be confusing to restore from and prevent key rotation.
     (remove (fn [{k :key}] (= k "read-only-mode")))
+    :model/Field
+    ;; unique_field_helper is a computed/generated column
+    (map #(dissoc % :unique_field_helper))
     ;; else
     identity))
 
@@ -362,7 +379,6 @@
                             {:model model}
                             e))))))))
 
-
 (defmethod update-sequence-values! :h2
   [_db-type data-source]
   #_{:clj-kondo/ignore [:discouraged-var]}
@@ -382,7 +398,9 @@
    target-db-type     :- [:enum :h2 :postgres :mysql]
    target-data-source :- (ms/InstanceOfClass javax.sql.DataSource)]
   ;; make sure the entire system is loaded before running this test, to make sure we account for all the models.
-  (doseq [ns-symb u/metabase-namespace-symbols]
+  ;;
+  ;; TODO -- THIS IS NOT A TEST!! WHAT ARE THESE COMMENTS TALKING ABOUT!
+  (doseq [ns-symb #_{:clj-kondo/ignore [:deprecated-var]} u.jvm/metabase-namespace-symbols]
     (classloader/require ns-symb))
   ;; make sure the source database is up-do-date
   (step (trs "Set up {0} source database and run migrations..." (name source-db-type))

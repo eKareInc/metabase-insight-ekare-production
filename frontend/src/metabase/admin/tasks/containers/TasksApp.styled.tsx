@@ -1,6 +1,6 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import { color } from "metabase/lib/colors";
 import { Icon } from "metabase/ui";
 
 export const SectionRoot = styled.div`
@@ -27,7 +27,7 @@ export const InfoIcon = styled(Icon)`
   margin-top: 0.3125rem;
   margin-left: 0.5rem;
   cursor: pointer;
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
 
   &:hover {
     color: var(--mb-color-brand);

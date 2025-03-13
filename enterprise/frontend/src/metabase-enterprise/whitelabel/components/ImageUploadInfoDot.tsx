@@ -1,7 +1,7 @@
 import { useTheme } from "@emotion/react";
 import { t } from "ttag";
 
-import { Icon, Stack, Text, HoverCard } from "metabase/ui";
+import { HoverCard, Icon, Stack, Text } from "metabase/ui";
 
 type IllustrationType = "background" | "icon";
 
@@ -33,7 +33,7 @@ export const ImageUploadInfoDot = ({ type }: CustomFileUploadInfoDot) => {
         <Icon name="info" color={theme.fn.themeColor("text-light")} />
       </HoverCard.Target>
       <HoverCard.Dropdown>
-        <Stack p="md" spacing="sm" maw={DESCRIPTIONS_WIDTHS[type]}>
+        <Stack p="md" gap="sm" maw={DESCRIPTIONS_WIDTHS[type]}>
           {DESCRIPTIONS[type].map((message, index) => (
             <Text key={index} size="sm">
               {message}

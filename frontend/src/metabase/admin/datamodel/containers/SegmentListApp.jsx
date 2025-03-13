@@ -1,7 +1,6 @@
 /* eslint-disable react/prop-types */
 import cx from "classnames";
 import { Component } from "react";
-import { connect } from "react-redux";
 import { t } from "ttag";
 import _ from "underscore";
 
@@ -12,13 +11,14 @@ import Link from "metabase/core/components/Link";
 import AdminS from "metabase/css/admin.module.css";
 import CS from "metabase/css/core/index.css";
 import Segments from "metabase/entities/segments";
+import { connect } from "metabase/lib/redux";
 
 class SegmentListAppInner extends Component {
   render() {
     const { segments, tableSelector, setArchived } = this.props;
 
     return (
-      <div className={cx(CS.px3, CS.pb2)}>
+      <div className={cx(CS.px3, CS.pb2)} data-testid="segment-list-app">
         <div className={cx(CS.flex, CS.py2)}>
           {tableSelector}
           <Link to="/admin/datamodel/segment/create" className={CS.mlAuto}>

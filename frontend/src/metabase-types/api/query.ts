@@ -1,10 +1,11 @@
+import type { UiParameter } from "metabase-lib/v1/parameters/types";
 import type {
+  CardId,
   DatabaseId,
   FieldId,
-  TableId,
   SegmentId,
+  TableId,
   TemplateTags,
-  CardId,
 } from "metabase-types/api";
 
 export interface NativeQuery {
@@ -19,6 +20,7 @@ export interface StructuredDatasetQuery {
 
   // Database is null when missing data permissions to the database
   database: DatabaseId | null;
+  parameters?: UiParameter[];
 }
 
 export interface NativeDatasetQuery {
@@ -27,7 +29,7 @@ export interface NativeDatasetQuery {
 
   // Database is null when missing data permissions to the database
   database: DatabaseId | null;
-  parameters?: unknown[];
+  parameters?: UiParameter[];
 }
 
 export type DatasetQuery = StructuredDatasetQuery | NativeDatasetQuery;
@@ -73,8 +75,8 @@ export const dateTimeUnits = [
   ...dateTimeRelativeUnits,
 ] as const;
 
-export type DateTimeAbsoluteUnit = typeof dateTimeAbsoluteUnits[number];
-export type DateTimeRelativeUnit = typeof dateTimeRelativeUnits[number];
+export type DateTimeAbsoluteUnit = (typeof dateTimeAbsoluteUnits)[number];
+export type DateTimeRelativeUnit = (typeof dateTimeRelativeUnits)[number];
 export type DatetimeUnit =
   | "default"
   | DateTimeAbsoluteUnit
@@ -115,9 +117,10 @@ export type ReferenceOptionsKeys =
 
 type ExpressionName = string;
 
-type StringLiteral = string;
-type NumericLiteral = number;
-type DatetimeLiteral = string;
+export type StringLiteral = string;
+export type NumericLiteral = number;
+export type BooleanLiteral = boolean;
+export type DatetimeLiteral = string;
 
 type Value = null | boolean | StringLiteral | NumericLiteral | DatetimeLiteral;
 type OrderableValue = NumericLiteral | DatetimeLiteral;
@@ -176,7 +179,7 @@ type CommonAggregation =
   | MaxAgg
   | OffsetAgg;
 
-type MetricAgg = ["metric", CardId];
+export type MetricAgg = ["metric", CardId];
 
 type InlineExpressionAgg = [
   "aggregation-options",
@@ -195,8 +198,8 @@ export type Breakout = ConcreteFieldReference;
 type FilterClause = Filter;
 export type Filter = FieldFilter | CompoundFilter | NotFilter | SegmentFilter;
 
-type AndFilter = ["and", Filter, Filter];
-type OrFilter = ["or", Filter, Filter];
+type AndFilter = ["and", ...Filter[]];
+type OrFilter = ["or", ...Filter[]];
 type CompoundFilter = AndFilter | OrFilter;
 
 export type FieldFilter =
@@ -274,7 +277,7 @@ type TimeIntervalFilterOptions = {
   "include-current"?: boolean;
 };
 
-type SegmentFilter = ["segment", SegmentId];
+export type SegmentFilter = ["segment", SegmentId];
 
 type OrderByClause = Array<OrderBy>;
 export type OrderBy = ["asc" | "desc", FieldReference];
@@ -294,6 +297,7 @@ export type Join = {
   "source-query"?: StructuredQuery;
   condition: JoinCondition;
   alias?: JoinAlias;
+  ident?: string;
   strategy?: JoinStrategy;
   fields?: JoinFields;
 };
@@ -362,25 +366,37 @@ export type ExpressionClause = {
 export type Expression =
   | NumericLiteral
   | StringLiteral
-  | boolean
-  | [ExpressionOperator, ExpressionOperand]
-  | [ExpressionOperator, ExpressionOperand, ExpressionOperand]
-  | ["offset", OffsetOptions, ExpressionOperand, NumericLiteral]
-  | [
-      ExpressionOperator,
-      ExpressionOperand,
-      ExpressionOperand,
-      ExpressionOperand,
-    ]
-  | ConcreteFieldReference;
+  | BooleanLiteral
+  | OffsetExpression
+  | CaseOrIfExpression
+  | CallExpression
+  | ConcreteFieldReference
+  | Filter;
+
+export type CallOptions = { [key: string]: unknown };
+export type CallExpression =
+  | [ExpressionOperator, ...ExpressionOperand[]]
+  | [ExpressionOperator, ...ExpressionOperand[], CallOptions];
+
+export type CaseOperator = "case";
+export type IfOperator = "if";
+export type CaseOrIfOperator = CaseOperator | IfOperator;
+
+export type CaseOptions = { default?: Expression };
+
+export type CaseOrIfExpression =
+  | [CaseOrIfOperator, [Expression, Expression][]]
+  | [CaseOrIfOperator, [Expression, Expression][], CaseOptions];
+
+export type OffsetExpression = [
+  "offset",
+  OffsetOptions,
+  Expression,
+  NumericLiteral,
+];
 
 type ExpressionOperator = string;
-type ExpressionOperand =
-  | ConcreteFieldReference
-  | NumericLiteral
-  | StringLiteral
-  | boolean
-  | Expression;
+type ExpressionOperand = Expression | CallOptions;
 
 type FieldsClause = ConcreteFieldReference[];
 

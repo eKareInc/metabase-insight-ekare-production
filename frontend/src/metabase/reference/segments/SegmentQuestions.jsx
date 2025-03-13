@@ -1,7 +1,6 @@
 /* eslint "react/prop-types": "warn" */
 import cx from "classnames";
 import PropTypes from "prop-types";
-import { connect } from "react-redux";
 import { t } from "ttag";
 
 import { useQuestionListQuery } from "metabase/common/hooks";
@@ -9,16 +8,17 @@ import AdminAwareEmptyState from "metabase/components/AdminAwareEmptyState";
 import List from "metabase/components/List";
 import S from "metabase/components/List/List.module.css";
 import ListItem from "metabase/components/ListItem";
-import LoadingAndErrorWrapper from "metabase/components/LoadingAndErrorWrapper";
+import { LoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper";
 import CS from "metabase/css/core/index.css";
+import { connect } from "metabase/lib/redux";
 import * as Urls from "metabase/lib/urls";
 import * as metadataActions from "metabase/redux/metadata";
 import { getMetadata } from "metabase/selectors/metadata";
 import visualizations from "metabase/visualizations";
 
 import ReferenceHeader from "../components/ReferenceHeader";
-import { getTableBySegment, getSegment } from "../selectors";
-import { getQuestionUrl, getDescription } from "../utils";
+import { getSegment, getTableBySegment } from "../selectors";
+import { getDescription, getQuestionUrl } from "../utils";
 
 const emptyStateData = (table, segment, metadata) => {
   return {

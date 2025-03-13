@@ -1,20 +1,20 @@
 import type { FormEventHandler } from "react";
 import { useState } from "react";
-import { t, jt } from "ttag";
+import { jt, t } from "ttag";
 
 import { isNotNull } from "metabase/lib/types";
-import { Stack, Flex, Button, Box, Icon } from "metabase/ui";
+import { Box, Button, Flex, Icon, Stack } from "metabase/ui";
 import * as Lib from "metabase-lib";
 
 import { ColumnAndSeparatorRow } from "./ColumnAndSeparatorRow";
 import { Example } from "./Example";
 import type { ColumnAndSeparator } from "./util";
 import {
-  getDefaultSeparator,
+  flatten,
   formatSeparator,
+  getDefaultSeparator,
   getExpressionName,
   getNextColumnAndSeparator,
-  flatten,
 } from "./util";
 
 interface Props {
@@ -151,10 +151,10 @@ export function CombineColumns({
   return (
     <form onSubmit={handleSubmit}>
       <Box maw="100vw" w={width} p="lg" pt={0}>
-        <Stack spacing="lg" mt="lg">
-          <Stack spacing="md">
+        <Stack gap="lg" mt="lg">
+          <Stack gap="md">
             <Box>
-              <Stack spacing="md">
+              <Stack gap="md">
                 {columnsAndSeparators.map(
                   (item, index) =>
                     // Do not allow editing the first column when it is passed from
@@ -193,7 +193,7 @@ export function CombineColumns({
               )}
 
               <Button
-                leftIcon={<Icon name="add" />}
+                leftSection={<Icon name="add" />}
                 p={0}
                 variant="subtle"
                 onClick={handleRowAdd}

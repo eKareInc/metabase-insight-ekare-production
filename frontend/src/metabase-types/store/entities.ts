@@ -1,12 +1,10 @@
 import type {
-  NormalizedAlert,
   NormalizedCard,
   NormalizedCollection,
   NormalizedDashboard,
   NormalizedDatabase,
   NormalizedField,
   NormalizedIndexedEntity,
-  NormalizedModelIndex,
   NormalizedNativeQuerySnippet,
   NormalizedSchema,
   NormalizedSegment,
@@ -17,7 +15,6 @@ import type {
 
 export interface EntitiesState {
   actions: Record<string, NormalizedWritebackAction>;
-  alerts: Record<string, NormalizedAlert>;
   collections: Record<string, NormalizedCollection>;
   dashboards: Record<string, NormalizedDashboard>;
   databases: Record<string, NormalizedDatabase>;
@@ -25,7 +22,6 @@ export interface EntitiesState {
   tables: Record<string, NormalizedTable>;
   fields: Record<string, NormalizedField>;
   segments: Record<string, NormalizedSegment>;
-  modelIndexes: Record<string, NormalizedModelIndex>;
   indexedEntities: Record<string, NormalizedIndexedEntity>;
   snippets: Record<string, NormalizedNativeQuerySnippet>;
   users: Record<string, NormalizedUser>;

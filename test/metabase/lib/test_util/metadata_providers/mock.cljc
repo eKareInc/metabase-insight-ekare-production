@@ -6,6 +6,7 @@
    [metabase.lib.metadata.protocols :as metadata.protocols]
    [metabase.lib.schema.metadata :as lib.schema.metadata]
    [metabase.lib.test-metadata :as meta]
+   [metabase.util :as u]
    [metabase.util.malli :as mu]))
 
 (defn- with-optional-lib-type
@@ -66,6 +67,19 @@
                     (assoc object :lib/type metadata-type))))
           (get metadata k))))
 
+(defn- mock-metadatas-for-card [metadata metadata-type card-id]
+  (let [k (case metadata-type
+            :metadata/metric :cards)]
+    (into []
+          (keep (fn [object]
+                  (when (and (= (:source-card-id object) card-id)
+                             (if (= metadata-type :metadata/metric)
+                               (and (= (:type object) :metric)
+                                    (not (:archived object)))
+                               true))
+                    (assoc object :lib/type metadata-type))))
+          (get metadata k))))
+
 (defn- mock-setting [metadata setting-key]
   (get-in metadata [:settings (keyword setting-key)]))
 
@@ -79,6 +93,8 @@
     (mock-tables metadata))
   (metadatas-for-table [_this metadata-type table-id]
     (mock-metadatas-for-table metadata metadata-type table-id))
+  (metadatas-for-card [_this metadata-type card-id]
+    (mock-metadatas-for-card metadata metadata-type card-id))
   (setting [_this setting-key]
     (mock-setting metadata setting-key))
 
@@ -108,7 +124,10 @@
     =>
     (lib/composed-metadata-provider (lib.tu/mock-metadata-provider {...}) parent-metadata-provider)"
   ([m :- MockMetadata]
-   (->MockMetadataProvider m))
+   (-> m
+       (update :fields #(for [field %]
+                          (u/assoc-default field :ident (u/generate-nano-id))))
+       ->MockMetadataProvider))
 
   ([parent-metadata-provider mock-metadata]
    (lib/composed-metadata-provider

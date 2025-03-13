@@ -6,7 +6,7 @@
   all middleware is combined. See [[handle-audit-app-internal-queries]]
   and [[handle-audit-app-internal-queries-middleware]] for example."
   (:require
-   [metabase.public-settings.premium-features :refer [defenterprise]]
+   [metabase.premium-features.core :refer [defenterprise]]
    [metabase.query-processor.error-type :as qp.error-type]
    [metabase.util.i18n :as i18n]))
 
@@ -18,6 +18,12 @@
   "Pre-processing middleware. Replaces source tables a User was querying against with source queries that (presumably)
   restrict the rows returned, based on presence of sandboxes."
   metabase-enterprise.sandbox.query-processor.middleware.row-level-restrictions
+  [query]
+  query)
+
+(defenterprise apply-impersonation
+  "Pre-processing middleware. Adds a key to the query if the user will be impersonated. Currently used solely for cache."
+  metabase-enterprise.impersonation.middleware
   [query]
   query)
 

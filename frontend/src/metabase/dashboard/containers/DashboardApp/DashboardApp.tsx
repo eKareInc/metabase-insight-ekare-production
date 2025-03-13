@@ -2,24 +2,28 @@ import cx from "classnames";
 import type { ReactNode } from "react";
 import { useCallback, useEffect } from "react";
 import type { ConnectedProps } from "react-redux";
-import { connect } from "react-redux";
-import type { Route } from "react-router";
+import type { Route, WithRouterProps } from "react-router";
 import { push } from "react-router-redux";
 import { useUnmount } from "react-use";
 import { t } from "ttag";
 import _ from "underscore";
 
-import { LeaveConfirmationModal } from "metabase/components/LeaveConfirmationModal";
 import CS from "metabase/css/core/index.css";
 import { Dashboard } from "metabase/dashboard/components/Dashboard/Dashboard";
-import favicon from "metabase/hoc/Favicon";
+import { DashboardLeaveConfirmationModal } from "metabase/dashboard/components/DashboardLeaveConfirmationModal";
+import {
+  useDashboardUrlParams,
+  useDashboardUrlQuery,
+  useRefreshDashboard,
+} from "metabase/dashboard/hooks";
 import title from "metabase/hoc/Title";
 import titleWithLoadingTime from "metabase/hoc/TitleWithLoadingTime";
+import { useFavicon } from "metabase/hooks/use-favicon";
 import { useLoadingTimer } from "metabase/hooks/use-loading-timer";
 import { useUniqueId } from "metabase/hooks/use-unique-id";
 import { useWebNotification } from "metabase/hooks/use-web-notification";
 import { parseHashOptions } from "metabase/lib/browser";
-import { useDispatch } from "metabase/lib/redux";
+import { connect, useDispatch } from "metabase/lib/redux";
 import * as Urls from "metabase/lib/urls";
 import { closeNavbar, setErrorPage } from "metabase/redux/app";
 import { addUndo, dismissUndo } from "metabase/redux/undo";
@@ -39,15 +43,15 @@ import {
   getDashboardComplete,
   getDocumentTitle,
   getFavicon,
-  getIsAdditionalInfoVisible,
   getIsAddParameterPopoverOpen,
+  getIsAdditionalInfoVisible,
+  getIsDashCardsLoadingComplete,
+  getIsDashCardsRunning,
   getIsDirty,
   getIsEditing,
   getIsEditingParameter,
   getIsHeaderVisible,
-  getIsLoadingComplete,
   getIsNavigatingBackToDashboard,
-  getIsRunning,
   getIsSharing,
   getLoadingStartTime,
   getParameterValues,
@@ -82,8 +86,8 @@ const mapStateToProps = (state: State) => {
     sidebar: getSidebar(state),
     pageFavicon: getFavicon(state),
     documentTitle: getDocumentTitle(state),
-    isRunning: getIsRunning(state),
-    isLoadingComplete: getIsLoadingComplete(state),
+    isRunning: getIsDashCardsRunning(state),
+    isLoadingComplete: getIsDashCardsLoadingComplete(state),
     isHeaderVisible: getIsHeaderVisible(state),
     isAdditionalInfoVisible: getIsAdditionalInfoVisible(state),
     selectedTabId: getSelectedTabId(state),
@@ -101,11 +105,32 @@ const mapDispatchToProps = {
 const connector = connect(mapStateToProps, mapDispatchToProps);
 type ReduxProps = ConnectedProps<typeof connector>;
 
-type DashboardAppProps = OwnProps & ReduxProps;
+export type DashboardAppProps = OwnProps & ReduxProps & WithRouterProps;
 
 const DashboardApp = (props: DashboardAppProps) => {
-  const { dashboard, isRunning, isLoadingComplete, isEditing, isDirty, route } =
-    props;
+  useFavicon({ favicon: props.pageFavicon });
+
+  const {
+    dashboard,
+    isRunning,
+    isLoadingComplete,
+    isEditing,
+    isDirty,
+    route,
+    router,
+  } = props;
+
+  const {
+    documentTitle: _documentTitle,
+    isRunning: _isRunning,
+    isLoadingComplete: _isLoadingComplete,
+    children,
+    location,
+    ...dashboardProps
+  } = props;
+
+  const parameterQueryParams = location.query;
+  const dashboardId = getDashboardId(props);
 
   const options = parseHashOptions(window.location.hash);
   const editingOnLoad = options.edit;
@@ -137,7 +162,7 @@ const DashboardApp = (props: DashboardAppProps) => {
     }
 
     return () => {
-      dispatch(dismissUndo(slowToastId));
+      dispatch(dismissUndo({ undoId: slowToastId }));
     };
   }, [
     dashboard?.name,
@@ -149,7 +174,7 @@ const DashboardApp = (props: DashboardAppProps) => {
 
   const onConfirmToast = useCallback(async () => {
     await requestPermission();
-    dispatch(dismissUndo(slowToastId));
+    dispatch(dismissUndo({ undoId: slowToastId }));
   }, [dispatch, requestPermission, slowToastId]);
 
   const onTimeout = useCallback(() => {
@@ -171,24 +196,48 @@ const DashboardApp = (props: DashboardAppProps) => {
     onTimeout,
   });
 
+  const { refreshDashboard } = useRefreshDashboard({
+    dashboardId: dashboardId,
+    parameterQueryParams,
+  });
+
   const {
-    documentTitle: _documentTitle,
-    pageFavicon: _pageFavicon,
-    isRunning: _isRunning,
-    isLoadingComplete: _isLoadingComplete,
-    children,
-    ...dashboardProps
-  } = props;
+    hasNightModeToggle,
+    isFullscreen,
+    isNightMode,
+    onNightModeChange,
+    refreshPeriod,
+    onFullscreenChange,
+    setRefreshElapsedHook,
+    onRefreshPeriodChange,
+    autoScrollToDashcardId,
+    reportAutoScrolledToDashcard,
+  } = useDashboardUrlParams({ location, onRefresh: refreshDashboard });
+
+  useDashboardUrlQuery(router, location);
 
   return (
     <div className={cx(CS.shrinkBelowContentSize, CS.fullHeight)}>
-      <LeaveConfirmationModal isEnabled={isEditing && isDirty} route={route} />
-
-      {/* @ts-expect-error for now until we can get the prop-drilled types sorted out. Previously DashboardControls was a JS file so types weren't checked, but now there's a Pandora's box here */}
+      <DashboardLeaveConfirmationModal
+        route={route}
+        isDirty={isDirty}
+        isEditing={isEditing}
+      />
       <Dashboard
-        dashboardId={getDashboardId(props)}
+        dashboardId={dashboardId}
         editingOnLoad={editingOnLoad}
         addCardOnLoad={addCardOnLoad}
+        autoScrollToDashcardId={autoScrollToDashcardId}
+        reportAutoScrolledToDashcard={reportAutoScrolledToDashcard}
+        isFullscreen={isFullscreen}
+        refreshPeriod={refreshPeriod}
+        isNightMode={isNightMode}
+        hasNightModeToggle={hasNightModeToggle}
+        setRefreshElapsedHook={setRefreshElapsedHook}
+        onNightModeChange={onNightModeChange}
+        onFullscreenChange={onFullscreenChange}
+        onRefreshPeriodChange={onRefreshPeriodChange}
+        parameterQueryParams={parameterQueryParams}
         {...dashboardProps}
       />
       {/* For rendering modal urls */}
@@ -207,7 +256,6 @@ function getDashboardId({ dashboardId, params }: DashboardAppProps) {
 
 export const DashboardAppConnected = _.compose(
   connector,
-  favicon(({ pageFavicon }: Pick<ReduxProps, "pageFavicon">) => pageFavicon),
   title(
     ({
       dashboard,

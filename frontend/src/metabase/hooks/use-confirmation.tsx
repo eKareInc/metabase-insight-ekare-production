@@ -24,7 +24,7 @@ export const useConfirmation = () => {
   };
 
   const modalContent = confirmationState ? (
-    <Modal isOpen onClose={handleClose}>
+    <Modal isOpen onClose={handleClose} data-testid="confirm-modal">
       <ConfirmContent
         title={confirmationState.title}
         message={confirmationState?.message}

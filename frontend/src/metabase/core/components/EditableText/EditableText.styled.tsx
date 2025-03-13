@@ -1,9 +1,9 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import { color } from "metabase/lib/colors";
-
-export interface EditableTextRootProps {
+interface EditableTextRootProps {
   isEditing?: boolean;
   isDisabled: boolean;
   isEditingMarkdown?: boolean;
@@ -11,7 +11,7 @@ export interface EditableTextRootProps {
 
 export const EditableTextRoot = styled.div<EditableTextRootProps>`
   position: relative;
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-primary);
   padding: 0.25rem;
   border: 1px solid transparent;
   border-radius: 4px;

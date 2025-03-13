@@ -1,7 +1,9 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
+import { forwardRef } from "react";
 
 import { color, lighten } from "metabase/lib/colors";
-import { Icon } from "metabase/ui";
+import { Icon, type IconProps } from "metabase/ui";
 
 import { PermissionsSelectOption } from "./PermissionsSelectOption";
 
@@ -30,8 +32,8 @@ export const OptionsListItem = styled.li`
   padding: 0.5rem 1rem;
 
   &:hover {
-    color: ${color("white")};
-    background-color: ${lighten("accent7", 0.1)};
+    color: var(--mb-color-text-white);
+    background-color: ${() => lighten("accent7", 0.1)};
   }
 `;
 
@@ -52,15 +54,21 @@ export const ToggleLabel = styled.label`
   margin-right: 1rem;
 `;
 
-export const WarningIcon = styled(Icon)`
+export const WarningIcon = styled(
+  forwardRef<SVGSVGElement, IconProps>(function WarningIcon(props, ref) {
+    return (
+      <Icon
+        {...props}
+        size={props.size ?? 18}
+        name={props.name ?? "warning"}
+        ref={ref}
+      />
+    );
+  }),
+)`
   margin-right: 0.25rem;
-  color: ${color("text-light")};
+  color: var(--mb-color-text-light);
 `;
-
-WarningIcon.defaultProps = {
-  size: 18,
-  name: "warning",
-};
 
 export const DisabledPermissionOption = styled(PermissionsSelectOption)<{
   isHighlighted: boolean;

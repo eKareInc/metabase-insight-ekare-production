@@ -61,6 +61,8 @@ import breakout_component from "./breakout.svg?component";
 import breakout_source from "./breakout.svg?source";
 import bubble_component from "./bubble.svg?component";
 import bubble_source from "./bubble.svg?source";
+import bug_component from "./bug.svg?component";
+import bug_source from "./bug.svg?source";
 import burger_component from "./burger.svg?component";
 import burger_source from "./burger.svg?source";
 import calendar_component from "./calendar.svg?component";
@@ -147,6 +149,8 @@ import folder_component from "./folder.svg?component";
 import folder_source from "./folder.svg?source";
 import folder_filled_component from "./folder_filled.svg?component";
 import folder_filled_source from "./folder_filled.svg?source";
+import format_code_component from "./format_code.svg?component";
+import format_code_source from "./format_code.svg?source";
 import formula_component from "./formula.svg?component";
 import formula_source from "./formula.svg?source";
 import function_component from "./function.svg?component";
@@ -161,8 +165,14 @@ import gear_component from "./gear.svg?component";
 import gear_source from "./gear.svg?source";
 import gem_component from "./gem.svg?component";
 import gem_source from "./gem.svg?source";
+import globe_component from "./globe.svg?component";
+import globe_source from "./globe.svg?source";
 import google_component from "./google.svg?component";
 import google_source from "./google.svg?source";
+import google_drive_component from "./google_drive.svg?component";
+import google_drive_source from "./google_drive.svg?source";
+import google_sheet_component from "./google_sheet.svg?component";
+import google_sheet_source from "./google_sheet.svg?source";
 import grabber_component from "./grabber.svg?component";
 import grabber_source from "./grabber.svg?source";
 import grid_component from "./grid.svg?component";
@@ -205,6 +215,8 @@ import label_component from "./label.svg?component";
 import label_source from "./label.svg?source";
 import ldap_component from "./ldap.svg?component";
 import ldap_source from "./ldap.svg?source";
+import learn_component from "./learn.svg?component";
+import learn_source from "./learn.svg?source";
 import lightbulb_component from "./lightbulb.svg?component";
 import lightbulb_source from "./lightbulb.svg?source";
 import line_component from "./line.svg?component";
@@ -227,6 +239,8 @@ import location_component from "./location.svg?component";
 import location_source from "./location.svg?source";
 import lock_component from "./lock.svg?component";
 import lock_source from "./lock.svg?source";
+import lock_filled_component from "./lock_filled.svg?component";
+import lock_filled_source from "./lock_filled.svg?source";
 import mail_component from "./mail.svg?component";
 import mail_source from "./mail.svg?source";
 import mail_filled_component from "./mail_filled.svg?component";
@@ -249,12 +263,16 @@ import notebook_component from "./notebook.svg?component";
 import notebook_source from "./notebook.svg?source";
 import number_component from "./number.svg?component";
 import number_source from "./number.svg?source";
+import official_collection_component from "./official_collection.svg?component";
+import official_collection_source from "./official_collection.svg?source";
 import palette_component from "./palette.svg?component";
 import palette_source from "./palette.svg?source";
 import pause_component from "./pause.svg?component";
 import pause_source from "./pause.svg?source";
 import pencil_component from "./pencil.svg?component";
 import pencil_source from "./pencil.svg?source";
+import pencil_lines_component from "./pencil_lines.svg?component";
+import pencil_lines_source from "./pencil_lines.svg?source";
 import permissions_limited_component from "./permissions_limited.svg?component";
 import permissions_limited_source from "./permissions_limited.svg?source";
 import person_component from "./person.svg?component";
@@ -297,6 +315,8 @@ import rocket_component from "./rocket.svg?component";
 import rocket_source from "./rocket.svg?source";
 import ruler_component from "./ruler.svg?component";
 import ruler_source from "./ruler.svg?source";
+import sankey_component from "./sankey.svg?component";
+import sankey_source from "./sankey.svg?source";
 import search_component from "./search.svg?component";
 import search_source from "./search.svg?source";
 import section_component from "./section.svg?component";
@@ -323,6 +343,8 @@ import sort_component from "./sort.svg?component";
 import sort_source from "./sort.svg?source";
 import sort_arrows_component from "./sort_arrows.svg?component";
 import sort_arrows_source from "./sort_arrows.svg?source";
+import sparkles_component from "./sparkles.svg?component";
+import sparkles_source from "./sparkles.svg?source";
 import split_component from "./split.svg?component";
 import split_source from "./split.svg?source";
 import sql_component from "./sql.svg?component";
@@ -347,6 +369,8 @@ import sun_component from "./sun.svg?component";
 import sun_source from "./sun.svg?source";
 import sync_component from "./sync.svg?component";
 import sync_source from "./sync.svg?source";
+import t_shirt_component from "./t-shirt.svg?component";
+import t_shirt_source from "./t-shirt.svg?source";
 import tab_component from "./tab.svg?component";
 import tab_source from "./tab.svg?source";
 import table_component from "./table.svg?component";
@@ -369,6 +393,8 @@ import unknown_component from "./unknown.svg?component";
 import unknown_source from "./unknown.svg?source";
 import unpin_component from "./unpin.svg?component";
 import unpin_source from "./unpin.svg?source";
+import unsubscribe_component from "./unsubscribe.svg?component";
+import unsubscribe_source from "./unsubscribe.svg?source";
 import upload_component from "./upload.svg?component";
 import upload_source from "./upload.svg?source";
 import variable_component from "./variable.svg?component";
@@ -381,8 +407,12 @@ import view_archive_component from "./view_archive.svg?component";
 import view_archive_source from "./view_archive.svg?source";
 import warning_component from "./warning.svg?component";
 import warning_source from "./warning.svg?source";
+import warning_round_filled_component from "./warning_round_filled.svg?component";
+import warning_round_filled_source from "./warning_round_filled.svg?source";
 import waterfall_component from "./waterfall.svg?component";
 import waterfall_source from "./waterfall.svg?source";
+import webhook_component from "./webhook.svg?component";
+import webhook_source from "./webhook.svg?source";
 import zoom_in_component from "./zoom_in.svg?component";
 import zoom_in_source from "./zoom_in.svg?source";
 import zoom_out_component from "./zoom_out.svg?component";
@@ -669,6 +699,14 @@ export const Icons = {
     component: filter_component,
     source: filter_source,
   },
+  bug: {
+    component: bug_component,
+    source: bug_source,
+  },
+  format_code: {
+    component: format_code_component,
+    source: format_code_source,
+  },
   formula: {
     component: formula_component,
     source: formula_source,
@@ -705,6 +743,10 @@ export const Icons = {
     component: gem_component,
     source: gem_source,
   },
+  globe: {
+    component: globe_component,
+    source: globe_source,
+  },
   grabber: {
     component: grabber_component,
     source: grabber_source,
@@ -720,6 +762,14 @@ export const Icons = {
   google: {
     component: google_component,
     source: google_source,
+  },
+  google_drive: {
+    component: google_drive_component,
+    source: google_drive_source,
+  },
+  google_sheet: {
+    component: google_sheet_component,
+    source: google_sheet_source,
   },
   history: {
     component: history_component,
@@ -793,6 +843,10 @@ export const Icons = {
     component: ldap_component,
     source: ldap_source,
   },
+  learn: {
+    component: learn_component,
+    source: learn_source,
+  },
   lightbulb: {
     component: lightbulb_component,
     source: lightbulb_source,
@@ -836,6 +890,10 @@ export const Icons = {
   lock: {
     component: lock_component,
     source: lock_source,
+  },
+  lock_filled: {
+    component: lock_filled_component,
+    source: lock_filled_source,
   },
   mail: {
     component: mail_component,
@@ -893,6 +951,10 @@ export const Icons = {
     component: pencil_component,
     source: pencil_source,
   },
+  pencil_lines: {
+    component: pencil_lines_component,
+    source: pencil_lines_source,
+  },
   permissions_limited: {
     component: permissions_limited_component,
     source: permissions_limited_source,
@@ -948,6 +1010,10 @@ export const Icons = {
   revert: {
     component: revert_component,
     source: revert_source,
+  },
+  sankey: {
+    component: sankey_component,
+    source: sankey_source,
   },
   share: {
     component: share_component,
@@ -1057,6 +1123,10 @@ export const Icons = {
     component: snippet_component,
     source: snippet_source,
   },
+  sparkles: {
+    component: sparkles_component,
+    source: sparkles_source,
+  },
   star_filled: {
     component: star_filled_component,
     source: star_filled_source,
@@ -1076,6 +1146,10 @@ export const Icons = {
   sun: {
     component: sun_component,
     source: sun_source,
+  },
+  "t-shirt": {
+    component: t_shirt_component,
+    source: t_shirt_source,
   },
   tab: {
     component: tab_component,
@@ -1115,13 +1189,17 @@ export const Icons = {
     component: unarchive_component,
     source: unarchive_source,
   },
+  unknown: {
+    component: unknown_component,
+    source: unknown_source,
+  },
   unpin: {
     component: unpin_component,
     source: unpin_source,
   },
-  unknown: {
-    component: unknown_component,
-    source: unknown_source,
+  unsubscribe: {
+    component: unsubscribe_component,
+    source: unsubscribe_source,
   },
   upload: {
     component: upload_component,
@@ -1135,6 +1213,10 @@ export const Icons = {
     component: verified_component,
     source: verified_source,
   },
+  official_collection: {
+    component: official_collection_component,
+    source: official_collection_source,
+  },
   verified_filled: {
     component: verified_filled_component,
     source: verified_filled_source,
@@ -1147,9 +1229,17 @@ export const Icons = {
     component: warning_component,
     source: warning_source,
   },
+  warning_round_filled: {
+    component: warning_round_filled_component,
+    source: warning_round_filled_source,
+  },
   waterfall: {
     component: waterfall_component,
     source: waterfall_source,
+  },
+  webhook: {
+    component: webhook_component,
+    source: webhook_source,
   },
   "10k": {
     component: ten_thousand_component,

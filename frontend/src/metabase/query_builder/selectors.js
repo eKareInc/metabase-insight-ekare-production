@@ -1,48 +1,51 @@
-/* eslint-disable import/order */
 /*eslint no-use-before-define: "error"*/
-
 import { createSelector } from "@reduxjs/toolkit";
-import d3 from "d3";
+import * as d3 from "d3";
 import { getIn, merge, updateIn } from "icepick";
 import _ from "underscore";
 
-import * as Lib from "metabase-lib";
-
-// Needed due to wrong dependency resolution order
-import { MetabaseApi } from "metabase/services";
+import { getDashboardById } from "metabase/dashboard/selectors";
+import Databases from "metabase/entities/databases";
+import { cleanIndexFlags } from "metabase/entities/model-indexes/actions";
+import Timelines from "metabase/entities/timelines";
+import { LOAD_COMPLETE_FAVICON } from "metabase/hooks/use-favicon";
+import { parseTimestamp } from "metabase/lib/time";
+import { getSortedTimelines } from "metabase/lib/timelines";
+import { isNotNull } from "metabase/lib/types";
+import { getEmbedOptions, getIsEmbedded } from "metabase/selectors/embed";
+import { getMetadata } from "metabase/selectors/metadata";
+import { getSetting } from "metabase/selectors/settings";
 import {
   extractRemappings,
   getVisualizationTransformed,
 } from "metabase/visualizations";
-import { getComputedSettingsForSeries } from "metabase/visualizations/lib/settings/visualization";
-
-import Databases from "metabase/entities/databases";
-import { ModelIndexes } from "metabase/entities/model-indexes";
-import Timelines from "metabase/entities/timelines";
-
-import { getAlerts } from "metabase/alert/selectors";
-import { getDashboardById } from "metabase/dashboard/selectors";
-import { parseTimestamp } from "metabase/lib/time";
-import { getSortedTimelines } from "metabase/lib/timelines";
-import { getEmbedOptions, getIsEmbedded } from "metabase/selectors/embed";
-import { getMetadata } from "metabase/selectors/metadata";
-import { getSetting } from "metabase/selectors/settings";
 import { getMode as getQuestionMode } from "metabase/visualizations/click-actions/lib/modes";
+import {
+  computeTimeseriesDataInverval,
+  minTimeseriesUnit,
+} from "metabase/visualizations/echarts/cartesian/utils/timeseries";
 import {
   getXValues,
   isTimeseries,
 } from "metabase/visualizations/lib/renderer_utils";
-
-import { isAdHocModelQuestion } from "metabase-lib/v1/metadata/utils/models";
+import { getComputedSettingsForSeries } from "metabase/visualizations/lib/settings/visualization";
+import * as Lib from "metabase-lib";
+import Question from "metabase-lib/v1/Question";
 import { getCardUiParameters } from "metabase-lib/v1/parameters/utils/cards";
 import {
-  normalizeParameters,
   normalizeParameterValue,
+  normalizeParameters,
 } from "metabase-lib/v1/parameters/utils/parameter-values";
-import Question from "metabase-lib/v1/Question";
 import { getIsPKFromTablePredicate } from "metabase-lib/v1/types/utils/isa";
-import { LOAD_COMPLETE_FAVICON } from "metabase/hoc/Favicon";
+import { isAbsoluteDateTimeUnit } from "metabase-types/guards/date-time";
+
 import { getQuestionWithDefaultVisualizationSettings } from "./actions/core/utils";
+import { createRawSeries, getWritableColumnProperties } from "./utils";
+import {
+  isQuestionDirty,
+  isQuestionRunnable,
+  isSavedQuestionChanged,
+} from "./utils/question";
 
 export const getUiControls = state => state.qb.uiControls;
 export const getQueryStatus = state => state.qb.queryStatus;
@@ -105,8 +108,40 @@ export const getIsBookmarked = (state, props) =>
       bookmark.type === "card" && bookmark.item_id === state.qb.card?.id,
   );
 
+export const getQueryBuilderMode = createSelector(
+  [getUiControls],
+  uiControls => uiControls.queryBuilderMode,
+);
+
+const getCardResultMetadata = createSelector(
+  [getCard],
+  card => card?.result_metadata,
+);
+
+const getModelMetadataDiff = createSelector(
+  [getCardResultMetadata, getMetadataDiff, getQueryBuilderMode],
+  (resultMetadata, metadataDiff, queryBuilderMode) => {
+    if (!resultMetadata || queryBuilderMode !== "dataset") {
+      return metadataDiff;
+    }
+
+    return {
+      ...metadataDiff,
+      ...Object.fromEntries(
+        resultMetadata.map(column => [
+          column.name,
+          {
+            ...getWritableColumnProperties(column),
+            ...metadataDiff[column.name],
+          },
+        ]),
+      ),
+    };
+  },
+);
+
 export const getQueryResults = createSelector(
-  [getRawQueryResults, getMetadataDiff],
+  [getRawQueryResults, getModelMetadataDiff],
   (queryResults, metadataDiff) => {
     if (!Array.isArray(queryResults) || !queryResults.length) {
       return null;
@@ -119,7 +154,7 @@ export const getQueryResults = createSelector(
     const { cols, results_metadata } = result.data;
 
     function applyMetadataDiff(column) {
-      const columnDiff = metadataDiff[column.field_ref];
+      const columnDiff = metadataDiff[column.name];
       return columnDiff ? merge(column, columnDiff) : column;
     }
 
@@ -217,11 +252,13 @@ export const getDatabaseId = createSelector(
 export const getTableForeignKeyReferences = state =>
   state.qb.tableForeignKeyReferences;
 
+const getDatabasesListDefaultValue = [];
 export const getDatabasesList = state =>
   Databases.selectors.getList(state, {
     entityQuery: { include: "tables", saved: true },
-  }) || [];
+  }) || getDatabasesListDefaultValue;
 
+const getTablesDefaultValue = [];
 export const getTables = createSelector(
   [getDatabaseId, getDatabasesList],
   (databaseId, databases) => {
@@ -232,7 +269,7 @@ export const getTables = createSelector(
       }
     }
 
-    return [];
+    return getTablesDefaultValue;
   },
 );
 
@@ -302,11 +339,6 @@ const getNextRunParameterValues = createSelector([getParameters], parameters =>
 export const getNextRunParameters = createSelector(
   [getParameters],
   parameters => normalizeParameters(parameters),
-);
-
-export const getQueryBuilderMode = createSelector(
-  [getUiControls],
-  uiControls => uiControls.queryBuilderMode,
 );
 
 export const getPreviousQueryBuilderMode = createSelector(
@@ -425,7 +457,7 @@ function areComposedEntitiesEquivalent({
   return isLastRunEquivalentToCurrent || isCurrentEquivalentToLastRun;
 }
 
-function areQueriesEquivalent({
+export function areQueriesEquivalent({
   originalQuestion,
   lastRunQuestion,
   currentQuestion,
@@ -563,54 +595,17 @@ export const getIsObjectDetail = createSelector(
 
 export const getIsDirty = createSelector(
   [getQuestion, getOriginalQuestion],
-  (question, originalQuestion) => {
-    // When viewing a dataset, its dataset_query is swapped with a clean query using the dataset as a source table
-    // (it's necessary for datasets to behave like tables opened in simple mode)
-    // We need to escape the isDirty check as it will always be true in this case,
-    // and the page will always be covered with a 'rerun' overlay.
-    // Once the dataset_query changes, the question will loose the "dataset" flag and it'll work normally
-    if (!question || isAdHocModelQuestion(question, originalQuestion)) {
-      return false;
-    }
-    return question.isDirtyComparedToWithoutParameters(originalQuestion);
-  },
+  isQuestionDirty,
 );
 
 export const getIsSavedQuestionChanged = createSelector(
   [getQuestion, getOriginalQuestion],
-  (question, originalQuestion) => {
-    const isSavedQuestion = originalQuestion != null;
-    const hasChanges = question != null;
-    const wereChangesSaved = question?.isSaved();
-    const hasUnsavedChanges = hasChanges && !wereChangesSaved;
-
-    return (
-      isSavedQuestion &&
-      hasUnsavedChanges &&
-      originalQuestion.type() === "question"
-    );
-  },
+  isSavedQuestionChanged,
 );
 
 export const getIsRunnable = createSelector(
   [getQuestion, getIsDirty],
-  (question, isDirty) => {
-    if (!question) {
-      return false;
-    }
-    if (!question.isSaved() || isDirty) {
-      const { isEditable } = Lib.queryDisplayInfo(question.query());
-      return question.canRun() && isEditable;
-    }
-    return question.canRun();
-  },
-);
-
-export const getQuestionAlerts = createSelector(
-  [getAlerts, getCard],
-  (alerts, card) =>
-    (card && card.id && _.pick(alerts, alert => alert.card.id === card.id)) ||
-    {},
+  isQuestionRunnable,
 );
 
 export const getResultsMetadata = createSelector(
@@ -680,32 +675,37 @@ export const getShouldShowUnsavedChangesWarning = createSelector(
  * Returns the card and query results data in a format that `Visualization.jsx` expects
  */
 export const getRawSeries = createSelector(
-  [getQuestion, getQueryResults, getLastRunDatasetQuery, getIsShowingRawTable],
-  (question, results, lastRunDatasetQuery, isShowingRawTable) => {
-    let display = question && question.display();
-    let settings = question && question.settings();
-
-    if (isShowingRawTable) {
-      display = "table";
-      settings = { "table.pivot": false };
-    }
-
-    // we want to provide the visualization with a card containing the latest
-    // "display", "visualization_settings", etc, (to ensure the correct visualization is shown)
-    // BUT the last executed "dataset_query" (to ensure data matches the query)
-    return (
-      results && [
+  [
+    getQuestion,
+    getFirstQueryResult,
+    getLastRunDatasetQuery,
+    getIsShowingRawTable,
+  ],
+  (question, queryResult, lastRunDatasetQuery, isShowingRawTable) => {
+    const rawSeries = createRawSeries({
+      question,
+      queryResult,
+      datasetQuery: lastRunDatasetQuery,
+    });
+    if (isShowingRawTable && rawSeries?.length > 0) {
+      const [{ card, ...rest }] = rawSeries;
+      return [
         {
+          ...rest,
           card: {
-            ...question.card(),
-            display: display,
-            visualization_settings: settings,
-            dataset_query: lastRunDatasetQuery,
+            ...card,
+            display: "table",
+            visualization_settings: {
+              ...card.visualization_settings,
+              "table.pivot": false,
+              "table.column_formatting": [],
+              column_settings: {},
+            },
           },
-          data: results[0] && results[0].data,
         },
-      ]
-    );
+      ];
+    }
+    return rawSeries;
   },
 );
 
@@ -758,10 +758,6 @@ const getNativeEditorSelectedRange = createSelector(
   uiControls => uiControls && uiControls.nativeEditorSelectedRange,
 );
 
-function isEventWithinDomain(event, xDomain) {
-  return event.timestamp.isBetween(xDomain[0], xDomain[1], undefined, "[]");
-}
-
 export const getIsTimeseries = createSelector(
   [getVisualizationSettings],
   settings => settings && isTimeseries(settings),
@@ -773,9 +769,44 @@ export const getTimeseriesXValues = createSelector(
     isTimeseries && series && settings && getXValues({ series, settings }),
 );
 
+const getTimeseriesDataInterval = createSelector(
+  [
+    getTransformedSeries,
+    getVisualizationSettings,
+    getIsTimeseries,
+    getTimeseriesXValues,
+  ],
+  (series, settings, isTimeseries, xValues) => {
+    if (!isTimeseries || !xValues) {
+      return null;
+    }
+    const columns = series[0]?.data?.cols ?? [];
+    const dimensions = settings?.["graph.dimensions"] ?? [];
+    const dimensionColumns = dimensions.map(dimension =>
+      columns.find(column => column != null && column.name === dimension),
+    );
+    const columnUnits = dimensionColumns
+      .map(column =>
+        isAbsoluteDateTimeUnit(column?.unit) ? column.unit : null,
+      )
+      .filter(isNotNull);
+    return computeTimeseriesDataInverval(
+      xValues,
+      minTimeseriesUnit(columnUnits),
+    );
+  },
+);
+
 export const getTimeseriesXDomain = createSelector(
   [getIsTimeseries, getTimeseriesXValues],
-  (isTimeseries, xValues) => xValues && isTimeseries && d3.extent(xValues),
+  (isTimeseries, xValues) => {
+    return (
+      isTimeseries &&
+      Array.isArray(xValues) &&
+      xValues.length > 0 &&
+      d3.extent(xValues)
+    );
+  },
 );
 
 export const getFetchedTimelines = createSelector([getEntities], entities => {
@@ -799,14 +830,40 @@ export const getTransformedTimelines = createSelector(
   },
 );
 
+function isEventWithinDomain(event, xDomain) {
+  return event.timestamp.isBetween(xDomain[0], xDomain[1], undefined, "[]");
+}
+
+function getXDomainForTimelines(xDomain, dataInterval) {
+  // When looking at, let's say, count of orders over years, last year value is Jan 1, 2024
+  // If we filter timeline events up until Jan 1, 2024, we won't see any events from 2024,
+  // so we need to extend xDomain by dataInterval.count * dataInterval.unit to include them
+  if (xDomain && isAbsoluteDateTimeUnit(dataInterval?.unit)) {
+    let maxValue = xDomain[1]
+      .clone()
+      .add(dataInterval.count, dataInterval.unit);
+
+    if (dataInterval.unit !== "hour" && dataInterval.unit !== "minute") {
+      maxValue = maxValue.subtract(1, "day");
+    }
+
+    return [xDomain[0], maxValue];
+  }
+
+  return xDomain;
+}
+
 export const getFilteredTimelines = createSelector(
-  [getTransformedTimelines, getTimeseriesXDomain],
-  (timelines, xDomain) => {
+  [getTransformedTimelines, getTimeseriesXDomain, getTimeseriesDataInterval],
+  (timelines, xDomain, dataInterval) => {
+    const timelineXDomain = getXDomainForTimelines(xDomain, dataInterval);
     return timelines
       .map(timeline =>
         updateIn(timeline, ["events"], events =>
           xDomain
-            ? events.filter(event => isEventWithinDomain(event, xDomain))
+            ? events.filter(event =>
+                isEventWithinDomain(event, timelineXDomain),
+              )
             : events,
         ),
       )
@@ -878,10 +935,7 @@ export const getIsVisualized = createSelector(
     question &&
     // table is the default
     ((question.display() !== "table" && question.display() !== "pivot") ||
-      // any "table." settings has been explcitly set
-      Object.keys(question.settings()).some(k => k.startsWith("table.")) ||
-      // "table.pivot" setting has been implicitly set to true
-      (settings && settings["table.pivot"])),
+      (settings != null && settings["table.pivot"])),
 );
 
 export const getIsLiveResizable = createSelector(
@@ -946,51 +1000,14 @@ export const getIsAdditionalInfoVisible = createSelector(
   (isEmbedded, embedOptions) => !isEmbedded || embedOptions.additional_info,
 );
 
-export const getCardAutocompleteResultsFn = state => {
-  return function autocompleteResults(query) {
-    const dbId = state.qb.card?.dataset_query?.database;
-    if (!dbId) {
-      return [];
-    }
-
-    const apiCall = MetabaseApi.db_card_autocomplete_suggestions({
-      dbId,
-      query,
-    });
-    return apiCall;
-  };
-};
-
-export const getAutocompleteResultsFn = state => {
-  const matchStyle = getSetting(state, "native-query-autocomplete-match-style");
-
-  if (matchStyle === "off") {
-    return null;
-  }
-
-  return function autocompleteResults(query) {
-    const dbId = state.qb.card?.dataset_query?.database;
-    if (!dbId) {
-      return [];
-    }
-
-    const apiCall = MetabaseApi.db_autocomplete_suggestions({
-      dbId,
-      query,
-      matchStyle,
-    });
-    return apiCall;
-  };
-};
-
 export const getDataReferenceStack = createSelector(
   [getUiControls, getDatabaseId],
   (uiControls, dbId) =>
     uiControls.dataReferenceStack
       ? uiControls.dataReferenceStack
       : dbId
-      ? [{ type: "database", item: { id: dbId } }]
-      : [],
+        ? [{ type: "database", item: { id: dbId } }]
+        : [],
 );
 
 export const getDashboardId = state => {
@@ -1031,14 +1048,21 @@ export function getEmbeddedParameterVisibility(state, slug) {
 }
 
 export const getSubmittableQuestion = (state, question) => {
-  const series = getTransformedSeries(state);
+  const rawSeries = createRawSeries({
+    question: getQuestion(state),
+    queryResult: getFirstQueryResult(state),
+    datasetQuery: getLastRunDatasetQuery(state),
+  });
+
+  const series = rawSeries
+    ? getVisualizationTransformed(extractRemappings(rawSeries)).series
+    : null;
+
   const resultsMetadata = getResultsMetadata(state);
   const isResultDirty = getIsResultDirty(state);
 
   if (question.type() === "model" && resultsMetadata) {
-    resultsMetadata.columns = ModelIndexes.actions.cleanIndexFlags(
-      resultsMetadata.columns,
-    );
+    resultsMetadata.columns = cleanIndexFlags(resultsMetadata.columns);
   }
 
   let submittableQuestion = question;

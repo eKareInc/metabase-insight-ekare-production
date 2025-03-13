@@ -14,23 +14,23 @@
    [metabase.driver.sql-jdbc.execute :as sql-jdbc.execute]
    [metabase.driver.sql-jdbc.sync :as sql-jdbc.sync]
    [metabase.driver.sql-jdbc.sync.common :as sql-jdbc.sync.common]
-   [metabase.driver.sql-jdbc.sync.describe-table
-    :as sql-jdbc.describe-table]
+   [metabase.driver.sql-jdbc.sync.describe-table :as sql-jdbc.describe-table]
    [metabase.driver.sql.query-processor :as sql.qp]
-   [metabase.driver.sql.query-processor.empty-string-is-null
-    :as sql.qp.empty-string-is-null]
+   [metabase.driver.sql.query-processor.empty-string-is-null :as sql.qp.empty-string-is-null]
    [metabase.driver.sql.util :as sql.u]
-   [metabase.driver.sql.util.unprepare :as unprepare]
    [metabase.models.secret :as secret]
    [metabase.query-processor.timezone :as qp.timezone]
+   [metabase.util.date-2 :as u.date]
    [metabase.util.honey-sql-2 :as h2x]
    [metabase.util.log :as log]
+   [metabase.util.malli :as mu]
+   [metabase.util.malli.registry :as mr]
    [metabase.util.ssh :as ssh])
   (:import
    (com.mchange.v2.c3p0 C3P0ProxyConnection)
    (java.security KeyStore)
    (java.sql Connection DatabaseMetaData ResultSet Types)
-   (java.time Instant OffsetDateTime ZonedDateTime)
+   (java.time Instant OffsetDateTime ZonedDateTime LocalDateTime)
    (oracle.jdbc OracleConnection OracleTypes)
    (oracle.sql TIMESTAMPTZ)))
 
@@ -39,10 +39,34 @@
 (driver/register! :oracle, :parent #{:sql-jdbc
                                      ::sql.qp.empty-string-is-null/empty-string-is-null})
 
-(doseq [[feature supported?] {:datetime-diff    true
-                              :now              true
-                              :convert-timezone true}]
+(doseq [[feature supported?] {:datetime-diff           true
+                              :now                     true
+                              :identifiers-with-spaces true
+                              :convert-timezone        true}]
   (defmethod driver/database-supports? [:oracle feature] [_driver _feature _db] supported?))
+
+(mr/def ::details
+  "Oracle database details map."
+  [:map
+   [:host                          {:optional true} [:maybe string?]]
+   [:port                          {:optional true} [:maybe integer?]]
+   [:user                          {:optional true} [:maybe string?]]
+   [:password                      {:optional true} [:maybe string?]]
+   [:sid                           {:optional true} [:maybe string?]]
+   [:service-name                  {:optional true} [:maybe string?]]
+   [:schema-filters-type           {:optional true} [:enum "inclusion" "exclusion"]]
+   [:schema-filters-patterns       {:optional true} [:maybe string?]]
+   [:ssl                           {:optional true} [:maybe boolean?]]
+   [:ssl-use-keystore              {:optional true} [:maybe boolean?]]
+   [:ssl-keystore-value            {:optional true} [:maybe string?]]
+   [:ssl-keystore-path             {:optional true} [:maybe string?]]
+   [:ssl-keystore-options          {:optional true} [:maybe string?]]
+   [:ssl-keystore-password-value   {:optional true} [:maybe string?]]
+   [:ssl-use-truststore            {:optional true} [:maybe boolean?]]
+   [:ssl-truststore-value          {:optional true} [:maybe string?]]
+   [:ssl-truststore-path           {:optional true} [:maybe string?]]
+   [:ssl-truststore-options        {:optional true} [:maybe string?]]
+   [:ssl-truststore-password-value {:optional true} [:maybe string?]]])
 
 (defmethod driver/prettify-native-form :oracle
   [_ native-form]
@@ -58,8 +82,10 @@
     [#"BLOB"        :type/*]
     [#"RAW"         :type/*]
     [#"CHAR"        :type/Text]
-    [#"CLOB"        :type/Text]
-    [#"DATE"        :type/Date]
+    [#"CLOB"        :type/OracleCLOB]
+    ;; Yes, the DATE is mapped to `:type/DateTime`. Oracle's DATE can store also a time part.
+    ;; See the docs - https://docs.oracle.com/en/database/oracle/oracle-database/19/nlspg/datetime-data-types-and-time-zone-support.html#GUID-3A1B7AC6-2EDB-4DDC-9C9D-223D4C72AC74
+    [#"DATE"        :type/DateTime]
     [#"DOUBLE"      :type/Float]
     ;; Expression filter type
     [#"^EXPRESSION" :type/*]
@@ -77,7 +103,8 @@
     ;; Spatial types -- see http://docs.oracle.com/cd/B28359_01/server.111/b28286/sql_elements001.htm#i107588
     [#"^SDO_"       :type/*]
     [#"STRUCT"      :type/*]
-    [#"TIMESTAMP(\(\d\))? WITH TIME ZONE" :type/DateTimeWithTZ]
+    [#"TIMESTAMP(\(\d\))? WITH TIME ZONE"       :type/DateTimeWithTZ]
+    [#"TIMESTAMP(\(\d\))? WITH LOCAL TIME ZONE" :type/DateTimeWithLocalTZ]
     [#"TIMESTAMP"   :type/DateTime]
     [#"URI"         :type/Text]
     [#"XML"         :type/*]]))
@@ -86,7 +113,7 @@
   [_ column-type]
   (database-type->base-type column-type))
 
-(defn- non-ssl-spec [_details spec host port sid service-name]
+(mu/defn- non-ssl-spec [_details :- ::details spec host port sid service-name]
   (assoc spec :subname (str "@" host
                             ":" port
                             (when sid
@@ -94,13 +121,12 @@
                             (when service-name
                               (str "/" service-name)))))
 
-(defn- ssl-spec [details spec host port sid service-name]
-  (-> (assoc spec :subname
-                  (format "@(DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=%s)(PORT=%d))(CONNECT_DATA=%s%s))"
-                          host
-                          port
-                          (if sid (str "(SID=" sid ")") "")
-                          (if service-name (str "(SERVICE_NAME=" service-name ")") "")))
+(mu/defn- ssl-spec [details :- ::details spec host port sid service-name]
+  (-> (assoc spec :subname (format "@(DESCRIPTION=(ADDRESS=(PROTOCOL=tcps)(HOST=%s)(PORT=%d))(CONNECT_DATA=%s%s))"
+                                   host
+                                   port
+                                   (if sid (str "(SID=" sid ")") "")
+                                   (if service-name (str "(SERVICE_NAME=" service-name ")") "")))
       (sql-jdbc.common/handle-additional-options details)))
 
 (def ^:private ^:const prog-name-property
@@ -115,12 +141,9 @@
       ;; so this ensures backwards compatibility.
       "JKS")))
 
-(defn- handle-keystore-options [details]
-  (let [keystore (-> (secret/db-details-prop->secret-map details "ssl-keystore")
-                     (secret/value->file! :oracle))
-        password (or (-> (secret/db-details-prop->secret-map details "ssl-keystore-password")
-                         secret/value->string)
-                     (secret/get-secret-string details "ssl-keystore-password"))]
+(mu/defn- handle-keystore-options [details :- ::details]
+  (let [keystore (secret/value-as-file! :oracle details "ssl-keystore")
+        password (secret/value-as-string :oracle details "ssl-keystore-password")]
     (-> details
         (assoc :javax.net.ssl.keyStoreType (guess-keystore-type keystore password)
                :javax.net.ssl.keyStore keystore
@@ -128,12 +151,9 @@
         (dissoc :ssl-use-keystore :ssl-keystore-value :ssl-keystore-path :ssl-keystore-password-value
                 :ssl-keystore-created-at :ssl-keystore-password-created-at))))
 
-(defn- handle-truststore-options [details]
-  (let [truststore (-> (secret/db-details-prop->secret-map details "ssl-truststore")
-                       (secret/value->file! :oracle))
-        password (or (-> (secret/db-details-prop->secret-map details "ssl-truststore-password")
-                         secret/value->string)
-                     (secret/get-secret-string details "ssl-truststore-password"))]
+(mu/defn- handle-truststore-options [details :- ::details]
+  (let [truststore (secret/value-as-file! :oracle details "ssl-truststore")
+        password (secret/value-as-string :oracle details "ssl-truststore-password")]
     (-> details
         (assoc :javax.net.ssl.trustStoreType (guess-keystore-type truststore password)
                :javax.net.ssl.trustStore truststore
@@ -141,19 +161,20 @@
         (dissoc :ssl-use-truststore :ssl-truststore-value :ssl-truststore-path :ssl-truststore-password-value
                 :ssl-truststore-created-at :ssl-truststore-password-created-at))))
 
-(defn- handle-ssl-options [{:keys [password ssl ssl-use-keystore ssl-use-truststore] :as details}]
+(mu/defn- handle-ssl-options [{:keys [password ssl ssl-use-keystore ssl-use-truststore] :as details} :- ::details]
   (if ssl
     (cond-> details
-      ssl-use-keystore handle-keystore-options
+      ssl-use-keystore                       handle-keystore-options
       (and ssl-use-keystore (nil? password)) (assoc :oracle.net.authentication_services "(TCPS)")
-      ssl-use-truststore handle-truststore-options
-      true (dissoc :ssl))
+      ssl-use-truststore                     handle-truststore-options
+      true                                   (dissoc :ssl))
     details))
 
-(defmethod sql-jdbc.conn/connection-details->spec :oracle
-  [_ {:keys [host port sid service-name]
-      :or   {host "localhost", port 1521}
-      :as   details}]
+(mu/defmethod sql-jdbc.conn/connection-details->spec :oracle
+  [_driver
+   {:keys [host port sid service-name]
+    :or   {host "localhost", port 1521}
+    :as   details} :- ::details]
   (assert (or sid service-name))
   (let [spec      {:classname "oracle.jdbc.OracleDriver", :subprotocol "oracle:thin"}
         finish-fn (partial (if (:ssl details) ssl-spec non-ssl-spec) details)
@@ -167,13 +188,14 @@
         (dissoc :host :port :sid :service-name :ssl)
         (finish-fn host port sid service-name))))
 
-(defmethod driver/can-connect? :oracle
-  [driver details]
+(mu/defmethod driver/can-connect? :oracle
+  [driver
+   details :- ::details]
   (let [connection (sql-jdbc.conn/connection-details->spec driver (ssh/include-ssh-tunnel! details))]
     (= 1M (first (vals (first (jdbc/query connection ["SELECT 1 FROM dual"])))))))
 
 (defmethod driver/db-start-of-week :oracle
-  [_]
+  [_driver]
   :sunday)
 
 ;;; use Honey SQL 2 `:oracle` `:dialect`
@@ -373,8 +395,8 @@
    if `x` is a timestamp with time zone."
   [unit x]
   (let [x (cond-> x
-             (h2x/is-of-type? x #"(?i)timestamp(\(\d\))? with time zone")
-             (h2x/at-time-zone (qp.timezone/results-timezone-id)))]
+            (h2x/is-of-type? x #"(?i)timestamp(\(\d\))? with time zone")
+            (h2x/at-time-zone (qp.timezone/results-timezone-id)))]
     (trunc unit x)))
 
 (defmethod sql.qp/datetime-diff [:oracle :year]
@@ -472,11 +494,14 @@
                  :where  [:<= [:raw "rownum"] [:inline (+ offset items)]]}]
        :where  [:> :__rownum__ offset]})))
 
-
 ;; Oracle doesn't support `TRUE`/`FALSE`; use `1`/`0`, respectively; convert these booleans to numbers.
 (defmethod sql.qp/->honeysql [:oracle Boolean]
   [_ bool]
   [:inline (if bool 1 0)])
+
+(defmethod sql.qp/->honeysql [:sql ::sql.qp/cast-to-text]
+  [driver [_ expr]]
+  (sql.qp/->honeysql driver [::sql.qp/cast expr "varchar"]))
 
 (defmethod driver/humanize-connection-error-message :oracle
   [_ message]
@@ -550,7 +575,7 @@
   (str/replace entity-name "/" "//"))
 
 (defmethod sql-jdbc.describe-table/get-table-pks :oracle
-  [_driver ^Connection conn _ table]
+  [_driver ^Connection conn _db-name-or-nil table]
   (let [^DatabaseMetaData metadata (.getMetaData conn)]
     (into [] (sql-jdbc.sync.common/reducible-results
               #(.getPrimaryKeys metadata nil nil (:name table))
@@ -610,26 +635,38 @@
     (when-let [^TIMESTAMPTZ t (.getObject rs i TIMESTAMPTZ)]
       (let [^C3P0ProxyConnection proxy-conn (.. rs getStatement getConnection)
             conn                            (.unwrap proxy-conn OracleConnection)]
-        ;; TIMEZONE FIXME - we need to warn if the Oracle JDBC driver is `ojdbc7.jar`, which probably won't have this
-        ;; method
-        ;;
-        ;; I think we can call `(oracle.jdbc.OracleDriver/getJDBCVersion)` and check whether it returns 4.2+
         (.offsetDateTimeValue t conn)))))
 
-(defmethod unprepare/unprepare-value [:oracle OffsetDateTime]
+(defmethod sql-jdbc.execute/read-column-thunk [:oracle OracleTypes/TIMESTAMPLTZ]
+  [_driver ^ResultSet rs _rsmeta ^Integer i]
+  ;; `.offsetDateTimeValue` with TIMESTAMPLTZ returns the incorrect value with daylight savings time, so instead of
+  ;; trusting Oracle to get time zones right we assume the string value from `.getNString` is correct and is in a format
+  ;; we can parse.
+  (fn []
+    (u.date/parse (.getNString rs i))))
+
+(defmethod sql.qp/inline-value [:oracle OffsetDateTime]
   [_ t]
   ;; Oracle doesn't like `Z` to mean UTC
   (format "timestamp '%s'" (-> (t/format "yyyy-MM-dd HH:mm:ss.SSS ZZZZZ" t)
                                (str/replace #" Z$" " UTC"))))
 
-(defmethod unprepare/unprepare-value [:oracle ZonedDateTime]
+(defmethod sql.qp/inline-value [:oracle ZonedDateTime]
   [_ t]
   (format "timestamp '%s'" (-> (t/format "yyyy-MM-dd HH:mm:ss.SSS VV" t)
                                (str/replace #" Z$" " UTC"))))
 
-(defmethod unprepare/unprepare-value [:oracle Instant]
+(defmethod sql.qp/inline-value [:oracle Instant]
   [driver t]
-  (unprepare/unprepare-value driver (t/zoned-date-time t (t/zone-id "UTC"))))
+  (sql.qp/inline-value driver (t/zoned-date-time t (t/zone-id "UTC"))))
+
+(defmethod sql.qp/inline-value [:oracle LocalDateTime]
+  [_driver dt]
+  (if (zero? (:milli-of-second (t/as-map dt)))
+    ;; Use `to_date` instead of `date '1970-01-01 00:00:00'` cast because
+    ;; the latter depends on Oracle's NLS_DATE_FORMAT and will error on most installs
+    (format "to_date('%s', 'YYYY-MM-DD HH24:MI:SS')" (u.date/format "yyyy-MM-dd HH:mm:ss" dt))
+    (format "timestamp '%s'" (u.date/format "yyyy-MM-dd HH:mm:ss.SSS" dt))))
 
 ;; Oracle doesn't really support boolean types so use bits instead (See #11592, similar issue for SQL Server)
 (defmethod driver.sql/->prepared-substitution [:oracle Boolean]

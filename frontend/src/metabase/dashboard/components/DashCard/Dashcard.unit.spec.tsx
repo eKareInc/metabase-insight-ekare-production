@@ -5,11 +5,11 @@ import {
   createMockCard,
   createMockDashboard,
   createMockDashboardCard,
+  createMockDataset,
   createMockDatasetData,
-  createMockTextDashboardCard,
   createMockHeadingDashboardCard,
   createMockLinkDashboardCard,
-  createMockDataset,
+  createMockTextDashboardCard,
 } from "metabase-types/api/mocks";
 import { createMockDashboardState } from "metabase-types/store/mocks";
 
@@ -81,18 +81,25 @@ function setup({
       {...props}
       onAddSeries={jest.fn()}
       onReplaceCard={onReplaceCard}
+      isTrashedOnRemove={false}
       onRemove={jest.fn()}
       markNewCardSeen={jest.fn()}
       navigateToNewCardFromDashboard={jest.fn()}
-      onReplaceAllVisualizationSettings={jest.fn()}
+      onReplaceAllDashCardVisualizationSettings={jest.fn()}
       onUpdateVisualizationSettings={jest.fn()}
       showClickBehaviorSidebar={jest.fn()}
       onChangeLocation={jest.fn()}
+      downloadsEnabled
+      autoScroll={false}
+      reportAutoScrolledToDashcard={jest.fn()}
     />,
     {
       storeInitialState: {
         dashboard: createMockDashboardState({
           dashcardData,
+          dashcards: {
+            [tableDashcard.id]: tableDashcard,
+          },
         }),
       },
     },
@@ -144,8 +151,20 @@ describe("DashCard", () => {
     expect(screen.getByText("What a cool section")).toBeVisible();
   });
 
-  it("should not display the ellipsis menu for (unsaved) xray dashboards (metabase#33637)", async () => {
+  it("should not display the ellipsis menu for (unsaved) xray dashboards (metabase#33637)", () => {
     setup({ isXray: true });
+    expect(queryIcon("ellipsis")).not.toBeInTheDocument();
+  });
+
+  it("should not display the 'Download results' action when dashcard query is running", () => {
+    setup({ dashcardData: {} });
+    // in this case the dashcard menu would be empty so it's not rendered at all
+    expect(queryIcon("ellipsis")).not.toBeInTheDocument();
+  });
+
+  it("should not display the 'Download results' action when dashcard query is running in public/embedded dashboards", () => {
+    setup({ isPublicOrEmbedded: true, dashcardData: {} });
+    // in this case the dashcard menu would be empty so it's not rendered at all
     expect(queryIcon("ellipsis")).not.toBeInTheDocument();
   });
 
@@ -195,27 +214,6 @@ describe("DashCard", () => {
         isEditing: true,
       });
       expect(screen.queryByLabelText("Replace")).not.toBeInTheDocument();
-    });
-
-    it("should fade link card in parameter editing mode", () => {
-      const linkCard = createMockLinkDashboardCard({
-        url: "https://xkcd.com/327",
-      });
-      setup({
-        dashboard: {
-          ...testDashboard,
-          dashcards: [linkCard],
-        },
-        dashcard: linkCard,
-        dashcardData: {},
-        isEditing: true,
-        isEditingParameter: true,
-      });
-
-      expect(screen.getByText("https://xkcd.com/327")).toBeVisible();
-      expect(screen.getByTestId("custom-view-text-link")).toHaveStyle({
-        opacity: 0.25,
-      });
     });
   });
 });

@@ -1,7 +1,11 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
+import { forwardRef } from "react";
 
-import { color, lighten } from "metabase/lib/colors";
-import { Icon } from "metabase/ui";
+import { lighten } from "metabase/lib/colors";
+import { Icon, type IconProps } from "metabase/ui";
+
+import { LegendLabel as BaseLegendLabel } from "./LegendLabel";
 
 export const LegendCaptionRoot = styled.div`
   display: flex;
@@ -9,28 +13,27 @@ export const LegendCaptionRoot = styled.div`
   min-width: 0;
 `;
 
-export const LegendLabel = styled.div`
-  color: ${color("text-dark")};
-  font-weight: bold;
-  cursor: ${({ onClick }) => (onClick ? "pointer" : "")};
+export const LegendLabel = styled(BaseLegendLabel)`
   overflow: hidden;
   margin-top: 2px;
-
-  &:hover {
-    color: ${({ onClick }) => onClick && "var(--mb-color-brand)"};
-  }
 `;
 
 export const LegendLabelIcon = styled(Icon)`
   padding-right: 0.25rem;
 `;
 
-export const LegendDescriptionIcon = styled(Icon)`
-  color: ${lighten("text-light", 0.1)};
+export const LegendDescriptionIcon = styled(
+  forwardRef<SVGSVGElement, IconProps>(
+    function LegendDescriptionIcon(props, ref) {
+      return <Icon {...props} name={props.name ?? "info"} ref={ref} />;
+    },
+  ),
+)`
+  color: ${({ theme }) => lighten(theme.fn?.themeColor("text-light"), 0.1)};
   margin: 0 0.375rem;
 
   &:hover {
-    color: ${color("text-medium")};
+    color: var(--mb-color-text-medium);
   }
 `;
 
@@ -40,7 +43,3 @@ export const LegendRightContent = styled.div`
   margin-left: auto;
   align-items: center;
 `;
-
-LegendDescriptionIcon.defaultProps = {
-  name: "info",
-};

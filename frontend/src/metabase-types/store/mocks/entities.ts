@@ -4,7 +4,6 @@ import type { EntitiesState } from "metabase-types/store";
 // Most likely, createMockEntitiesState from __support__/store would be a better choice
 export const createMockNormalizedEntitiesState = (): EntitiesState => ({
   actions: {},
-  alerts: {},
   collections: {},
   dashboards: {},
   databases: {},
@@ -15,6 +14,5 @@ export const createMockNormalizedEntitiesState = (): EntitiesState => ({
   snippets: {},
   users: {},
   questions: {},
-  modelIndexes: {},
   indexedEntities: {},
 });

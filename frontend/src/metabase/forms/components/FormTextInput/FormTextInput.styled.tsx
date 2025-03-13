@@ -1,7 +1,7 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import { CopyButton } from "metabase/components/CopyButton";
-import { color } from "metabase/lib/colors";
 
 export const CopyWidgetButton = styled(CopyButton)`
   position: absolute;
@@ -18,7 +18,7 @@ export const CopyWidgetButton = styled(CopyButton)`
   outline: none;
 
   &:hover {
-    color: ${color("white")};
+    color: var(--mb-color-text-white);
     background-color: var(--mb-color-brand);
   }
 `;

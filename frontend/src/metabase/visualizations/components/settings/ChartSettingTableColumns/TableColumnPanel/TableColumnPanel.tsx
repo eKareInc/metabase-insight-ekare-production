@@ -1,6 +1,7 @@
-import { useMemo, useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 import type { DragEndEvent } from "metabase/core/components/Sortable";
+import { Box } from "metabase/ui";
 import type {
   DatasetColumn,
   TableColumnOrderSetting,
@@ -60,7 +61,7 @@ export const TableColumnPanel = ({
   const handleDragColumn = useCallback(
     ({ id, newIndex }: DragEndEvent) => {
       const oldIndex = columnItems.findIndex(
-        columnItem => columnItem.columnSetting.key === id,
+        columnItem => getId(columnItem) === id,
       );
 
       onChange(moveColumnInSettings(columnItems, oldIndex, newIndex));
@@ -75,14 +76,10 @@ export const TableColumnPanel = ({
     [onShowWidget],
   );
 
-  const getId = useCallback((columnItem: ColumnItem) => {
-    return columnItem.columnSetting.key;
-  }, []);
-
   return (
-    <div role="list" data-testid="chart-settings-table-columns">
+    <Box role="list" data-testid="chart-settings-table-columns">
       {columns.length > 0 && (
-        <div role="group" data-testid="visible-columns">
+        <Box role="group" data-testid="visible-columns">
           <ChartSettingOrderedItems
             getId={getId}
             items={columnItems}
@@ -92,8 +89,12 @@ export const TableColumnPanel = ({
             onEdit={handleEditColumn}
             onSortEnd={handleDragColumn}
           />
-        </div>
+        </Box>
       )}
-    </div>
+    </Box>
   );
 };
+
+function getId(columnItem: ColumnItem) {
+  return columnItem.column.name;
+}

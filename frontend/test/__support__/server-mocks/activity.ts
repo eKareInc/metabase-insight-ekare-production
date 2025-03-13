@@ -1,11 +1,39 @@
-import fetchMock from "fetch-mock";
+import fetchMock, { type MockOptionsMethodGet } from "fetch-mock";
+import querystring from "querystring";
 
-import type { PopularItem, RecentItem, Dashboard } from "metabase-types/api";
+import type {
+  Dashboard,
+  PopularItem,
+  RecentContexts,
+  RecentItem,
+} from "metabase-types/api";
 
-export function setupRecentViewsEndpoints(recentlyViewedItems: RecentItem[]) {
-  fetchMock.get("path:/api/activity/recent_views", {
-    recent_views: recentlyViewedItems,
+export function setupRecentViewsEndpoints(recentItems: RecentItem[]) {
+  fetchMock.get(/\/api\/activity\/recents\?*/, {
+    recents: recentItems,
   });
+}
+
+export function setupRecentViewsAndSelectionsEndpoints(
+  recentItems: RecentItem[],
+  context: RecentContexts[] = ["selections", "views"],
+  mockOptions: MockOptionsMethodGet = {},
+  mockPostRequest: boolean = true,
+) {
+  fetchMock.get(
+    url =>
+      url.endsWith(
+        `/api/activity/recents?${querystring.stringify({ context })}`,
+      ),
+    {
+      recents: recentItems,
+    },
+    { ...mockOptions },
+  );
+
+  if (mockPostRequest) {
+    fetchMock.post("path:/api/activity/recents", 200);
+  }
 }
 
 export function setupPopularItemsEndpoints(popularItems: PopularItem[]) {

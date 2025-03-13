@@ -71,11 +71,10 @@
       (tru "{0} by {1}" aggregations dimensions)
       aggregations)))
 
-(defmulti
-  ^{:private true
-    :arglists '([fieldset [op & args]])}
-  humanize-filter-value (fn [_ [op & _args]]
-                          (qp.util/normalize-token op)))
+(defmulti ^:private humanize-filter-value
+  {:arglists '([fieldset [op & args]])}
+  (fn [_ [op & _args]]
+    (qp.util/normalize-token op)))
 
 (def ^:private unit-name (comp {:minute-of-hour  (deferred-tru "minute")
                                 :hour-of-day     (deferred-tru "hour")
@@ -94,8 +93,8 @@
   (case item-type
     (:field "field") (let [normalized-field-reference (mbql.normalize/normalize item-reference)
                            temporal-unit              (lib.util.match/match-one normalized-field-reference
-                                                                        [:field _ (opts :guard :temporal-unit)]
-                                                                        (:temporal-unit opts))
+                                                        [:field _ (opts :guard :temporal-unit)]
+                                                        (:temporal-unit opts))
                            {:keys [display_name] :as field-record} (cond-> (->> normalized-field-reference
                                                                                 magic.util/collect-field-references
                                                                                 first
@@ -103,8 +102,8 @@
                                                                      temporal-unit
                                                                      (assoc :unit temporal-unit))
                            item-name                  (cond->> display_name
-                                                               (some-> temporal-unit u.date/extract-units)
-                                                               (tru "{0} of {1}" (unit-name temporal-unit)))]
+                                                        (some-> temporal-unit u.date/extract-units)
+                                                        (tru "{0} of {1}" (unit-name temporal-unit)))]
                        (assoc field-record :item-name item-name))
     (:expression "expression") {:item-name (second item-reference)}
     {:item-name "item"}))

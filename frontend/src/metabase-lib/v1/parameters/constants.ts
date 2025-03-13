@@ -5,7 +5,8 @@ export const PARAMETER_OPERATOR_TYPES = {
     {
       type: "number/=",
       operator: "=",
-      name: t`Equal to`,
+      name: t`Number`,
+      menuName: t`Equal to`,
     },
     {
       type: "number/!=",
@@ -95,12 +96,12 @@ export const PARAMETER_OPERATOR_TYPES = {
       type: "date/relative",
       operator: "relative",
       name: t`Relative Date`,
-      description: t`Like "the last 7 days" or "this month"`,
+      description: t`Like "the previous 7 days" or "this month"`,
     },
     {
       type: "date/all-options",
       operator: "all-options",
-      name: t`Date Filter`,
+      name: t`Date`,
       menuName: t`All Options`,
       description: t`Contains all of the above`,
     },
@@ -149,6 +150,7 @@ export const SINGLE_OR_MULTI_SELECTABLE_TYPES: Record<
   category: "any",
   id: "any",
   location: ["=", "!="],
+  number: ["=", "!="],
 };
 
 export const FIELD_FILTER_PARAMETER_TYPES = [
@@ -177,24 +179,24 @@ export const DATE_MBQL_FILTER_MAPPING: FilterMap = {
     mapping: ["=", null, ["relative-datetime", -1, "day"]],
   },
   past7days: {
-    name: t`Past 7 Days`,
+    name: t`Previous 7 Days`,
     mapping: ["time-interval", null, -7, "day"],
   },
   past30days: {
-    name: t`Past 30 Days`,
+    name: t`Previous 30 Days`,
     mapping: ["time-interval", null, -30, "day"],
   },
   past1weeks: {
-    name: t`Last Week`,
-    mapping: ["time-interval", null, "last", "week"],
+    name: t`Previous Week`,
+    mapping: ["time-interval", null, "previous", "week"],
   },
   past1months: {
-    name: t`Last Month`,
-    mapping: ["time-interval", null, "last", "month"],
+    name: t`Previous Month`,
+    mapping: ["time-interval", null, "previous", "month"],
   },
   past1years: {
-    name: t`Last Year`,
-    mapping: ["time-interval", null, "last", "year"],
+    name: t`Previous Year`,
+    mapping: ["time-interval", null, "previous", "year"],
   },
   thisweek: {
     name: t`This Week`,

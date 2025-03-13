@@ -1,3 +1,4 @@
+import { setupModelPersistenceEndpoints } from "__support__/server-mocks/persist";
 import { renderWithProviders, screen } from "__support__/ui";
 import PersistedModels from "metabase/entities/persisted-models";
 import type { ModelCacheRefreshStatus } from "metabase-types/api";
@@ -10,23 +11,9 @@ async function setup({ logs = [] }: { logs?: ModelCacheRefreshStatus[] } = {}) {
     .spyOn(PersistedModels.objectActions, "refreshCache")
     .mockReturnValue({ type: "__MOCK__" });
 
-  jest.spyOn(PersistedModels, "ListLoader").mockImplementation(props => {
-    const { children } = props as any;
-    return children({
-      persistedModels: logs,
-      metadata: {
-        limit: 20,
-        offset: 0,
-        total: logs.length,
-      },
-    });
-  });
+  setupModelPersistenceEndpoints(logs);
 
-  renderWithProviders(
-    <ModelCacheRefreshJobs>
-      <></>
-    </ModelCacheRefreshJobs>,
-  );
+  renderWithProviders(<ModelCacheRefreshJobs />);
 
   await screen.findByTestId("model-cache-logs");
 
@@ -102,7 +89,7 @@ describe("ModelCacheRefreshJobs", () => {
   it("displays 'creating' state correctly", async () => {
     await setup({ logs: [getMockModelCacheInfo({ state: "creating" })] });
     expect(screen.getByText("Queued")).toBeInTheDocument();
-    expect(screen.queryByLabelText("refresh icon")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("refresh icon")).toBeInTheDocument();
   });
 
   it("displays 'refreshing' state correctly", async () => {

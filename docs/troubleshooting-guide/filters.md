@@ -39,7 +39,7 @@ If a question filter is giving you no results or the wrong results:
 
 If you're having trouble filtering on a:
 
-- [Custom column](../questions/query-builder/introduction.md#creating-custom-columns): check if the custom expression is working as expected. For example, your custom expression might be returning blank values when you expect numbers.
+- [Custom column](../questions/query-builder/editor.md#custom-columns): check if the custom expression is working as expected. For example, your custom expression might be returning blank values when you expect numbers.
 - [SQL field filter](../questions/native-editor/sql-parameters.md#the-field-filter-variable-type): make sure you're using the correct [field filter syntax](../questions/native-editor/sql-parameters.md#field-filter-syntax), then see [Troubleshooting SQL variables](./sql.md#sql-variables-and-field-filters).
 
 **Explanation**
@@ -60,11 +60,11 @@ For example, let's say we want to create a filter named "Select Product ID" link
 
 To debug dashboard and question filters that involve timestamps, UUIDs, or numeric data:
 
-1. Find the [data type](https://www.metabase.com/learn/databases/data-types-overview) of the column that you want to filter on. You can find this info from:
+1. Find the [data type](https://www.metabase.com/learn/grow-your-data-skills/data-fundamentals/data-types-overview) of the column that you want to filter on. You can find this info from:
    - the [Data reference](../exploration-and-organization/data-model-reference.md),
    - the [Table Metadata page](../data-modeling/metadata-editing.md) (admins only), or
    - directly from the database.
-2. Cast the column to a data type that matches the desired [filter type](../questions/query-builder/introduction.md#filter-types). You can:
+2. Cast the column to a data type that matches the desired [filter type](../questions/query-builder/filters.md#filter-types). You can:
    - [cast strings or numbers to dates](../data-modeling/metadata-editing.md#casting-to-a-specific-data-type) from the Table Metadata page, or
    - change the data type of the column in your database, and [re-sync](../databases/sync-scan.md#manually-syncing-tables-and-columns) the database schema.
 
@@ -75,6 +75,10 @@ If you're not a Metabase admin, you might have to ask your admin to help you wit
 Metabase needs to know the data type of a column in order to present you with a curated selection of filter types. Sometimes these columns are mistyped---if a column stores your numbers as strings, Metabase will only show you text or category filters (with options like "is", "is not") instead of number filters (with options like "greater than", "less than").
 
 Timestamps, in particular, are the root of all evil, so please be patient with your Metabase admin (or yourself!) when trying to get the data type right.
+
+## Field filters in BigQuery and Oracle
+
+If you are getting an error when using field filters with BigQuery or Oracle, make sure you use the correct syntax for the `FROM` clause. See [Field filters in BigQuery and Oracle](../questions/native-editor/sql-parameters.md#field-filters-in-bigquery-and-oracle).
 
 ## Missing or incorrect filter values
 

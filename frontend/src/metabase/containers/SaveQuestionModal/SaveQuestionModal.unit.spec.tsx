@@ -1,33 +1,37 @@
 import userEvent from "@testing-library/user-event";
-import fetchMock from "fetch-mock";
 
 import { setupEnterpriseTest } from "__support__/enterprise";
 import { createMockMetadata } from "__support__/metadata";
 import type { CollectionEndpoints } from "__support__/server-mocks";
 import {
   setupCollectionByIdEndpoint,
-  setupCollectionsEndpoints,
   setupCollectionItemsEndpoint,
-  setupRecentViewsEndpoints,
+  setupCollectionsEndpoints,
+  setupDashboardEndpoints,
+  setupRecentViewsAndSelectionsEndpoints,
 } from "__support__/server-mocks";
 import { mockSettings } from "__support__/settings";
 import {
-  getBrokenUpTextMatcher,
+  mockGetBoundingClientRect,
+  mockScrollBy,
   renderWithProviders,
   screen,
   waitFor,
-  mockGetBoundingClientRect,
-  mockScrollBy,
+  within,
 } from "__support__/ui";
 import { SaveQuestionModal } from "metabase/containers/SaveQuestionModal";
 import { ROOT_COLLECTION } from "metabase/entities/collections";
+import * as qbSelectors from "metabase/query_builder/selectors";
+import { QUESTION_NAME_MAX_LENGTH } from "metabase/questions/constants";
 import * as Lib from "metabase-lib";
 import Question from "metabase-lib/v1/Question";
 import type StructuredQuery from "metabase-lib/v1/queries/StructuredQuery";
-import type { CollectionId } from "metabase-types/api";
+import type { CollectionId, DashboardId } from "metabase-types/api";
 import {
   createMockCollection,
   createMockCollectionItem,
+  createMockDashboard,
+  createMockDashboardTab,
 } from "metabase-types/api/mocks";
 import {
   ORDERS_ID,
@@ -60,38 +64,69 @@ const ROOT_TEST_COLLECTION = createMockCollection({
   id: "root",
 });
 
+const FOO_DASH = createMockDashboard({
+  id: 1,
+  collection_id: 1,
+  name: "Foo Dashboard",
+  tabs: [
+    createMockDashboardTab({ id: 1, name: "Foo Tab 1" }),
+    createMockDashboardTab({ id: 2, name: "Foo Tab 2" }),
+  ],
+});
+
+const BAR_DASH = createMockDashboard({
+  id: 2,
+  collection_id: 1,
+  name: "Bar Dashboard",
+  tabs: [],
+});
+
 const TEST_COLLECTIONS = [ROOT_TEST_COLLECTION, BOBBY_TEST_COLLECTION];
 
 const setup = async (
   question: Question,
   originalQuestion: Question | null = null,
   {
-    isCachingEnabled,
     collectionEndpoints,
   }: {
-    isCachingEnabled?: boolean;
     collectionEndpoints?: CollectionEndpoints;
   } = {},
 ) => {
-  const onCreateMock = jest.fn(() => Promise.resolve());
+  const onCreateMock = jest.fn((question, _options) =>
+    Promise.resolve(question),
+  );
   const onSaveMock = jest.fn(() => Promise.resolve());
   const onCloseMock = jest.fn();
 
   if (collectionEndpoints) {
+    setupCollectionByIdEndpoint({
+      collections: collectionEndpoints.collections,
+    });
     setupCollectionsEndpoints(collectionEndpoints);
   } else {
-    fetchMock.get("path:/api/collection", TEST_COLLECTIONS);
-    fetchMock.get("path:/api/collection/root", ROOT_TEST_COLLECTION);
     setupCollectionByIdEndpoint({ collections: [BOBBY_TEST_COLLECTION] });
-    setupCollectionItemsEndpoint({
-      collection: BOBBY_TEST_COLLECTION,
-      collectionItems: [],
+    setupCollectionsEndpoints({
+      collections: TEST_COLLECTIONS,
+      rootCollection: ROOT_TEST_COLLECTION,
     });
   }
 
-  setupRecentViewsEndpoints([]);
+  setupCollectionItemsEndpoint({
+    collection: BOBBY_TEST_COLLECTION,
+    collectionItems: [],
+  });
+  setupDashboardEndpoints(FOO_DASH);
+  setupDashboardEndpoints(BAR_DASH);
 
-  const settings = mockSettings({ "enable-query-caching": isCachingEnabled });
+  setupRecentViewsAndSelectionsEndpoints([], ["selections"]);
+  setupRecentViewsAndSelectionsEndpoints(
+    [],
+    ["selections", "views"],
+    {},
+    false,
+  );
+
+  const settings = mockSettings();
 
   const state = createMockState({
     settings,
@@ -100,13 +135,14 @@ const setup = async (
       originalCard: originalQuestion?.card(),
     }),
   });
-  renderWithProviders(
+  const { rerender: _rerender } = renderWithProviders(
     <SaveQuestionModal
       question={question}
       originalQuestion={originalQuestion}
       onCreate={onCreateMock}
       onSave={onSaveMock}
       onClose={onCloseMock}
+      opened={true}
     />,
     {
       storeInitialState: state,
@@ -114,7 +150,20 @@ const setup = async (
   );
   await screen.findByRole("button", { name: "Save" });
 
-  return { onSaveMock, onCreateMock, onCloseMock };
+  const rerender = () => {
+    _rerender(
+      <SaveQuestionModal
+        question={question}
+        originalQuestion={originalQuestion}
+        onCreate={onCreateMock}
+        onSave={onSaveMock}
+        onClose={onCloseMock}
+        opened={true}
+      />,
+    );
+  };
+
+  return { onSaveMock, onCreateMock, onCloseMock, rerender };
 };
 
 const EXPECTED_SUGGESTED_NAME = "Orders, Count";
@@ -124,12 +173,14 @@ function getQuestion({
   name = "Q1",
   description = "Example",
   collection_id = null,
+  dashboard_id = null,
   can_write = true,
 }: {
   isSaved?: boolean;
   name?: string;
   description?: string;
   collection_id?: CollectionId | null;
+  dashboard_id?: DashboardId | null;
   can_write?: boolean;
 } = {}) {
   const extraCardParams: Record<string, any> = {};
@@ -139,6 +190,7 @@ function getQuestion({
     extraCardParams.name = name;
     extraCardParams.description = description;
     extraCardParams.collection_id = collection_id;
+    extraCardParams.dashboard_id = dashboard_id;
     extraCardParams.can_write = can_write;
   }
 
@@ -185,6 +237,9 @@ async function fillForm({
     await userEvent.type(input, description);
   }
 }
+
+const saveLocDropdown = () =>
+  screen.getByLabelText(/Where do you want to save this/);
 
 describe("SaveQuestionModal", () => {
   beforeAll(() => {
@@ -236,13 +291,13 @@ describe("SaveQuestionModal", () => {
       });
 
       const call: Question[] = onCreateMock.mock.calls[0];
-      expect(call.length).toBe(1);
+      expect(call.length).toBe(2);
 
       const newQuestion = call[0];
       expect(newQuestion.id()).toBeUndefined();
       expect(newQuestion.displayName()).toBe(EXPECTED_SUGGESTED_NAME);
       expect(newQuestion.description()).toBe(null);
-      expect(newQuestion.collectionId()).toBe(null);
+      expect(newQuestion.collectionId()).toBe(1);
     });
 
     it("should call onCreate correctly with edited form", async () => {
@@ -260,13 +315,31 @@ describe("SaveQuestionModal", () => {
       });
 
       const call: Question[] = onCreateMock.mock.calls[0];
-      expect(call.length).toBe(1);
+      expect(call.length).toBe(2);
 
       const newQuestion = call[0];
       expect(newQuestion.id()).toBeUndefined();
       expect(newQuestion.displayName()).toBe("My favorite orders");
       expect(newQuestion.description()).toBe("So many of them");
-      expect(newQuestion.collectionId()).toBe(null);
+      expect(newQuestion.collectionId()).toBe(1);
+    });
+
+    it("should not allow to enter a name with more than 254 characters", async () => {
+      const question = getQuestion();
+      await setup(question);
+
+      const nameInput = screen.getByLabelText("Name");
+      const descriptionInput = screen.getByLabelText("Description");
+      await userEvent.clear(nameInput);
+      await userEvent.paste("A".repeat(255));
+      await userEvent.click(descriptionInput);
+
+      expect(
+        await screen.findByText(/must be 254 characters or less/),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByRole("button", { name: "Save" }),
+      ).toBeDisabled();
     });
 
     it("should trim name and description", async () => {
@@ -284,13 +357,13 @@ describe("SaveQuestionModal", () => {
       });
 
       const call: Question[] = onCreateMock.mock.calls[0];
-      expect(call.length).toBe(1);
+      expect(call.length).toBe(2);
 
       const newQuestion = call[0];
       expect(newQuestion.id()).toBeUndefined();
       expect(newQuestion.displayName()).toBe("My favorite orders");
       expect(newQuestion.description()).toBe("So many of them");
-      expect(newQuestion.collectionId()).toBe(null);
+      expect(newQuestion.collectionId()).toBe(1);
     });
 
     it('should correctly handle saving a question in the "root" collection', async () => {
@@ -307,13 +380,13 @@ describe("SaveQuestionModal", () => {
       });
 
       const call: Question[] = onCreateMock.mock.calls[0];
-      expect(call.length).toBe(1);
+      expect(call.length).toBe(2);
 
       const newQuestion = call[0];
       expect(newQuestion.id()).toBeUndefined();
       expect(newQuestion.displayName()).toBe("foo");
       expect(newQuestion.description()).toBe("bar");
-      expect(newQuestion.collectionId()).toBe(null);
+      expect(newQuestion.collectionId()).toBe(1);
     });
 
     it("shouldn't call onSave when form is submitted", async () => {
@@ -381,7 +454,7 @@ describe("SaveQuestionModal", () => {
       });
 
       const call: Question[] = onCreateMock.mock.calls[0];
-      expect(call.length).toBe(1);
+      expect(call.length).toBe(2);
 
       const newQuestion = call[0];
       expect(newQuestion.id()).toBeUndefined();
@@ -406,7 +479,7 @@ describe("SaveQuestionModal", () => {
       });
 
       const call: Question[] = onCreateMock.mock.calls[0];
-      expect(call.length).toBe(1);
+      expect(call.length).toBe(2);
 
       const newQuestion = call[0];
       expect(newQuestion.id()).toBeUndefined();
@@ -449,11 +522,11 @@ describe("SaveQuestionModal", () => {
       await userEvent.click(inputEl);
       await userEvent.tab();
 
-      expect(
-        screen.getByText(getBrokenUpTextMatcher("Name: required"), {
-          selector: "label",
-        }),
-      ).toBeInTheDocument();
+      const alertEl = screen.getByRole("alert");
+
+      expect(inputEl).toHaveAttribute("aria-invalid", "true");
+      expect(inputEl).toHaveAttribute("aria-describedby", alertEl.id);
+      expect(alertEl).toHaveTextContent("required");
     });
 
     it("should show humanized validation message for saving a structured query question", async () => {
@@ -464,12 +537,59 @@ describe("SaveQuestionModal", () => {
       await userEvent.clear(inputEl); // remove autogenerated name
       await userEvent.tab();
 
+      const alertEl = screen.getByRole("alert");
+
+      expect(inputEl).toHaveAttribute("aria-invalid", "true");
+      expect(inputEl).toHaveAttribute("aria-describedby", alertEl.id);
+      expect(alertEl).toHaveTextContent("required");
+    });
+
+    it("should not show collection input if saving directly from a dashboard", async () => {
+      await setup(
+        getQuestion({
+          isSaved: true,
+          collection_id: FOO_DASH.collection_id,
+          dashboard_id: FOO_DASH.id, // <- question already has a dashboard save location
+        }),
+      );
+
+      // value loads async here where it would already be in memory as the user is navigating
+      // through the application so we have to wait for it to unmount from the DOM
       await waitFor(() => {
         expect(
-          screen.getByText(getBrokenUpTextMatcher("Name: required"), {
-            selector: "label",
-          }),
-        ).toBeInTheDocument();
+          screen.queryByLabelText(/Where do you want to save this/),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it("should show tab input w/ default value if select dashboard has tabs", async () => {
+      await setup(
+        getQuestion({
+          isSaved: true,
+          collection_id: FOO_DASH.collection_id,
+          dashboard_id: FOO_DASH.id, // <- question already has a dashboard save location
+        }),
+      );
+      expect(
+        await screen.findByLabelText(/Which tab should this go on/),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByLabelText(/Which tab should this go on/),
+      ).toHaveValue("Foo Tab 1");
+    });
+
+    it("should now show tab input if selected dashboard has no tabs", async () => {
+      await setup(
+        getQuestion({
+          isSaved: true,
+          collection_id: BAR_DASH.collection_id,
+          dashboard_id: BAR_DASH.id, // <- question already has a dashboard save location
+        }),
+      );
+      await waitFor(() => {
+        expect(
+          screen.queryByLabelText(/Which tab should this go on/),
+        ).not.toBeInTheDocument();
       });
     });
   });
@@ -605,6 +725,24 @@ describe("SaveQuestionModal", () => {
       );
     });
 
+    it("should allow to replace a question with a long name (metabase#53042)", async () => {
+      const originalQuestion = getQuestion({
+        isSaved: true,
+        name: "a".repeat(QUESTION_NAME_MAX_LENGTH),
+      });
+      await setup(getDirtyQuestion(originalQuestion), originalQuestion);
+
+      await userEvent.click(screen.getByText("Save as new question"));
+      const input = screen.getByLabelText("Name");
+
+      expect(input).toHaveValue(`${originalQuestion.displayName()} - Modified`);
+      expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+      await userEvent.click(screen.getByText(/Replace original question/));
+
+      expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    });
+
     it("should allow to replace the question if new question form is invalid (metabase#13817)", async () => {
       const originalQuestion = getQuestion({ isSaved: true });
       await setup(getDirtyQuestion(originalQuestion), originalQuestion);
@@ -634,6 +772,25 @@ describe("SaveQuestionModal", () => {
         screen.queryByText(/Replace original question, ".*"/),
       ).not.toBeInTheDocument();
     });
+
+    it("should not render empty content when render happens after question is saved (metabase#45416)", async () => {
+      const originalQuestion = getQuestion({ isSaved: true });
+      const dirtyQuestion = getDirtyQuestion(originalQuestion);
+
+      const { rerender } = await setup(dirtyQuestion, originalQuestion);
+
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      // simulate slow response and further re-render of the modal
+      jest
+        .spyOn(qbSelectors, "getIsSavedQuestionChanged")
+        .mockReturnValue(false);
+
+      rerender();
+
+      // verify that modal still has content
+      expect(screen.getByText(/replace or save as new/i)).toBeInTheDocument();
+    });
   });
 
   it("should call onClose when Cancel button is clicked", async () => {
@@ -650,16 +807,23 @@ describe("SaveQuestionModal", () => {
 
   describe("Cache TTL field", () => {
     const query = Question.create({
-      databaseId: SAMPLE_DB_ID,
-      tableId: ORDERS_ID,
       metadata,
+      dataset_query: {
+        type: "query",
+        database: SAMPLE_DB_ID,
+        query: {
+          "source-table": ORDERS_ID,
+          aggregation: [["count"]],
+        },
+      },
+      // eslint-disable-next-line no-restricted-syntax
     }).legacyQuery({ useStructuredQuery: true }) as StructuredQuery;
 
-    const question = query.aggregate(["count"]).question();
+    const question = query.question();
 
     describe("OSS", () => {
       it("is not shown", async () => {
-        await setup(question, null, { isCachingEnabled: true });
+        await setup(question, null);
         expect(screen.queryByText("More options")).not.toBeInTheDocument();
         expect(
           screen.queryByText("Cache all question results for"),
@@ -673,7 +837,7 @@ describe("SaveQuestionModal", () => {
       });
 
       it("is not shown", async () => {
-        await setup(question, null, { isCachingEnabled: true });
+        await setup(question, null);
         expect(screen.queryByText("More options")).not.toBeInTheDocument();
         expect(
           screen.queryByText("Cache all question results for"),
@@ -682,17 +846,30 @@ describe("SaveQuestionModal", () => {
     });
   });
 
-  describe("new collection modal", () => {
-    const collDropdown = () => screen.getByLabelText(/Which collection/);
+  describe("create new modals", () => {
     const newCollBtn = () =>
       screen.getByRole("button", {
         name: /new collection/i,
       });
+    const newCollCancelButton = () =>
+      within(screen.getByRole("dialog", { name: /new collection/ })).getByRole(
+        "button",
+        { name: /cancel/i },
+      );
+    const selectCollCancelButton = () =>
+      within(
+        screen.getByRole("dialog", { name: /Select a collection/ }),
+      ).getByRole("button", { name: /cancel/i });
     const questionModalTitle = () =>
       screen.getByRole("heading", { name: /new question/i });
-    const cancelBtn = () => screen.getByRole("button", { name: /cancel/i });
+
+    const newDashBtn = () =>
+      screen.getByRole("button", {
+        name: /new dashboard/i,
+      });
 
     const COLLECTION = {
+      USER: BOBBY_TEST_COLLECTION,
       ROOT: createMockCollection({
         ...ROOT_COLLECTION,
         can_write: true,
@@ -740,61 +917,123 @@ describe("SaveQuestionModal", () => {
       });
     });
 
-    afterAll(() => {
+    afterEach(() => {
       jest.restoreAllMocks();
     });
 
-    it("should have a new collection button in the collection picker", async () => {
-      await setup(getQuestion());
-      await userEvent.click(collDropdown());
-      await waitFor(() => expect(newCollBtn()).toBeInTheDocument());
-    });
-    it("should open new collection modal and return to dashboard modal when clicking close", async () => {
-      await setup(getQuestion());
-      await userEvent.click(collDropdown());
-      await waitFor(() => expect(newCollBtn()).toBeInTheDocument());
-      await userEvent.click(newCollBtn());
-      await screen.findByText("Give it a name");
-      await userEvent.click(cancelBtn());
-      await userEvent.click(cancelBtn());
-      await waitFor(() => expect(questionModalTitle()).toBeInTheDocument());
-    });
-    describe("new collection location", () => {
-      beforeEach(async () => {
-        await setup(getQuestion(), null, {
-          collectionEndpoints: {
-            collections: Object.values(COLLECTION),
-            rootCollection: COLLECTION.ROOT,
-          },
-        });
-        setupCollectionByIdEndpoint({ collections: [COLLECTION.PARENT] });
-        setupCollectionItemsEndpoint({
-          collection: BOBBY_TEST_COLLECTION,
-          collectionItems: [],
+    describe("new collection modal", () => {
+      it("should have a new collection button in the collection picker", async () => {
+        await setup(getQuestion());
+        await userEvent.click(saveLocDropdown());
+        await waitFor(() => {
+          expect(newCollBtn()).toBeInTheDocument();
         });
       });
-      it("should create collection inside nested folder", async () => {
-        await userEvent.click(collDropdown());
+
+      it("should open new collection modal and return to dashboard modal when clicking close", async () => {
+        await setup(getQuestion());
+        await userEvent.click(saveLocDropdown());
         await waitFor(() => expect(newCollBtn()).toBeInTheDocument());
-        await userEvent.click(
-          await screen.findByRole("button", {
-            name: new RegExp(COLLECTION.PARENT.name),
-          }),
-        );
         await userEvent.click(newCollBtn());
         await screen.findByText("Give it a name");
+        await userEvent.click(newCollCancelButton());
+        await userEvent.click(selectCollCancelButton());
+        await waitFor(() => expect(questionModalTitle()).toBeInTheDocument());
       });
-      it("should create collection inside root folder", async () => {
-        await userEvent.click(collDropdown());
-        await waitFor(() => expect(newCollBtn()).toBeInTheDocument());
-        await userEvent.click(newCollBtn());
-        await waitFor(async () =>
-          expect(
-            await screen.findByRole("heading", {
-              name: "Create a new collection",
+
+      describe("new collection location", () => {
+        beforeEach(async () => {
+          await setup(getQuestion(), null, {
+            collectionEndpoints: {
+              collections: Object.values(COLLECTION),
+              rootCollection: COLLECTION.ROOT,
+            },
+          });
+        });
+
+        it("should create collection inside nested folder", async () => {
+          await userEvent.click(saveLocDropdown());
+          await waitFor(() => expect(newCollBtn()).toBeInTheDocument());
+          await userEvent.click(
+            await screen.findByRole("link", {
+              name: new RegExp(BOBBY_TEST_COLLECTION.name),
             }),
-          ).toBeInTheDocument(),
-        );
+          );
+          await userEvent.click(newCollBtn());
+          await screen.findByText("Give it a name");
+        });
+
+        it("should create collection inside root folder", async () => {
+          await userEvent.click(saveLocDropdown());
+          await waitFor(() => expect(newCollBtn()).toBeInTheDocument());
+          await userEvent.click(newCollBtn());
+          await waitFor(async () => {
+            expect(
+              await screen.findByRole("heading", {
+                name: "Create a new collection",
+              }),
+            ).toBeInTheDocument();
+          });
+        });
+      });
+    });
+
+    describe("new dashboard modal", () => {
+      it("should have a new dashboard button in the collection picker", async () => {
+        await setup(getQuestion());
+        await userEvent.click(saveLocDropdown());
+        await waitFor(() => {
+          expect(newDashBtn()).toBeInTheDocument();
+        });
+      });
+
+      it("should open new dashboard modal and return to dashboard modal when clicking close", async () => {
+        await setup(getQuestion());
+        await userEvent.click(saveLocDropdown());
+        await waitFor(() => expect(newDashBtn()).toBeInTheDocument());
+        await userEvent.click(newDashBtn());
+        await screen.findByText("Give it a name");
+        await within(
+          await screen.findByTestId("create-dashboard-on-the-go"),
+        ).findByRole("button", { name: /cancel/i });
+        await userEvent.click(selectCollCancelButton());
+        await waitFor(() => expect(questionModalTitle()).toBeInTheDocument());
+      });
+
+      describe("new dashboard location", () => {
+        beforeEach(async () => {
+          await setup(getQuestion(), null, {
+            collectionEndpoints: {
+              collections: Object.values(COLLECTION),
+              rootCollection: COLLECTION.ROOT,
+            },
+          });
+        });
+
+        it("should create dashboard inside nested folder", async () => {
+          await userEvent.click(saveLocDropdown());
+          await waitFor(() => expect(newDashBtn()).toBeInTheDocument());
+          await userEvent.click(
+            await screen.findByRole("link", {
+              name: new RegExp(BOBBY_TEST_COLLECTION.name),
+            }),
+          );
+          await userEvent.click(newDashBtn());
+          await screen.findByText("Give it a name");
+        });
+
+        it("should create dashboard inside root folder", async () => {
+          await userEvent.click(saveLocDropdown());
+          await waitFor(() => expect(newDashBtn()).toBeInTheDocument());
+          await userEvent.click(newDashBtn());
+          await waitFor(async () => {
+            expect(
+              await screen.findByRole("heading", {
+                name: "Create a new dashboard",
+              }),
+            ).toBeInTheDocument();
+          });
+        });
       });
     });
   });

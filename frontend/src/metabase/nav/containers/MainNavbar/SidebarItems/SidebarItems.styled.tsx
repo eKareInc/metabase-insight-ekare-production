@@ -1,14 +1,24 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
+import type { ComponentProps } from "react";
+import { forwardRef } from "react";
 
 import { TreeNode } from "metabase/components/tree/TreeNode";
-import { ListRoot } from "metabase/components/tree/TreeNodeList.styled";
 import Link from "metabase/core/components/Link";
 import { alpha, color, darken } from "metabase/lib/colors";
 import { NAV_SIDEBAR_WIDTH } from "metabase/nav/constants";
+import type { IconProps } from "metabase/ui";
 import { Icon, Tooltip } from "metabase/ui";
 
-export const SidebarIcon = styled(Icon)<{
+export const SidebarIcon = styled(
+  forwardRef<SVGSVGElement, IconProps & { isSelected: boolean }>(
+    function SidebarIcon({ isSelected, ...props }, ref) {
+      return <Icon {...props} size={props.size ?? 16} ref={ref} />;
+    },
+  ),
+)<{
   color?: string | null;
   isSelected: boolean;
 }>`
@@ -18,10 +28,6 @@ export const SidebarIcon = styled(Icon)<{
       color: var(--mb-color-brand);
     `}
 `;
-
-SidebarIcon.defaultProps = {
-  size: 16,
-};
 
 export const ExpandToggleButton = styled(TreeNode.ExpandToggleButton)`
   padding: 4px 0 4px 2px;
@@ -36,14 +42,14 @@ function getTextColor(isSelected: boolean) {
   return isSelected ? color("brand") : darken(color("text-medium"), 0.25);
 }
 
-export const NodeRoot = styled(TreeNode.Root)<{
+type NodeRootProps = ComponentProps<typeof TreeNode.Root> & {
   hasDefaultIconStyle?: boolean;
-}>`
-  color: ${props => getTextColor(props.isSelected)};
+};
 
+export const NodeRoot = styled(TreeNode.Root)<NodeRootProps>`
+  color: ${props => getTextColor(props.isSelected)};
   background-color: ${props =>
     props.isSelected ? alpha("brand", 0.2) : "unset"};
-
   padding-left: ${props => props.depth}rem;
   border-radius: 4px;
 
@@ -58,35 +64,25 @@ export const NodeRoot = styled(TreeNode.Root)<{
     ${ExpandToggleButton} {
       color: var(--mb-color-brand);
     }
+  }
 
+  &:hover,
+  &:focus,
+  &:focus-within {
     ${SidebarIcon} {
-      ${props => props.hasDefaultIconStyle && activeColorCSS};
+      ${({ hasDefaultIconStyle = true }) =>
+        hasDefaultIconStyle && activeColorCSS};
     }
   }
 `;
 
-NodeRoot.defaultProps = {
-  hasDefaultIconStyle: true,
-};
-
-export const collectionDragAndDropHoverStyle = css`
-  color: ${color("text-white")};
+const collectionDragAndDropHoverStyle = css`
+  color: var(--mb-color-text-white);
   background-color: var(--mb-color-brand);
 `;
 
 export const CollectionNodeRoot = styled(NodeRoot)<{ hovered?: boolean }>`
   ${props => props.hovered && collectionDragAndDropHoverStyle}
-`;
-
-// accommodate for trash collection having margin above
-export const CollectionLinkRoot = styled.div`
-  ${ListRoot} > &:last-child {
-    margin-top: 1rem;
-  }
-
-  ${ListRoot} ${ListRoot} > &:last-child {
-    margin-top: 0;
-  }
 `;
 
 const itemContentStyle = css`
@@ -96,12 +92,13 @@ const itemContentStyle = css`
 `;
 
 export const FullWidthButton = styled.button<{ isSelected: boolean }>`
+  color: inherit;
   cursor: pointer;
 
   ${itemContentStyle}
   ${TreeNode.NameContainer} {
     font-weight: 700;
-    color: ${props => getTextColor(props.isSelected)};
+    color: ${props => (props.isSelected ? color("brand") : "inherit")};
     text-align: start;
 
     &:hover {

@@ -1,5 +1,4 @@
-import { useEffect, useCallback } from "react";
-import { connect } from "react-redux";
+import { useCallback, useEffect } from "react";
 import type { Route } from "react-router";
 import { push } from "react-router-redux";
 import { t } from "ttag";
@@ -8,6 +7,7 @@ import _ from "underscore";
 import { CollectionPermissionsHelp } from "metabase/admin/permissions/components/CollectionPermissionsHelp";
 import Collections from "metabase/entities/collections";
 import Groups from "metabase/entities/groups";
+import { connect } from "metabase/lib/redux";
 import type { Collection, CollectionId, GroupId } from "metabase-types/api";
 import type { State } from "metabase-types/store";
 
@@ -15,13 +15,13 @@ import {
   PermissionsEditor,
   PermissionsEditorEmptyState,
 } from "../../components/PermissionsEditor";
-import PermissionsPageLayout from "../../components/PermissionsPageLayout";
+import { PermissionsPageLayout } from "../../components/PermissionsPageLayout";
 import { PermissionsSidebar } from "../../components/PermissionsSidebar";
 import {
   initializeCollectionPermissions,
-  updateCollectionPermission,
-  saveCollectionPermissions,
   loadCollectionPermissions,
+  saveCollectionPermissions,
+  updateCollectionPermission,
 } from "../../permissions";
 import type {
   CollectionIdProps,
@@ -29,11 +29,11 @@ import type {
   CollectionSidebarType,
 } from "../../selectors/collection-permissions";
 import {
-  getCollectionsSidebar,
-  getCollectionsPermissionEditor,
-  getCollectionEntity,
-  getIsDirty,
   collectionsQuery,
+  getCollectionEntity,
+  getCollectionsPermissionEditor,
+  getCollectionsSidebar,
+  getIsDirty,
 } from "../../selectors/collection-permissions";
 
 const mapDispatchToProps = {

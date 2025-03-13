@@ -20,20 +20,18 @@ export const trackSearchRequest = (
   searchResponse: SearchResponse,
   duration: number,
 ) => {
-  trackSchemaEvent("search", "2-0-0", {
+  trackSchemaEvent("search", {
     event: "search_query",
-    filters: {
-      content_type: searchRequest.models,
-      creator: !!searchRequest.created_by,
-      creation_date: !!searchRequest.created_at,
-      last_edit_date: !!searchRequest.last_edited_at,
-      last_editor: !!searchRequest.last_edited_by,
-      verified_items: !!searchRequest.verified,
-      search_native_queries: !!searchRequest.search_native_query,
-      search_archived: !!searchRequest.archived,
-    },
-    context: searchRequest.context,
-    response_time: duration,
+    content_type: searchRequest.models ?? null,
+    creator: !!searchRequest.created_by,
+    creation_date: !!searchRequest.created_at,
+    last_edit_date: !!searchRequest.last_edited_at,
+    last_editor: !!searchRequest.last_edited_by,
+    verified_items: !!searchRequest.verified,
+    search_native_queries: !!searchRequest.search_native_query,
+    search_archived: !!searchRequest.archived,
+    context: searchRequest.context ?? null,
+    runtime_milliseconds: duration,
     total_results: searchResponse.total,
     page_results: searchResponse.limit,
   });
@@ -44,10 +42,10 @@ export const trackSearchClick = (
   position: number,
   context: SearchRequest["context"],
 ) => {
-  trackSchemaEvent("search", "2-0-0", {
+  trackSchemaEvent("search", {
     event: "search_click",
     position,
     target_type: itemType,
-    context,
+    context: context ?? null,
   });
 };

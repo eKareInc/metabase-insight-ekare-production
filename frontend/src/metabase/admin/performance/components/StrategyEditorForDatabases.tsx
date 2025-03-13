@@ -8,9 +8,9 @@ import { UpsellCacheConfig } from "metabase/admin/upsells";
 import { useListDatabasesQuery } from "metabase/api";
 import { DelayedLoadingAndErrorWrapper } from "metabase/components/LoadingAndErrorWrapper/DelayedLoadingAndErrorWrapper";
 import { PLUGIN_CACHING } from "metabase/plugins";
-import { Stack, Flex } from "metabase/ui";
+import { Flex, Stack } from "metabase/ui";
 import type { CacheableModel } from "metabase-types/api";
-import { DurationUnit } from "metabase-types/api";
+import { CacheDurationUnit } from "metabase-types/api";
 
 import { rootId } from "../constants/simple";
 import { useCacheConfigs } from "../hooks/useCacheConfigs";
@@ -20,8 +20,8 @@ import type { UpdateTargetId } from "../types";
 
 import {
   Panel,
-  TabWrapper,
   RoundedBox,
+  TabWrapper,
 } from "./StrategyEditorForDatabases.styled";
 import { StrategyForm } from "./StrategyForm";
 
@@ -70,7 +70,7 @@ const StrategyEditorForDatabases_Base = ({
   const savedStrategy = targetConfig?.strategy;
 
   if (savedStrategy?.type === "duration") {
-    savedStrategy.unit = DurationUnit.Hours;
+    savedStrategy.unit = CacheDurationUnit.Hours;
   }
 
   const {
@@ -128,14 +128,14 @@ const StrategyEditorForDatabases_Base = ({
 
   return (
     <TabWrapper role="region" aria-label={t`Data caching settings`}>
-      <Stack spacing="xl" lh="1.5rem" maw="32rem" mb="1.5rem">
+      <Stack gap="xl" lh="1.5rem" maw="32rem" mb="1.5rem">
         <aside>
           {t`Speed up queries by caching their results.`}
           <PLUGIN_CACHING.GranularControlsExplanation />
         </aside>
       </Stack>
       {confirmationModal}
-      <Flex gap="xl">
+      <Flex gap="xl" style={{ overflow: "hidden" }}>
         <RoundedBox twoColumns={canOverrideRootStrategy}>
           {canOverrideRootStrategy && (
             <PLUGIN_CACHING.StrategyFormLauncherPanel
@@ -152,7 +152,7 @@ const StrategyEditorForDatabases_Base = ({
             {targetId !== null && (
               <StrategyForm
                 targetId={targetId}
-                targetModel="database"
+                targetModel={targetId === rootId ? "root" : "database"}
                 targetName={targetDatabase?.name || t`Untitled database`}
                 setIsDirty={setIsStrategyFormDirty}
                 saveStrategy={saveStrategy}

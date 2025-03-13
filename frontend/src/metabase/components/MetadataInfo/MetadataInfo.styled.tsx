@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import _LoadingSpinner from "metabase/components/LoadingSpinner";
@@ -30,18 +31,6 @@ export const InfoContainer = styled(Container)`
   padding: 1.1em;
 `;
 
-export const Description = styled.div`
-  white-space: pre-line;
-  max-height: 200px;
-  overflow: auto;
-  margin-bottom: 0.5em;
-`;
-
-export const EmptyDescription = styled(Description)`
-  color: ${({ theme }) => theme.fn.themeColor("text-light")};
-  font-weight: 700;
-`;
-
 export const LabelContainer = styled.div`
   display: inline-flex;
   align-items: center;
@@ -60,13 +49,6 @@ export const Label = styled.span`
 export const RelativeSizeIcon = styled(Icon)`
   height: 1em;
   width: 1em;
-`;
-
-export const InvertedColorRelativeSizeIcon = styled(RelativeSizeIcon)`
-  background-color: var(--mb-color-brand);
-  color: ${color("white")};
-  border-radius: 0.3em;
-  padding: 0.3em;
 `;
 
 type FadeProps = {

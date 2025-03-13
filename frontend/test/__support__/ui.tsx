@@ -1,30 +1,29 @@
-import type { MantineThemeOverride } from "@mantine/core";
-import type { Store, Reducer } from "@reduxjs/toolkit";
+import { Global } from "@emotion/react";
+import type { Reducer, Store } from "@reduxjs/toolkit";
 import type { MatcherFunction } from "@testing-library/dom";
 import type { ByRoleMatcher } from "@testing-library/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  screen,
+  render as testingLibraryRender,
+  waitFor,
+} from "@testing-library/react";
 import type { History } from "history";
 import { createMemoryHistory } from "history";
 import { KBarProvider } from "kbar";
 import type * as React from "react";
 import { DragDropContextProvider } from "react-dnd";
 import HTML5Backend from "react-dnd-html5-backend";
-import { Provider } from "react-redux";
 import { Router, useRouterHistory } from "react-router";
-import { routerReducer, routerMiddleware } from "react-router-redux";
+import { routerMiddleware, routerReducer } from "react-router-redux";
 import _ from "underscore";
 
-import { AppInitializeController } from "embedding-sdk/components/private/AppInitializeController";
-import { SdkThemeProvider } from "embedding-sdk/components/private/SdkThemeProvider";
-import { sdkReducers } from "embedding-sdk/store";
-import type { SdkStoreState } from "embedding-sdk/store/types";
-import { createMockSdkState } from "embedding-sdk/test/mocks/state";
-import type { SDKConfig } from "embedding-sdk/types";
 import { Api } from "metabase/api";
 import { UndoListing } from "metabase/containers/UndoListing";
+import { baseStyle } from "metabase/css/core/base.styled";
+import { MetabaseReduxProvider } from "metabase/lib/redux";
 import { mainReducers } from "metabase/reducers-main";
 import { publicReducers } from "metabase/reducers-public";
-import { EmotionCacheProvider } from "metabase/styled-components/components/EmotionCacheProvider";
+import type { MantineThemeOverride } from "metabase/ui";
 import { ThemeProvider } from "metabase/ui";
 import type { State } from "metabase-types/store";
 import { createMockState } from "metabase-types/store/mocks";
@@ -40,7 +39,7 @@ interface ReducerObject {
 export interface RenderWithProvidersOptions {
   // the mode changes the reducers and initial state to be used for
   // public or sdk-specific tests
-  mode?: "default" | "public" | "sdk";
+  mode?: "default" | "public";
   initialRoute?: string;
   storeInitialState?: Partial<State>;
   withRouter?: boolean;
@@ -49,7 +48,6 @@ export interface RenderWithProvidersOptions {
   withDND?: boolean;
   withUndos?: boolean;
   customReducers?: ReducerObject;
-  sdkConfig?: SDKConfig | null;
   theme?: MantineThemeOverride;
 }
 
@@ -69,7 +67,6 @@ export function renderWithProviders(
     withDND = false,
     withUndos = false,
     customReducers,
-    sdkConfig = null,
     theme,
     ...options
   }: RenderWithProvidersOptions = {},
@@ -80,16 +77,10 @@ export function renderWithProviders(
   if (mode === "public") {
     const publicReducerNames = Object.keys(publicReducers);
     initialState = _.pick(initialState, ...publicReducerNames) as State;
-  } else if (mode === "sdk") {
-    const sdkReducerNames = Object.keys(sdkReducers);
-    initialState = _.pick(
-      { sdk: createMockSdkState(), ...initialState },
-      ...sdkReducerNames,
-    ) as SdkStoreState;
   }
 
   // We need to call `useRouterHistory` to ensure the history has a `query` object,
-  // since some components and hooks like `use-sync-url-slug` rely on it to read/write query params.
+  // since some components and hooks rely on it to read/write query params.
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const browserHistory = useRouterHistory(createMemoryHistory)({
     entries: [initialRoute],
@@ -98,9 +89,7 @@ export function renderWithProviders(
 
   let reducers;
 
-  if (mode === "sdk") {
-    reducers = sdkReducers;
-  } else if (mode === "public") {
+  if (mode === "public") {
     reducers = publicReducers;
   } else {
     reducers = mainReducers;
@@ -126,12 +115,6 @@ export function renderWithProviders(
   ) as unknown as Store<State>;
 
   const wrapper = (props: any) => {
-    if (mode === "sdk") {
-      return (
-        <SdkWrapper {...props} config={sdkConfig} store={store} theme={theme} />
-      );
-    }
-
     return (
       <TestWrapper
         {...props}
@@ -146,7 +129,7 @@ export function renderWithProviders(
     );
   };
 
-  const utils = render(ui, {
+  const utils = testingLibraryRender(ui, {
     wrapper,
     ...options,
   });
@@ -157,6 +140,12 @@ export function renderWithProviders(
     history,
   };
 }
+
+/**
+ * A minimal version of the GlobalStyles component, for use in Storybook stories.
+ * Contains strictly only the base styles to act as CSS resets, without font files.
+ **/
+const GlobalStylesForTest = () => <Global styles={baseStyle} />;
 
 export function TestWrapper({
   children,
@@ -178,9 +167,14 @@ export function TestWrapper({
   theme?: MantineThemeOverride;
 }): JSX.Element {
   return (
-    <Provider store={store}>
+    <MetabaseReduxProvider store={store}>
       <MaybeDNDProvider hasDND={withDND}>
-        <ThemeProvider theme={theme}>
+        <ThemeProvider
+          theme={theme}
+          mantineProviderProps={{ withCssVariables: false }}
+        >
+          <GlobalStylesForTest />
+
           <MaybeKBar hasKBar={withKBar}>
             <MaybeRouter hasRouter={withRouter} history={history}>
               {children}
@@ -189,32 +183,7 @@ export function TestWrapper({
           {withUndos && <UndoListing />}
         </ThemeProvider>
       </MaybeDNDProvider>
-    </Provider>
-  );
-}
-
-function SdkWrapper({
-  config,
-  children,
-  store,
-}: {
-  config: SDKConfig;
-  children: React.ReactElement;
-  store: any;
-  history?: History;
-  withRouter: boolean;
-  withDND: boolean;
-}) {
-  return (
-    <Provider store={store}>
-      <EmotionCacheProvider>
-        <SdkThemeProvider>
-          <AppInitializeController config={config}>
-            {children}
-          </AppInitializeController>
-        </SdkThemeProvider>
-      </EmotionCacheProvider>
-    </Provider>
+    </MetabaseReduxProvider>
   );
 }
 
@@ -304,9 +273,14 @@ export function getBrokenUpTextMatcher(textToFind: string): MatcherFunction {
  * @see https://metaboat.slack.com/archives/C505ZNNH4/p1684753502335459?thread_ts=1684751522.480859&cid=C505ZNNH4
  */
 export const waitForLoaderToBeRemoved = async () => {
-  await waitFor(() => {
-    expect(screen.queryByTestId("loading-spinner")).not.toBeInTheDocument();
-  });
+  await waitFor(
+    () => {
+      expect(screen.queryByTestId("loading-indicator")).not.toBeInTheDocument();
+      // default timeout is 1s, but sometimes it's not enough and leads to flakiness,
+      // 3s should be enough
+    },
+    { timeout: 3000 },
+  );
 };
 
 /**
@@ -374,4 +348,23 @@ export function createMockClipboardData(
   return clipboardData as unknown as DataTransfer;
 }
 
+const ThemeProviderWrapper = ({
+  children,
+  ...props
+}: React.PropsWithChildren) => (
+  <ThemeProvider mantineProviderProps={{ withCssVariables: false }} {...props}>
+    {children}
+  </ThemeProvider>
+);
+
+export function renderWithTheme(children: React.ReactElement) {
+  return testingLibraryRender(children, {
+    wrapper: ThemeProviderWrapper,
+  });
+}
+
+// eslint-disable-next-line import/export -- we're intentionally overriding the render function
+export { renderWithTheme as render };
+
+// eslint-disable-next-line import/export -- we're intentionally overriding the render function
 export * from "@testing-library/react";

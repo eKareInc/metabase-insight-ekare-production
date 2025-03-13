@@ -1,3 +1,4 @@
+import cx from "classnames";
 import { useCallback, useMemo } from "react";
 
 import CS from "metabase/css/core/index.css";
@@ -6,20 +7,20 @@ import type { IconName } from "metabase/ui";
 import { Icon } from "metabase/ui";
 import type { UiParameter } from "metabase-lib/v1/parameters/types";
 import type {
-  QuestionDashboardCard,
   ClickBehavior,
   ClickBehaviorType,
+  DashboardCard,
 } from "metabase-types/api";
 
 import { SidebarItem } from "../SidebarItem";
 import { useClickBehaviorOptionName } from "../hooks";
 import { clickBehaviorOptions } from "../utils";
 
-import { BehaviorOptionIcon } from "./TypeSelector.styled";
+import S from "./TypeSelector.module.css";
 
 interface BehaviorOptionProps {
   value: ClickBehaviorType;
-  dashcard: QuestionDashboardCard;
+  dashcard: DashboardCard;
   icon: IconName;
   hasNextStep: boolean;
   selected: boolean;
@@ -43,10 +44,12 @@ export const BehaviorOption = ({
       onClick={onClick}
       disabled={disabled}
     >
-      <BehaviorOptionIcon
+      <SidebarItem.Icon
+        className={cx(S.BehaviorOptionIcon, {
+          [S.isSelected]: selected,
+        })}
         name={selected ? "check" : icon}
-        color={selected ? color("white") : color("brand")}
-        isSelected={selected}
+        color={selected ? color("text-white") : color("brand")}
       />
       <SidebarItem.Content>
         <SidebarItem.Name>{behaviorOptionName}</SidebarItem.Name>
@@ -61,7 +64,7 @@ export const BehaviorOption = ({
 };
 
 interface TypeSelectorProps {
-  dashcard: QuestionDashboardCard;
+  dashcard: DashboardCard;
   clickBehavior: ClickBehavior;
   parameters: UiParameter[];
   updateSettings: (settings?: ClickBehavior) => void;

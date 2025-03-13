@@ -14,11 +14,15 @@ Site name, report timezone, and more settings.
 
 ## [Email](./email.md)
 
-Set up email for [Alerts](../questions/sharing/alerts.md) and [Dashboard subscriptions](../dashboards/subscriptions.md).
+Set up email for [Alerts](../questions/alerts.md) and [Dashboard subscriptions](../dashboards/subscriptions.md).
 
 ## [Slack](./slack.md)
 
 Set up Slack for Alerts and Dashboard subscriptions.
+
+### [Webhooks](./webhooks.md)
+
+Set up webhooks as notification channels for alerts.
 
 ## [Environment variables](./environment-variables.md)
 
@@ -26,7 +30,7 @@ Configure Metabase on launch via environment variables.
 
 ## [Configuration file](./config-file.md)
 
-On self-hosted paid plans, you can configure Metabase via a configuration file.
+On self-hosted Pro and Enterprise plans, you can configure Metabase via a configuration file.
 
 ## [Metabase logs configuration](./log-configuration.md)
 

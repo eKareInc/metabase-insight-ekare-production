@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 eclipse-temurin:11-jre-alpine
+FROM eclipse-temurin:21-jre-alpine
 
 ENV FC_LANG=en-US LC_CTYPE=en_US.UTF-8
 
@@ -6,7 +6,7 @@ ARG GIT_COMMIT_SHA
 ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 
 # dependencies
-RUN apk add -U bash fontconfig curl font-noto font-noto-arabic font-noto-hebrew font-noto-cjk java-cacerts && \
+RUN apk add -U bash fontconfig curl font-noto font-noto-arabic font-noto-hebrew font-noto-cjk font-noto-thai java-cacerts && \
     apk upgrade && \
     rm -rf /var/cache/apk/* && \
     mkdir -p /app/certs && \

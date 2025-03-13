@@ -1,7 +1,7 @@
 import { t } from "ttag";
 
 import { useCreateCollectionMutation } from "metabase/api";
-import FormFooter from "metabase/core/components/FormFooter";
+import { FormFooter } from "metabase/core/components/FormFooter";
 import {
   Form,
   FormErrorMessage,
@@ -12,7 +12,6 @@ import {
 import { Button, Flex, Modal } from "metabase/ui";
 import type { CollectionId } from "metabase-types/api";
 
-import { ENTITY_PICKER_Z_INDEX } from "../../EntityPicker";
 import type { CollectionPickerItem } from "../types";
 
 interface NewCollectionDialogProps {
@@ -20,6 +19,7 @@ interface NewCollectionDialogProps {
   onClose: () => void;
   parentCollectionId: CollectionId | null;
   onNewCollection: (item: CollectionPickerItem) => void;
+  namespace?: "snippets";
 }
 
 export const NewCollectionDialog = ({
@@ -27,6 +27,7 @@ export const NewCollectionDialog = ({
   onClose,
   parentCollectionId,
   onNewCollection,
+  namespace,
 }: NewCollectionDialogProps) => {
   const [createCollection] = useCreateCollectionMutation();
 
@@ -34,6 +35,7 @@ export const NewCollectionDialog = ({
     const newCollection = await createCollection({
       name,
       parent_id: parentCollectionId === "root" ? null : parentCollectionId,
+      namespace,
     }).unwrap();
 
     onNewCollection({ ...newCollection, model: "collection" });
@@ -48,7 +50,6 @@ export const NewCollectionDialog = ({
       data-testid="create-collection-on-the-go"
       trapFocus={true}
       withCloseButton={false}
-      zIndex={ENTITY_PICKER_Z_INDEX}
     >
       <FormProvider
         initialValues={{ name: "" }}

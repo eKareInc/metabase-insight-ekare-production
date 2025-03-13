@@ -6,7 +6,7 @@
    [java-time.api :as t]
    [metabase.actions.error :as actions.error]
    [metabase.config :as config]
-   [metabase.core :as mbc]
+   [metabase.core.core :as mbc]
    [metabase.db :as mdb]
    [metabase.driver :as driver]
    [metabase.driver.h2 :as h2]
@@ -14,14 +14,12 @@
    [metabase.driver.sql-jdbc.actions :as sql-jdbc.actions]
    [metabase.driver.sql-jdbc.connection :as sql-jdbc.conn]
    [metabase.driver.sql.query-processor :as sql.qp]
-   [metabase.models :refer [Database]]
    [metabase.query-processor :as qp]
    [metabase.query-processor.compile :as qp.compile]
    [metabase.test :as mt]
    [metabase.util :as u]
    [metabase.util.honey-sql-2 :as h2x]
-   [toucan2.core :as t2]
-   [toucan2.tools.with-temp :as t2.with-temp]))
+   [toucan2.core :as t2]))
 
 (set! *warn-on-reflection* true)
 
@@ -114,7 +112,7 @@
 
 (deftest disallow-admin-accounts-test
   (testing "Check that we're not allowed to run SQL against an H2 database with a non-admin account"
-    (t2.with-temp/with-temp [Database db {:name "Fake-H2-DB", :engine "h2", :details {:db "mem:fake-h2-db"}}]
+    (mt/with-temp [:model/Database db {:name "Fake-H2-DB", :engine "h2", :details {:db "mem:fake-h2-db"}}]
       (is (thrown-with-msg?
            clojure.lang.ExceptionInfo
            #"Running SQL queries against H2 databases using the default \(admin\) database user is forbidden\.$"
@@ -150,24 +148,24 @@
           (is (= [["Conchúr Tihomir"]]
                  (mt/rows results))))
         (testing "cols"
-          (is (= [{:display_name "NAME"
-                   :base_type    :type/Text
-                   :effective_type :type/Text
-                   :source       :native
-                   :field_ref    [:field "NAME" {:base-type :type/Text}]
-                   :name         "NAME"}]
-                 (mt/cols results))))))))
+          (is (=? [{:display_name "NAME"
+                    :base_type    :type/Text
+                    :effective_type :type/Text
+                    :source       :native
+                    :field_ref    [:field "NAME" {:base-type :type/Text}]
+                    :name         "NAME"}]
+                  (mt/cols results))))))))
 
 (deftest ^:parallel native-query-date-trunc-test
   (mt/test-driver :h2
     (testing "A native query that doesn't return a column class name metadata should work correctly (#12150)"
-      (is (= [{:display_name "D"
-               :base_type    :type/Date
-               :effective_type :type/Date
-               :source       :native
-               :field_ref    [:field "D" {:base-type :type/Date}]
-               :name         "D"}]
-             (mt/cols (qp/process-query (mt/native-query {:query "SELECT date_trunc('day', DATE) AS D FROM CHECKINS LIMIT 5;"}))))))))
+      (is (=? [{:display_name "D"
+                :base_type    :type/Date
+                :effective_type :type/Date
+                :source       :native
+                :field_ref    [:field "D" {:base-type :type/Date}]
+                :name         "D"}]
+              (mt/cols (qp/process-query (mt/native-query {:query "SELECT date_trunc('day', DATE) AS D FROM CHECKINS LIMIT 5;"}))))))))
 
 (deftest ^:parallel timestamp-with-timezone-test
   (testing "Make sure TIMESTAMP WITH TIME ZONEs come back as OffsetDateTimes."
@@ -179,18 +177,18 @@
   (testing "Native query parameters should work with filters."
     (is (= [[693 "2015-12-29T00:00:00Z" 10 90]]
            (mt/rows
-             (qp/process-query
-              {:database   (mt/id)
-               :type       :native
-               :native     {:query         "select * from checkins where {{date}} order by date desc limit 1;"
-                            :template-tags {"date" {:name         "date"
-                                                    :display-name "date"
-                                                    :type         :dimension
-                                                    :widget-type  :date/all-options
-                                                    :dimension    [:field (mt/id :checkins :date) nil]}}}
-               :parameters [{:type :date/all-options
-                             :target [:dimension [:template-tag "date"]]
-                             :value "past30years"}]}))))))
+            (qp/process-query
+             {:database   (mt/id)
+              :type       :native
+              :native     {:query         "select * from checkins where {{date}} order by date desc limit 1;"
+                           :template-tags {"date" {:name         "date"
+                                                   :display-name "date"
+                                                   :type         :dimension
+                                                   :widget-type  :date/all-options
+                                                   :dimension    [:field (mt/id :checkins :date) nil]}}}
+              :parameters [{:type :date/all-options
+                            :target [:dimension [:template-tag "date"]]
+                            :value "past30years"}]}))))))
 
 (defn- pretty-sql [s]
   (-> s
@@ -209,6 +207,16 @@
                       "GROUP BY ATTEMPTS.DATE "
                       "ORDER BY ATTEMPTS.DATE ASC")
                  (some-> (qp.compile/compile query) :query pretty-sql))))))))
+
+(deftest ^:parallel do-not-cast-to-date-binned-by-week-to-datetime
+  (mt/test-driver :h2
+    (testing "Don't cast date binned by week"
+      (mt/dataset attempted-murders
+        (let [query (mt/mbql-query attempts
+                      {:aggregation [[:count]]
+                       :breakout    [!week.date]})
+              compiled (some-> (qp.compile/compile query) :query pretty-sql)]
+          (is (not (re-find #"CAST\([^)]+\s+AS\s+datetime\)" compiled))))))))
 
 (deftest ^:parallel check-action-commands-test
   (mt/test-driver :h2
@@ -275,7 +283,9 @@
       "table orders"
       "call 1 + 1"
       ;; Note this passes the check, but will fail on execution
-      "update venues set name = 'bill'; some query that can't be parsed;"))
+      "update venues set name = 'bill'; some query that can't be parsed;")))
+
+(deftest ^:parallel check-read-only-test-2
   (testing "not read only statements should fail"
     (are [query] (thrown?
                   clojure.lang.ExceptionInfo
@@ -289,8 +299,8 @@
       "delete venues"
       "select 1; update venues set name = 'bill'; delete venues;"
       (str/join "\n" ["DROP TRIGGER IF EXISTS MY_SPECIAL_TRIG;"
-                        "CREATE OR REPLACE TRIGGER MY_SPECIAL_TRIG BEFORE SELECT ON INFORMATION_SCHEMA.Users AS '';"
-                        "SELECT * FROM INFORMATION_SCHEMA.Users;"]))))
+                      "CREATE OR REPLACE TRIGGER MY_SPECIAL_TRIG BEFORE SELECT ON INFORMATION_SCHEMA.Users AS '';"
+                      "SELECT * FROM INFORMATION_SCHEMA.Users;"]))))
 
 (deftest disallowed-commands-in-action-test
   (mt/test-driver :h2
@@ -306,7 +316,11 @@
             (is (=? {:message "Error executing Action: DDL commands are not allowed to be used with H2."}
                     (mt/user-http-request :crowberto
                                           :post 500
-                                          (format "action/%s/execute" action-id)))))))
+                                          (format "action/%s/execute" action-id))))))))))
+
+(deftest disallowed-commands-in-action-test-2
+  (mt/test-driver :h2
+    (mt/with-actions-test-data-and-actions-enabled
       (testing "Should be able to execute query actions with allowed commands"
         (let [sql "update categories set name = 'stomp' where id = 1; update categories set name = 'stomp' where id = 2;"]
           (mt/with-actions [{:keys [action-id]} {:type :query
@@ -342,10 +356,10 @@
                   (is (= #{:classname :subprotocol :subname :datasource}
                          (set (keys spec))))))))
           (finally
-            (t2/delete! Database :is_audit true)
+            (t2/delete! :model/Database :is_audit true)
             (when original-audit-db (mbc/ensure-audit-db-installed!))))))))
 
-;; API tests are in [[metabase.api.action-test]]
+;; API tests are in [[metabase.actions.api-test]]
 (deftest ^:parallel actions-maybe-parse-sql-error-test
   (testing "violate not null constraint"
     (is (= {:type    :metabase.actions.error/violate-not-null-constraint

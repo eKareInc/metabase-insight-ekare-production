@@ -73,7 +73,6 @@
   See #14055 and #19399 for more information about and motivation behind User- and Database-local Settings."
   (:refer-clojure :exclude [get])
   (:require
-   [cheshire.core :as json]
    [clojure.core :as core]
    [clojure.data :as data]
    [clojure.data.csv :as csv]
@@ -92,6 +91,7 @@
    [metabase.util.date-2 :as u.date]
    [metabase.util.encryption :as encryption]
    [metabase.util.i18n :refer [deferred-trs deferred-tru trs tru]]
+   [metabase.util.json :as json]
    [metabase.util.log :as log]
    [metabase.util.malli :as mu]
    [methodical.core :as methodical]
@@ -127,8 +127,7 @@
   This is a delay so that the settings for a user are loaded only if and when they are actually needed during a given
   API request.
 
-  This is normally bound automatically by session middleware, in
-  [[metabase.server.middleware.session/do-with-current-user]]."
+  This is normally bound automatically by session middleware, in [[metabase.server.middleware.session]]."
   (delay (atom nil)))
 
 (def ^:private retired-setting-names
@@ -147,11 +146,6 @@
   false)
 
 (declare admin-writable-site-wide-settings get-value-of-type set-value-of-type!)
-
-(def Setting
-  "Used to be the toucan1 model name defined using [[toucan.models/defmodel]], now it's a reference to the toucan2 model name.
-  We'll keep this till we replace all the symbols in our codebase."
-  :model/Setting)
 
 (methodical/defmethod t2/table-name :model/Setting [_model] :setting)
 
@@ -271,9 +265,10 @@
    ;; where this setting should be visible (default: :admin)
    [:visibility Visibility]
 
-   ;; should this setting be encrypted `:never` or `:maybe` (when `MB_ENCRYPTION_SECRET_KEY` is set).
-   ;; Defaults to `:maybe`
-   [:encryption [:enum :never :maybe]]
+   ;; should this setting be encrypted. Available options are `:no` or `:when-encryption-key-set` (the setting will be
+   ;; encrypted when `MB_ENCRYPTION_SECRET_KEY` is set, otherwise we can't encrypt). This is required for `:timestamp`,
+   ;; `:json`, and `:csv`-typed settings. Defaults to `:no` for all other types.
+   [:encryption [:enum :no :when-encryption-key-set]]
 
    ;; should this setting be serialized?
    [:export? :boolean]
@@ -287,6 +282,9 @@
    ;; whether this Setting can be Database-local or User-local. See [[metabase.models.setting]] docstring for more info.
    [:database-local LocalOption]
    [:user-local     LocalOption]
+
+   ;; should this setting be read from env vars?
+   [:can-read-from-env? :boolean]
 
    ;; called whenever setting value changes, whether from update-setting! or a cache refresh. used to handle cases
    ;; where a change to the cache necessitates a change to some value outside the cache, like when a change the
@@ -327,6 +325,7 @@
   clojure.lang.Keyword
   (resolve-setting [k]
     (or (@registered-settings k)
+        (@registered-settings (u/->kebab-case-en k))
         (throw (ex-info (tru "Unknown setting: {0}" k)
                         {::unknown-setting-error true
                          :registered-settings
@@ -351,7 +350,6 @@
                                   (set (keys d2)))]
       (when-let [on-change (get-in rs [(keyword changed-setting) :on-change])]
         (on-change (core/get old changed-setting) (core/get new changed-setting))))))
-
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                                      get                                                       |
@@ -388,8 +386,8 @@
     (when (allows-database-local-values? setting)
       (core/get *database-local-values* setting-name))))
 
-(defn- prohibits-encryption? [setting]
-  (#{:never} (:encryption (resolve-setting setting))))
+(defn- prohibits-encryption? [setting-or-name]
+  (= :no (:encryption (resolve-setting setting-or-name))))
 
 (defn- allows-user-local-values? [setting]
   (#{:only :allowed} (:user-local (resolve-setting setting))))
@@ -398,6 +396,9 @@
   (and
    (not (database-local-only? setting))
    (not (user-local-only? setting))))
+
+(defn- allows-setting-via-env? [setting-definition-or-name]
+  (:can-read-from-env? (resolve-setting setting-definition-or-name)))
 
 (defn- site-wide-only? [setting]
   (and
@@ -419,7 +420,7 @@
     ;; Update the atom in *user-local-values* with the new value before writing to the DB. This ensures that
     ;; subsequent setting updates within the same API request will not overwrite this value.
     (swap! @*user-local-values* u/assoc-dissoc setting-name value)
-    (t2/update! 'User api/*current-user-id* {:settings (json/generate-string @@*user-local-values*)})))
+    (t2/update! 'User api/*current-user-id* {:settings (json/encode @@*user-local-values*)})))
 
 (def ^:dynamic *enforce-setting-access-checks*
   "A dynamic var that controls whether we should enforce checks on setting access. Defaults to false; should be
@@ -429,8 +430,8 @@
 (defn- has-feature?
   [feature]
   (u/ignore-exceptions
-   (classloader/require 'metabase.public-settings.premium-features))
-  (let [has-feature?' (resolve 'metabase.public-settings.premium-features/has-feature?)]
+    (classloader/require 'metabase.premium-features.token-check))
+  (let [has-feature?' (resolve 'metabase.premium-features.token-check/has-feature?)]
     (has-feature?' feature)))
 
 (defn has-advanced-setting-access?
@@ -441,7 +442,7 @@
       (do
         (when config/ee-available?
           (classloader/require 'metabase-enterprise.advanced-permissions.common
-                               'metabase.public-settings.premium-features))
+                               'metabase.premium-features.token-check))
         (if-let [current-user-has-application-permissions?
                  (and (has-feature? :advanced-permissions)
                       (resolve 'metabase-enterprise.advanced-permissions.common/current-user-has-application-permissions?))]
@@ -494,7 +495,8 @@
   environment variable `MB_FOO_BAR`."
   ^String [setting-definition-or-name]
   (let [setting (resolve-setting setting-definition-or-name)]
-    (when (allows-site-wide-values? setting)
+    (when (and (allows-site-wide-values? setting)
+               (allows-setting-via-env? setting))
       (let [v (env/env (setting-env-map-name setting))]
         (when (seq v)
           v)))))
@@ -515,7 +517,7 @@
     (get setting-definition-or-name)))
 
 (defn- db-value [setting-definition-or-name]
-  (t2/select-one-fn :value Setting :key (setting-name setting-definition-or-name)))
+  (t2/select-one-fn :value :model/Setting :key (setting-name setting-definition-or-name)))
 
 (defn- db-is-set-up? []
   ;; this should never be hit. it is just overly cautious against a NPE here. But no way this cannot resolve
@@ -529,16 +531,16 @@
     ;; cannot use db (and cache populated from db) if db is not set up
     (when (and (db-is-set-up?) (allows-site-wide-values? setting))
       (not-empty
-        (if config/*disable-setting-cache*
-          (db-value setting)
-          (do
+       (if config/*disable-setting-cache*
+         (db-value setting)
+         (do
             ;; gotcha - returns immediately if another process is restoring it, i.e. before it's been populated
-            (setting.cache/restore-cache-if-needed!)
-            (let [cache (setting.cache/cache)]
-              (if (nil? cache)
+           (setting.cache/restore-cache-if-needed!)
+           (let [cache (setting.cache/cache)]
+             (if (nil? cache)
                 ;; nil if we returned early above, and the cache is still being restored - in that case hit the db
-                (db-value setting)
-                (core/get cache (setting-name setting-definition-or-name))))))))))
+               (db-value setting)
+               (core/get cache (setting-name setting-definition-or-name))))))))))
 
 (defonce ^:private ^ReentrantLock init-lock (ReentrantLock.))
 
@@ -689,7 +691,7 @@
 
 (defmethod get-value-of-type :json
   [_setting-type setting-definition-or-name]
-  (get-raw-value setting-definition-or-name coll? #(json/parse-string-strict % true)))
+  (get-raw-value setting-definition-or-name coll? json/decode+kw))
 
 (defmethod get-value-of-type :csv
   [_setting-type setting-definition-or-name]
@@ -724,12 +726,12 @@
   (assert (not= setting-name setting.cache/settings-last-updated-key)
           (tru "You cannot update `settings-last-updated` yourself! This is done automatically."))
   ;; Toucan 2 version of `update!` will do transforms and stuff like that
-  (t2/update! Setting :key setting-name {:value new-value}))
+  (t2/update! :model/Setting :key setting-name {:value new-value}))
 
 (defn- set-new-setting!
   "Insert a new row for a Setting. Used internally by [[set-value-of-type!]] for `:string` below; do not use directly."
   [setting-name new-value]
-  (try (first (t2/insert-returning-instances! Setting
+  (try (first (t2/insert-returning-instances! :model/Setting
                                               :key   setting-name
                                               :value new-value))
        ;; if for some reason inserting the new value fails it almost certainly means the cache is out of date
@@ -796,7 +798,7 @@
             ;; write to DB
             (cond
               (nil? new-value)
-              (t2/delete! (t2/table-name Setting) :key setting-name)
+              (t2/delete! (t2/table-name :model/Setting) :key setting-name)
 
               ;; if there's a value in the cache then the row already exists in the DB; update that
               (contains? (setting.cache/cache) setting-name)
@@ -865,7 +867,7 @@
   [_setting-type setting-definition-or-name new-value]
   (set-value-of-type!
    :string setting-definition-or-name
-   (some-> new-value json/generate-string)))
+   (some-> new-value json/encode)))
 
 (defmethod set-value-of-type! :timestamp
   [_setting-type setting-definition-or-name new-value]
@@ -925,7 +927,7 @@
                               :getter (getter))
             previous-value (audit-value-fn)]
         (u/prog1 (setter new-value)
-                 (audit-setting-change! setting previous-value (audit-value-fn))))
+          (audit-setting-change! setting previous-value (audit-value-fn))))
       (setter new-value))))
 
 (defn set!
@@ -954,6 +956,41 @@
     (binding [config/*disable-setting-cache* (not cache?)]
       (set-with-audit-logging! setting new-value bypass-read-only?))))
 
+(defn- extract-encryption-or-default
+  "Encryption is turned off or on according to (in order of preference):
+
+  - the value you specify in `defsetting`,
+
+  - ON for settings marked as `sensitive?`
+
+  - ON for settings with a setter of `:none` (the specific value here doesn't really matter, we just don't want the
+  caller to need to provide a value)
+
+  - OFF for types unlikely to contain secrets. As of this writing, that's booleans, numbers, keywords, and timestamps
+
+  If none of these conditions are met (a non-`:sensitive?` string/json/csv value you're storing in the database, and
+  you didn't provide a value) then we'll throw an exception telling you that you need to provide it. This way, when we
+  add new settings, we'll think about their sensitivity level and make a conscious decision about whether they need to
+  be encrypted or not."
+  [setting]
+  (or
+   (:encryption setting)
+   ;; NOTE: if none of the below conditions is met, users of `defsetting` will be required to
+   ;; provide a value for `:encryption`.
+   ;;
+   ;; if a setting is `:sensitive?`, default to encrypting it
+   (when (:sensitive? setting)
+     :when-encryption-key-set)
+   ;; if a setting isn't stored in the DB, the value doesn't really matter, but provide
+   ;; a default so the caller doesn't have to
+   (when (= (:setter setting) :none)
+     :when-encryption-key-set)
+   ;; if the setting isn't a type likely to contain secrets, default to plaintext
+   (when (contains? #{:boolean :integer :positive-integer :double :keyword :timestamp} (:type setting))
+     :no)
+
+   (throw (ex-info (trs "`:encryption` is a required option for setting {0}" (:name setting))
+                   {:setting setting}))))
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
 ;;; |                                               register-setting!                                                |
@@ -979,7 +1016,7 @@
                  :init           nil
                  :tag            (default-tag-for-type setting-type)
                  :visibility     :admin
-                 :encryption     :maybe
+                 :encryption     (extract-encryption-or-default setting)
                  :export?        false
                  :sensitive?     false
                  :cache?         true
@@ -988,6 +1025,7 @@
                  :user-local     :never
                  :deprecated     nil
                  :enabled?       nil
+                 :can-read-from-env?       true
                  ;; Disable auditing by default for user- or database-local settings
                  :audit          (if (site-wide-only? setting) :no-value :never)}
                 (dissoc setting :name :type :default)))
@@ -996,12 +1034,17 @@
       ;; eastwood complains about (setting-name @registered-settings) for shadowing the function `setting-name`
       (when-let [registered-setting (core/get @registered-settings setting-name)]
         (when (not= setting-ns (:namespace registered-setting))
-          (throw (ex-info (tru "Setting {0} already registered in {1}" setting-name (:namespace registered-setting))
+          ;; not i18n'ed because this is supposed to be developer-facing only.
+          (throw (ex-info (format "Setting %s already registered in %s. You can remove the old definition with (swap! %s dissoc %s)"
+                                  setting-name
+                                  (:namespace registered-setting)
+                                  `registered-settings
+                                  (keyword setting-name))
                           {:existing-setting (dissoc registered-setting :on-change :getter :setter)}))))
       (when-let [same-munge (first (filter (comp #{munged-name} :munged-name)
                                            (vals @registered-settings)))]
         (when (not= setting-name (:name same-munge)) ;; redefinitions are fine
-          (throw (ex-info (tru "Setting names in would collide: {0} and {1}"
+          (throw (ex-info (tru "Setting names would collide: {0} and {1}"
                                setting-name (:name same-munge))
                           {:existing-setting (dissoc same-munge :on-change :getter :setter)
                            :new-setting      (dissoc <> :on-change :getter :setter)}))))
@@ -1219,14 +1262,17 @@
   will happen, in [[call-on-change]] below.
 
   ###### `:feature`
+
   If non-nil, determines the Enterprise feature flag required to use this setting. If the feature is not enabled,
   the setting will behave the same as if `enabled?` returns `false` (see below).
 
   ###### `enabled?`
+
   Function which returns true if the setting should be enabled. If it returns false, the setting will throw an
   exception when it is attempted to be set, and will return its default value when read. Defaults to always enabled.
 
   ###### `audit`
+
   Keyword that determines what kind of audit log entry should be created when this setting is written. Options are
   `:never`, `:no-value`, `:raw-value`, and `:getter`. User- and database-local settings are never audited. `:getter`
   should be used for most non-sensitive settings, and will log the value returned by its getter, which may be
@@ -1235,6 +1281,7 @@
   and `:sensitive` settings.)
 
   ###### `base`
+
   A map which can provide values for any of the above options, except for :export?.
   Any top level options will override what's in this base map.
   The use case for this map is sharing strongly coupled options between similar settings, see [[uuid-nonce-base]].
@@ -1373,10 +1420,10 @@
   "Returns the user facing view of the registered settings satisfying the given predicate"
   [pred options]
   (into
-    []
-    (comp (filter pred)
-          (map #(m/mapply user-facing-info % options)))
-    (sort-by :name (vals @registered-settings))))
+   []
+   (comp (filter pred)
+         (map #(m/mapply user-facing-info % options)))
+   (sort-by :name (vals @registered-settings))))
 
 (defn writable-settings
   "Return a sequence of site-wide Settings maps in a format suitable for consumption by the frontend.
@@ -1384,9 +1431,8 @@
 
   `options` are passed to [[user-facing-value]].
 
-  This is currently used by `GET /api/setting` ([[metabase.api.setting/GET_]]; admin-only; powers the Admin Settings
-  page) so all admin-visible Settings should be included. We *do not* want to return env var values, since admins
-  are not allowed to modify them.
+  This is currently used by `GET /api/setting` (admin-only; powers the Admin Settings page) so all admin-visible
+  Settings should be included. We *do not* want to return env var values, since admins are not allowed to modify them.
 
   For settings managers who are not admins, only the subset of settings with the :settings-manager visibility level
   are returned."
@@ -1395,10 +1441,10 @@
   (let [writable-visibilities (current-user-writable-visibilities)]
     (binding [*database-local-values* nil]
       (user-facing-settings-matching
-        (fn [setting]
-          (and (contains? writable-visibilities (:visibility setting))
-               (not= (:database-local setting) :only)))
-        options))))
+       (fn [setting]
+         (and (contains? writable-visibilities (:visibility setting))
+              (not= (:database-local setting) :only)))
+       options))))
 
 (defn admin-writable-site-wide-settings
   "Returns a sequence of site-wide Settings maps, similar to [[writable-settings]]. However, this function
@@ -1413,10 +1459,10 @@
   (binding [*user-local-values* (delay (atom nil))
             *database-local-values* nil]
     (user-facing-settings-matching
-      (fn [setting]
-        (and (not= (:visibility setting) :internal)
-             (allows-site-wide-values? setting)))
-      options)))
+     (fn [setting]
+       (and (not= (:visibility setting) :internal)
+            (allows-site-wide-values? setting)))
+     options)))
 
 (defn can-read-setting?
   "Returns true if a setting can be read according to the provided set of `allowed-visibilities`, and false otherwise.
@@ -1432,7 +1478,7 @@
 
   Settings marked `:sensitive?` (e.g. passwords) are excluded.
 
-  This is currently used by `GET /api/session/properties` ([[metabase.api.session/GET_properties]]) and
+  This is currently used by `GET /api/session/properties` and
   in [[metabase.server.routes.index/load-entrypoint-template]]. These are used as read-only sources of Settings for
   the frontend client. For that reason, these Settings *should* include values that come back from environment
   variables, *unless* they are marked `:sensitive?`."
@@ -1456,6 +1502,7 @@
 
 (defmulti may-contain-raw-token?
   "Indicate whether we must redact an exception to avoid leaking sensitive env vars"
+  {:arglists '([ex setting])}
   (fn [_ex setting] (:type setting)))
 
 ;; fallback to redaction if we have not defined behaviour for a given format
@@ -1503,8 +1550,8 @@
             parse-error (redact-sensitive-tokens parse-error setting)
             env-var?    (set-via-env-var? setting)]
         (assoc (select-keys setting [:name :type])
-          :parse-error parse-error
-          :env-var? env-var?)))))
+               :parse-error parse-error
+               :env-var? env-var?)))))
 
 (defn validate-settings-formatting!
   "Check whether there are any issues with the format of application settings, e.g. an invalid JSON string.
@@ -1531,26 +1578,35 @@
   - we're only doing anything when a value exists in the database, and
   - we're setting the value to the exact same value that already exists - just a decrypted version."
   []
-  (doseq [setting (filter prohibits-encryption? (vals @registered-settings))]
-    ;; use a raw query to use `:for :update`
-    (t2/with-transaction [_conn]
-      (when-let [v (t2/select-one-fn :value :setting :key (setting-name setting) {:for :update})]
-        (when (not= (encryption/maybe-decrypt v) v)
-          ;; similarly, use `:setting` vs `:model/Setting` here to ensure the update is actually run even though Toucan
-          ;; thinks nothing has changed
-          (t2/update! :setting :key (setting-name setting) {:value (encryption/maybe-decrypt v)}))))))
+  ;; If we don't have an encryption key set, don't bother trying to decrypt anything. If stuff is encrypted in the DB,
+  ;; we can't do anything about it (since we can't decrypt it). If stuff isn't decrypted in the DB, we have nothing to
+  ;; do.
+  (when (encryption/default-encryption-enabled?)
+    (let [settings (filter prohibits-encryption? (vals @registered-settings))]
+      (t2/with-transaction [_conn]
+        (doseq [{v :value k :key}
+                (t2/select :setting {:for :update :where [:and
+                                                          [:in :key (map setting-name settings)]
+                                                          ;; these are *definitely* decrypted already, let's not bother looking
+                                                          [:not [:in :value ["true" "false"]]]]})
+                :let [decrypted-v (encryption/maybe-decrypt v)]
+                :when (not= decrypted-v v)]
+          (t2/update! :setting :key k {:value decrypted-v}))))))
 
 (defn- maybe-encrypt [setting-model]
   ;; In tests, sometimes we need to insert/update settings that don't have definitions in the code and therefore can't
   ;; be resolved. Fall back to maybe-encrypting these.
-  (let [resolved (try (resolve-setting (:key setting-model))
-                      (catch clojure.lang.ExceptionInfo e
-                        (when (not (::unknown-setting-error (ex-data e)))
-                          (throw e))))]
-    (cond-> setting-model
-      (or (nil? resolved)
-          (not (prohibits-encryption? resolved)))
-      (update :value encryption/maybe-encrypt))))
+  ;; Don't do any automatic handling of the "encryption-check" special setting used by mdb.encryption
+  (if (= "encryption-check" (:key setting-model))
+    setting-model
+    (let [resolved (try (resolve-setting (:key setting-model))
+                        (catch clojure.lang.ExceptionInfo e
+                          (when (not (::unknown-setting-error (ex-data e)))
+                            (throw e))))]
+      (cond-> setting-model
+        (or (nil? resolved)
+            (not (prohibits-encryption? resolved)))
+        (update :value encryption/maybe-encrypt)))))
 
 (t2/define-before-update :model/Setting
   [setting]
@@ -1562,4 +1618,7 @@
 
 (t2/define-after-select :model/Setting
   [setting]
-  (update setting :value encryption/maybe-decrypt))
+  ;; Don't do any automatic handling of the "encryption-check" special setting used by mdb.encryption
+  (if (= "encryption-check" (:key setting))
+    setting
+    (update setting :value encryption/maybe-decrypt)))

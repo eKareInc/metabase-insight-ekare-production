@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ngettext, msgid } from "ttag";
+import { msgid, ngettext } from "ttag";
 
 import Schemas from "metabase/entities/schemas";
 import SidebarContent from "metabase/query_builder/components/SidebarContent";
@@ -7,15 +7,14 @@ import type Schema from "metabase-lib/v1/metadata/Schema";
 import type { State } from "metabase-types/store";
 
 import {
-  NodeListItemLink,
-  NodeListItemName,
-  NodeListItemIcon,
-  NodeListTitle,
   NodeListContainer,
   NodeListIcon,
+  NodeListItemIcon,
+  NodeListItemLink,
+  NodeListItemName,
+  NodeListTitle,
   NodeListTitleText,
-} from "./NodeList.styled";
-import { PaneContent } from "./Pane.styled";
+} from "./NodeList";
 
 interface SchemaPaneProps {
   onBack: () => void;
@@ -41,7 +40,7 @@ const SchemaPane = ({
       onBack={onBack}
       onClose={onClose}
     >
-      <PaneContent>
+      <SidebarContent.Pane>
         <NodeListContainer>
           <NodeListTitle>
             <NodeListIcon name="table" />
@@ -64,7 +63,7 @@ const SchemaPane = ({
             ))}
           </ul>
         </NodeListContainer>
-      </PaneContent>
+      </SidebarContent.Pane>
     </SidebarContent>
   );
 };

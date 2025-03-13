@@ -1,10 +1,10 @@
-import type * as React from "react";
-import { useState } from "react";
-import _ from "underscore";
+import { type ChangeEvent, useState } from "react";
 
-import { ChartSettingNumericInput } from "./ChartSettingInputNumeric.styled";
+import { TextInput } from "metabase/ui";
 
-const ALLOWED_CHARS = [
+import type { ChartSettingWidgetProps } from "./types";
+
+const ALLOWED_CHARS = new Set([
   "0",
   "1",
   "2",
@@ -18,44 +18,64 @@ const ALLOWED_CHARS = [
   ".",
   "-",
   "e",
-];
+]);
 
-interface ChartSettingInputProps {
-  value: number | undefined;
-  onChange: (value: number | undefined) => void;
-  onChangeSettings: () => void;
+// Note: there are more props than these that are provided by the viz settings
+// code, we just don't have types for them here.
+interface ChartSettingInputProps
+  extends Omit<ChartSettingWidgetProps<number>, "onChangeSettings"> {
+  options?: {
+    isInteger?: boolean;
+    isNonNegative?: boolean;
+  };
+  id?: string;
+  placeholder?: string;
+  getDefault?: () => string;
+  className?: string;
 }
 
 export const ChartSettingInputNumeric = ({
   onChange,
   value,
-  ...props
+  placeholder,
+  options,
+  id,
+  getDefault,
+  className,
 }: ChartSettingInputProps) => {
-  const [internalValue, setInternalValue] = useState(value?.toString() ?? "");
+  const [inputValue, setInputValue] = useState<string>(value?.toString() ?? "");
+  const defaultValueProps = getDefault ? { defaultValue: getDefault() } : {};
 
   return (
-    <ChartSettingNumericInput
+    <TextInput
+      id={id}
+      {...defaultValueProps}
+      placeholder={placeholder}
       type="text"
-      {..._.omit(props, "onChangeSettings")}
-      error={internalValue !== "" && isNaN(Number(internalValue))}
-      value={internalValue}
-      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-        const everyCharValid = e.target.value
-          .split("")
-          .every(char => ALLOWED_CHARS.includes(char));
-
-        if (everyCharValid) {
-          setInternalValue(e.target.value);
+      error={inputValue && isNaN(Number(inputValue))}
+      value={String(inputValue)}
+      onChange={(e: ChangeEvent<HTMLInputElement>) => {
+        if (e.target.value.split("").every(ch => ALLOWED_CHARS.has(ch))) {
+          setInputValue(e.target.value);
         }
       }}
-      onBlur={(e: React.ChangeEvent<HTMLInputElement>) => {
-        const num = e.target.value !== "" ? Number(e.target.value) : Number.NaN;
+      onBlur={e => {
+        let num = e.target.value !== "" ? Number(e.target.value) : Number.NaN;
+        if (options?.isInteger) {
+          num = Math.round(num);
+        }
+        if (options?.isNonNegative && num < 0) {
+          num *= -1;
+        }
+
         if (isNaN(num)) {
           onChange(undefined);
         } else {
           onChange(num);
+          setInputValue(String(num));
         }
       }}
+      className={className}
     />
   );
 };

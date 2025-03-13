@@ -1,7 +1,8 @@
+// eslint-disable-next-line no-restricted-imports
 import { css } from "@emotion/react";
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
-import { color } from "metabase/lib/colors";
 import { Icon } from "metabase/ui";
 
 export const ListRoot = styled.div`
@@ -15,7 +16,7 @@ export const CardBody = styled.div`
 `;
 
 export const CardTitle = styled.div`
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-dark);
   font-size: 1rem;
   font-weight: bold;
   margin-bottom: 0.125rem;
@@ -23,13 +24,13 @@ export const CardTitle = styled.div`
 `;
 
 export const CardDescription = styled.div`
-  color: ${color("text-medium")};
+  color: var(--mb-color-text-medium);
   font-size: 0.75rem;
   word-wrap: break-word;
 `;
 
 export const CardIcon = styled(Icon)`
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-dark);
   width: 1rem;
   height: 1rem;
 `;
@@ -47,11 +48,11 @@ export const CardIconContainer = styled.div`
 
 export const CardAside = styled.div`
   flex: 0 0 auto;
-  color: ${color("text-dark")};
+  color: var(--mb-color-text-dark);
   font-size: 0.75rem;
 `;
 
-export interface CardProps {
+interface CardProps {
   isSelected?: boolean;
 }
 
@@ -59,7 +60,7 @@ const selectedStyles = css`
   background-color: var(--mb-color-brand);
 
   ${CardTitle}, ${CardDescription}, ${CardAside} {
-    color: ${color("white")};
+    color: var(--mb-color-text-white);
   }
 
   ${CardIcon} {
@@ -67,8 +68,8 @@ const selectedStyles = css`
   }
 
   ${CardIconContainer} {
-    border-color: ${color("white")};
-    background-color: ${color("white")};
+    border-color: var(--mb-color-bg-white);
+    background-color: var(--mb-color-bg-white);
   }
 `;
 

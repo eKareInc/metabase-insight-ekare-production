@@ -144,9 +144,13 @@
    [:name      :string]
    ;; TODO -- ignore `base_type` and make `effective_type` required; see #29707
    [:base-type ::lib.schema.common/base-type]
-   [:id             {:optional true} ::lib.schema.id/field]
+   ;; This is nillable because internal remap columns have `:id nil`.
+   [:id             {:optional true} [:maybe ::lib.schema.id/field]]
    [:display-name   {:optional true} [:maybe :string]]
    [:effective-type {:optional true} [:maybe ::lib.schema.common/base-type]]
+   ;; type of this column in the data warehouse, e.g. `TEXT` or `INTEGER`
+   [:database-type  {:optional true} [:maybe :string]]
+   [:active         {:optional true} :boolean]
    ;; if this is a field from another table (implicit join), this is the field in the current table that should be
    ;; used to perform the implicit join. e.g. if current table is `VENUES` and this field is `CATEGORIES.ID`, then the
    ;; `fk_field_id` would be `VENUES.CATEGORY_ID`. In a `:field` reference this is saved in the options map as
@@ -212,7 +216,7 @@
                                  [:base-type  ::lib.schema.common/base-type]]]]]])
 
 (mr/def ::persisted-info
-  "Persisted Info = Cached Table (?). See [[metabase.models.persisted-info]]"
+  "Persisted Info = Cached Table (?). See [[metabase.model-persistence.models.persisted-info]]"
   [:map
    [:active     :boolean]
    [:state      ::lib.schema.common/non-blank-string]
@@ -254,12 +258,12 @@
    ;; particular Table (unless they are against MongoDB)... for MBQL queries it should be populated however.
    [:table-id        {:optional true} [:maybe ::lib.schema.id/table]]
    ;;
-   ;; PERSISTED INFO: This comes from the [[metabase.models.persisted-info]] model.
+   ;; PERSISTED INFO: This comes from the [[metabase.model-persistence.models.persisted-info]] model.
    ;;
    [:lib/persisted-info {:optional true} [:maybe [:ref ::persisted-info]]]])
 
 (mr/def ::segment
-  "More or less the same as a [[metabase.models.segment]], but with kebab-case keys."
+  "More or less the same as a [[metabase.segments.models.segment]], but with kebab-case keys."
   [:map
    {:error/message "Valid Segment metadata"}
    [:lib/type   [:= :metadata/segment]]
@@ -290,7 +294,7 @@
    ;; particular Table (unless they are against MongoDB)... for MBQL queries it should be populated however.
    [:table-id        {:optional true} [:maybe ::lib.schema.id/table]]
    ;;
-   ;; PERSISTED INFO: This comes from the [[metabase.models.persisted-info]] model.
+   ;; PERSISTED INFO: This comes from the [[metabase.model-persistence.models.persisted-info]] model.
    ;;
    [:lib/persisted-info {:optional true} [:maybe [:ref ::persisted-info]]]
    [:metabase.lib.join/join-alias {:optional true} ::lib.schema.common/non-blank-string]])
@@ -306,22 +310,6 @@
    [:display-name {:optional true} [:maybe ::lib.schema.common/non-blank-string]]
    [:schema       {:optional true} [:maybe ::lib.schema.common/non-blank-string]]])
 
-(mr/def ::database.methods.escape-alias
-  "MLv2 wrapper around [[metabase.driver/escape-alias]]. Note that this doesn't take `driver` as an argument. It has the
-  signature
-
-    (escape-alias string) => string"
-  [:=> [:cat :string] :string])
-
-(mr/def ::database.methods
-  "A map of wrappers around [[metabase.driver]] methods that we may need to use inside MLv2 such
-  as [[metabase.driver/escape-alias]], so we can decouple the driver interface from MLv2. Since driver methods are
-  Clojure-only, we should only expect these to be bound in Clojure-land usage (e.g. the QP) and not in Cljs usage.
-  MetadataProviders can pass these methods in as part of the database under the `:lib/methods` key. See the
-  `:metabase.lib.schema.metadata/database.methods` schema for more info."
-  [:map
-   [:escape-alias {:optional true} [:ref ::database.methods.escape-alias]]])
-
 (mr/def ::database
   "Malli schema for the DatabaseMetadata as returned by `GET /api/database/:id/metadata` -- what should be available to
   the frontend Query Builder."
@@ -331,13 +319,13 @@
    [:id ::lib.schema.id/database]
    ;; TODO -- this should validate against the driver features list in [[metabase.driver/features]] if we're in
    ;; Clj mode
-   [:dbms-version {:optional true} [:maybe :map]]
-   [:details      {:optional true} :map]
-   [:engine       {:optional true} :keyword]
-   [:features     {:optional true} [:set :keyword]]
-   [:is-audit     {:optional true} :boolean]
-   [:settings     {:optional true} [:maybe :map]]
-   [:lib/methods  {:optional true} [:maybe [:ref ::database.methods]]]])
+   [:dbms-version    {:optional true} [:maybe :map]]
+   [:details         {:optional true} :map]
+   [:engine          {:optional true} :keyword]
+   [:features        {:optional true} [:set :keyword]]
+   [:is-audit        {:optional true} :boolean]
+   [:is-attached-dwh {:optional true} :boolean]
+   [:settings        {:optional true} [:maybe :map]]])
 
 (mr/def ::metadata-provider
   "Schema for something that satisfies the [[metabase.lib.metadata.protocols/MetadataProvider]] protocol."

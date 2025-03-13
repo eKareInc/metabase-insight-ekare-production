@@ -1,8 +1,9 @@
+// eslint-disable-next-line no-restricted-imports
 import styled from "@emotion/styled";
 
 import {
-  tableRowSpacingStyle,
   getTooltipSeparatorStyle,
+  tableRowSpacingStyle,
 } from "../StackedDataTooltip/StackedDataTooltip.styled";
 
 export const TooltipTable = styled.table`

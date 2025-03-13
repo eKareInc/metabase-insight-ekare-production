@@ -1,19 +1,15 @@
 (ns metabase-enterprise.sandbox.models.params.field-values
   (:require
-   [metabase-enterprise.advanced-permissions.api.util
-    :as advanced-perms.api.u]
+   [metabase-enterprise.impersonation.core :as impersonation]
    [metabase-enterprise.sandbox.api.table :as table]
-   [metabase-enterprise.sandbox.models.group-table-access-policy
-    :refer [GroupTableAccessPolicy]]
    [metabase-enterprise.sandbox.query-processor.middleware.row-level-restrictions
     :as row-level-restrictions]
    [metabase.api.common :as api]
    [metabase.lib.util.match :as lib.util.match]
-   [metabase.models :refer [Field PermissionsGroupMembership]]
    [metabase.models.field :as field]
    [metabase.models.field-values :as field-values]
    [metabase.models.params.field-values :as params.field-values]
-   [metabase.public-settings.premium-features :refer [defenterprise]]
+   [metabase.premium-features.core :refer [defenterprise]]
    [metabase.util :as u]
    [toucan2.core :as t2]))
 
@@ -30,14 +26,14 @@
 (defn- table-id->gtap
   "Find the GTAP for current user that apply to table `table-id`."
   [table-id]
-  (let [group-ids (t2/select-fn-set :group_id PermissionsGroupMembership :user_id api/*current-user-id*)
-        gtaps     (t2/select GroupTableAccessPolicy
+  (let [group-ids (t2/select-fn-set :group_id :model/PermissionsGroupMembership :user_id api/*current-user-id*)
+        gtaps     (t2/select :model/GroupTableAccessPolicy
                              :group_id [:in group-ids]
                              :table_id table-id)]
     (when gtaps
       (row-level-restrictions/assert-one-gtap-per-table gtaps)
       ;; there shold be only one gtap per table and we only need one table here
-      ;; see docs in [[metabase.models.permissions]] for more info
+      ;; see docs in [[metabase.permissions.models.permissions]] for more info
       (t2/hydrate (first gtaps) :card))))
 
 (defn- field->gtap-attributes-for-current-user
@@ -64,7 +60,7 @@
   (when-let [gtap (table-id->gtap table_id)]
     (let [login-attributes     (:login_attributes @api/*current-user*)
           attribute_remappings (:attribute_remappings gtap)
-          field-ids            (t2/select-fn-set :id Field :table_id table_id)]
+          field-ids            (t2/select-fn-set :id :model/Field :table_id table_id)]
       [(:card_id gtap)
        (-> gtap :card :updated_at)
        (if (= :native (get-in gtap [:card :query_type]))
@@ -76,7 +72,11 @@
          (into {} (for [[k v] attribute_remappings
                         ;; get attribute that map to fields of the same table
                         :when (contains? field-ids
-                                         (lib.util.match/match-one v [:dimension [:field field-id _]] field-id))]
+                                         (lib.util.match/match-one v
+                                           ;; new style with {:stage-number }
+                                           [:dimension [:field field-id _] _] field-id
+                                           ;; old style without stage number
+                                           [:dimension [:field field-id _]] field-id))]
                     {k (get login-attributes k)})))])))
 
 (defenterprise field-id->field-values-for-current-user
@@ -86,14 +86,14 @@
   :feature :sandboxes
   [field-ids]
   (let [fields                   (when (seq field-ids)
-                                   (t2/hydrate (t2/select Field :id [:in (set field-ids)]) :table))
+                                   (t2/hydrate (t2/select :model/Field :id [:in (set field-ids)]) :table))
         {unsandboxed-fields false
          sandboxed-fields   true} (group-by (comp boolean field-is-sandboxed?) fields)]
     (merge
      ;; use the normal OSS batched implementation for any Fields that aren't subject to sandboxing.
      (when (seq unsandboxed-fields)
        (params.field-values/default-field-id->field-values-for-current-user
-         (map u/the-id unsandboxed-fields)))
+        (map u/the-id unsandboxed-fields)))
      ;; for sandboxed fields, fetch the sandboxed values individually.
      (into {} (for [{field-id :id, :as field} sandboxed-fields]
                 [field-id (select-keys (params.field-values/get-or-create-advanced-field-values! :sandbox field)
@@ -111,7 +111,7 @@
     ;; Impersonation can have row-level security enforced by the database, so we still need to store field values per-user.
     ;; TODO: only do this for DBs with impersonation in effect
     (and api/*current-user-id*
-         (advanced-perms.api.u/impersonated-user?))
+         (impersonation/impersonated-user?))
     (params.field-values/get-or-create-advanced-field-values! :impersonation field)
 
     :else
@@ -121,7 +121,7 @@
   "Returns a hash-key for linked-filter FieldValues if the field is sandboxed, otherwise fallback to the OSS impl."
   :feature :sandboxes
   [field-id constraints]
-  (let [field (t2/select-one Field :id field-id)]
+  (let [field (t2/select-one :model/Field :id field-id)]
     (if (field-is-sandboxed? field)
       (str (hash (concat [field-id
                           constraints]
@@ -132,7 +132,7 @@
   "Returns a hash-key for FieldValues if the field is sandboxed, otherwise fallback to the OSS impl."
   :feature :sandboxes
   [field-id]
-  (let [field (t2/select-one Field :id field-id)]
+  (let [field (t2/select-one :model/Field :id field-id)]
     (when (field-is-sandboxed? field)
       (str (hash (concat [field-id]
                          (field->gtap-attributes-for-current-user field)))))))

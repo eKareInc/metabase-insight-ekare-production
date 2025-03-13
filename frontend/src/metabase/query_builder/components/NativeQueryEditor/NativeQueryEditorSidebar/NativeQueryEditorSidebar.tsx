@@ -1,6 +1,6 @@
 import { t } from "ttag";
 
-import Tooltip from "metabase/core/components/Tooltip";
+import Button from "metabase/core/components/Button";
 import CS from "metabase/css/core/index.css";
 import { isMac } from "metabase/lib/browser";
 import { canFormatForEngine } from "metabase/query_builder/components/NativeQueryEditor/utils";
@@ -8,14 +8,14 @@ import { DataReferenceButton } from "metabase/query_builder/components/view/Data
 import { NativeVariablesButton } from "metabase/query_builder/components/view/NativeVariablesButton";
 import { PreviewQueryButton } from "metabase/query_builder/components/view/PreviewQueryButton";
 import { SnippetSidebarButton } from "metabase/query_builder/components/view/SnippetSidebarButton";
+import type { QueryModalType } from "metabase/query_builder/constants";
+import { Box, Tooltip } from "metabase/ui";
 import type Question from "metabase-lib/v1/Question";
 import type { Collection, NativeQuerySnippet } from "metabase-types/api";
 
-import {
-  Container,
-  RunButtonWithTooltipStyled,
-  SidebarButton,
-} from "./NativeQueryEditorSidebar.styled";
+import RunButtonWithTooltip from "../../RunButtonWithTooltip";
+
+import NativeQueryEditorSidebarS from "./NativeQueryEditorSidebar.module.css";
 
 const ICON_SIZE = 18;
 
@@ -39,10 +39,9 @@ interface NativeQueryEditorSidebarProps {
   isShowingTemplateTagsEditor: boolean;
   isShowingSnippetSidebar: boolean;
   isPromptInputVisible?: boolean;
-  canUsePromptInput?: boolean;
   runQuery?: () => void;
   cancelQuery?: () => void;
-  onOpenModal: (modalType: string) => void;
+  onOpenModal: (modalType: QueryModalType) => void;
   onShowPromptInput: () => void;
   toggleDataReference: () => void;
   toggleTemplateTagsEditor: () => void;
@@ -59,14 +58,11 @@ export const NativeQueryEditorSidebar = (
     isResultDirty,
     isRunnable,
     isRunning,
-    isPromptInputVisible,
     nativeEditorSelectedText,
     runQuery,
     snippetCollections,
     snippets,
     features,
-    onShowPromptInput,
-    canUsePromptInput,
     onFormatQuery,
   } = props;
 
@@ -94,29 +90,23 @@ export const NativeQueryEditorSidebar = (
   const canFormatQuery = engine != null && canFormatForEngine(engine);
 
   return (
-    <Container data-testid="native-query-editor-sidebar">
+    <Box
+      component="aside"
+      className={NativeQueryEditorSidebarS.Container}
+      data-testid="native-query-editor-sidebar"
+    >
       {canFormatQuery && (
-        <Tooltip tooltip={t`Format query`}>
-          <SidebarButton
-            aria-label={t`Format query`}
+        <Tooltip label={t`Auto-format`}>
+          <Button
+            className={NativeQueryEditorSidebarS.SidebarButton}
+            aria-label={t`Auto-format`}
             onClick={onFormatQuery}
-            icon="document"
+            icon="format_code"
             iconSize={20}
             onlyIcon
           />
         </Tooltip>
       )}
-      {canUsePromptInput && features.promptInput && !isPromptInputVisible ? (
-        <Tooltip tooltip={t`Ask a question`}>
-          <SidebarButton
-            aria-label={t`Ask a question`}
-            onClick={onShowPromptInput}
-            icon="insight"
-            iconSize={20}
-            onlyIcon
-          />
-        </Tooltip>
-      ) : null}
       {features.dataReference ? (
         <DataReferenceButton {...props} size={ICON_SIZE} className={CS.mt3} />
       ) : null}
@@ -130,7 +120,8 @@ export const NativeQueryEditorSidebar = (
         <PreviewQueryButton {...props} />
       )}
       {!!canRunQuery && (
-        <RunButtonWithTooltipStyled
+        <RunButtonWithTooltip
+          className={NativeQueryEditorSidebarS.RunButtonWithTooltipStyled}
           disabled={!isRunnable}
           isRunning={isRunning}
           isDirty={isResultDirty}
@@ -140,6 +131,6 @@ export const NativeQueryEditorSidebar = (
           getTooltip={getTooltip}
         />
       )}
-    </Container>
+    </Box>
   );
 };

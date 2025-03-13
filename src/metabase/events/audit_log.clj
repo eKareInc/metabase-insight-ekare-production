@@ -49,7 +49,6 @@
                               :model    :model/Dashboard
                               :model-id (u/id object)})))
 
-
 (derive ::table-event ::event)
 (derive :event/table-manual-scan ::table-event)
 
@@ -118,6 +117,33 @@
                               :user-id  user-id
                               :model    :model/Card
                               :model-id (:id object)})))
+
+(derive ::notification-event ::event)
+(derive :event/notification-create ::notification-event)
+(derive :event/notification-update ::notification-event)
+(derive :event/notification-unsubscribe ::notification-event)
+
+(methodical/defmethod events/publish-event! ::notification-event
+  [topic {:keys [object user-id] :as event}]
+  (audit-log/record-event! topic
+                           (merge
+                            event
+                            {:model    :model/Notification
+                             :model-id (:id object)
+                             :user-id  user-id})))
+
+(derive ::notification-handler-event ::event)
+(derive :event/notification-unsubscribe-ex ::notification-handler-event)
+(derive :event/notification-unsubscribe-undo-ex ::notification-handler-event)
+
+(methodical/defmethod events/publish-event! ::notification-handler-event
+  [topic {:keys [object user-id] :as event}]
+  (audit-log/record-event! topic
+                           (merge
+                            event
+                            {:model    :model/NotificationHandler
+                             :model-id (:id object)
+                             :user-id  user-id})))
 
 (derive ::segment-event ::event)
 (derive :event/segment-create ::segment-event)
@@ -213,6 +239,7 @@
 (derive ::upload-event ::event)
 (derive :event/upload-create ::upload-event)
 (derive :event/upload-append ::upload-event)
+(derive :event/upload-replace ::upload-event)
 
 (methodical/defmethod events/publish-event! ::upload-event
   [topic event]
@@ -222,5 +249,13 @@
 (derive :event/cache-config-update ::cache-config-changed-event)
 
 (methodical/defmethod events/publish-event! ::cache-config-changed-event
+  [topic event]
+  (audit-log/record-event! topic event))
+
+(derive ::channel-event ::event)
+(derive :event/channel-create ::channel-event)
+(derive :event/channel-update ::channel-event)
+
+(methodical/defmethod events/publish-event! ::channel-event
   [topic event]
   (audit-log/record-event! topic event))

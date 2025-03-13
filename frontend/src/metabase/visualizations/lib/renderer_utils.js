@@ -1,7 +1,6 @@
 import { getIn } from "icepick";
 import _ from "underscore";
 
-import { NULL_NUMERIC_VALUE } from "metabase/lib/constants";
 import { formatNullable } from "metabase/lib/formatting/nullable";
 import { parseTimestamp } from "metabase/lib/time";
 import { datasetContainsNoResults } from "metabase-lib/v1/queries/utils/dataset";
@@ -80,7 +79,9 @@ export function getXValues({ settings, series }) {
         isDescending = isDescending && value <= lastValue;
       }
       lastValue = value;
-      uniqueValues.add(value);
+      if (value != null) {
+        uniqueValues.add(value);
+      }
     }
   }
   let xValues = Array.from(uniqueValues);
@@ -158,9 +159,3 @@ export const isRemappedToString = series =>
 export const hasClickBehavior = series =>
   getIn(series, [0, "card", "visualization_settings", "click_behavior"]) !=
   null;
-
-// Hack: for numeric dimensions we have to replace null values
-// with anything else since crossfilter groups merge 0 and null
-export function replaceNullValuesForOrdinal(value) {
-  return value === null ? NULL_NUMERIC_VALUE : value;
-}

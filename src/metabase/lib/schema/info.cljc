@@ -14,6 +14,7 @@
    {:decode/normalize identity}
    :action
    :ad-hoc
+   :cache-refresh
    :collection
    :map-tiles
    :pulse
@@ -25,11 +26,15 @@
    :json-download
    :public-dashboard
    :public-question
+   :public-csv-download
+   :public-xlsx-download
+   :public-json-download
    :embedded-dashboard
    :embedded-question
    :embedded-csv-download
    :embedded-xlsx-download
-   :embedded-json-download])
+   :embedded-json-download
+   :table-grid])
 
 (mr/def ::hash
   #?(:clj bytes?

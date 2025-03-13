@@ -2,7 +2,6 @@
 /* eslint-disable import/no-commonjs */
 /* eslint-disable import/order */
 const NodePolyfillPlugin = require("node-polyfill-webpack-plugin");
-const TerserPlugin = require("terser-webpack-plugin");
 const webpack = require("webpack");
 const BundleAnalyzerPlugin =
   require("webpack-bundle-analyzer").BundleAnalyzerPlugin;
@@ -10,15 +9,26 @@ const ForkTsCheckerWebpackPlugin = require("fork-ts-checker-webpack-plugin");
 
 const mainConfig = require("./webpack.config");
 const { resolve } = require("path");
+const fs = require("fs");
+const path = require("path");
 
 const SDK_SRC_PATH = __dirname + "/enterprise/frontend/src/embedding-sdk";
 const BUILD_PATH = __dirname + "/resources/embedding-sdk";
 const ENTERPRISE_SRC_PATH =
   __dirname + "/enterprise/frontend/src/metabase-enterprise";
 
+const skipDTS = process.env.SKIP_DTS === "true";
+
 // default WEBPACK_BUNDLE to development
 const WEBPACK_BUNDLE = process.env.WEBPACK_BUNDLE || "development";
 const isDevMode = WEBPACK_BUNDLE !== "production";
+
+const sdkPackageTemplateJson = fs.readFileSync(
+  path.resolve("./enterprise/frontend/src/embedding-sdk/package.template.json"),
+  "utf-8",
+);
+const sdkPackageTemplateJsonContent = JSON.parse(sdkPackageTemplateJson);
+const EMBEDDING_SDK_VERSION = sdkPackageTemplateJsonContent.version;
 
 // TODO: Reuse babel and css configs from webpack.config.js
 // Babel:
@@ -111,20 +121,18 @@ module.exports = env => {
       ...mainConfig.externals,
       react: "react",
       "react-dom": "react-dom",
+      "react-dom/client": "react-dom/client",
       "react/jsx-runtime": "react/jsx-runtime",
     },
 
-    optimization: !isDevMode
-      ? {
-          minimizer: [
-            new TerserPlugin({
-              minify: TerserPlugin.swcMinify,
-              parallel: true,
-              test: /\.(tsx?|jsx?)($|\?)/i,
-            }),
-          ],
-        }
-      : undefined,
+    optimization: {
+      // The default `moduleIds: 'named'` setting breaks Cypress tests when `development` mode is enabled,
+      // so we use a different value instead
+      moduleIds: isDevMode ? "natural" : undefined,
+
+      minimize: !isDevMode,
+      minimizer: mainConfig.optimization.minimizer,
+    },
 
     plugins: [
       new webpack.BannerPlugin({
@@ -136,16 +144,35 @@ module.exports = env => {
       new webpack.ProvidePlugin({
         process: "process/browser.js",
       }),
-
-      new ForkTsCheckerWebpackPlugin({
-        async: isDevMode,
-        typescript: {
-          configFile: resolve(__dirname, "./tsconfig.sdk.json"),
-          mode: "write-dts",
-          memoryLimit: 4096,
-        },
+      new webpack.EnvironmentPlugin({
+        EMBEDDING_SDK_VERSION,
+        GIT_BRANCH: require("child_process")
+          .execSync("git rev-parse --abbrev-ref HEAD")
+          .toString()
+          .trim(),
+        GIT_COMMIT: require("child_process")
+          .execSync("git rev-parse HEAD")
+          .toString()
+          .trim(),
+        IS_EMBEDDING_SDK: true,
       }),
-
+      new webpack.DefinePlugin({
+        "process.env.BUILD_TIME": webpack.DefinePlugin.runtimeValue(
+          () => JSON.stringify(new Date().toISOString()),
+          true, // This flag makes it update on each build
+        ),
+      }),
+      !skipDTS &&
+        new ForkTsCheckerWebpackPlugin({
+          async: isDevMode,
+          typescript: {
+            configFile: resolve(__dirname, "./tsconfig.sdk.json"),
+            mode: "write-dts",
+            memoryLimit: 4096,
+          },
+        }),
+      // we don't want to fail the build on type errors, we have a dedicated type check step for that
+      new TypescriptConvertErrorsToWarnings(),
       shouldAnalyzeBundles &&
         new BundleAnalyzerPlugin({
           analyzerMode: "static",
@@ -170,3 +197,14 @@ module.exports = env => {
 
   return config;
 };
+
+// https://github.com/TypeStrong/fork-ts-checker-webpack-plugin/issues/232#issuecomment-1322651312
+class TypescriptConvertErrorsToWarnings {
+  apply(compiler) {
+    const hooks = ForkTsCheckerWebpackPlugin.getCompilerHooks(compiler);
+
+    hooks.issues.tap("TypeScriptWarnOnlyWebpackPlugin", issues =>
+      issues.map(issue => ({ ...issue, severity: "warning" })),
+    );
+  }
+}
