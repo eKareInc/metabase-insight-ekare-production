@@ -8,11 +8,11 @@
    [metabase.channel.email.messages :as messages]
    [metabase.config :as config]
    [metabase.events :as events]
-   [metabase.models.setting :as setting :refer [defsetting]]
    [metabase.models.user :as user]
-   [metabase.public-settings :as public-settings]
    [metabase.request.core :as request]
    [metabase.session.models.session :as session]
+   [metabase.settings.core :as setting :refer [defsetting]]
+   [metabase.settings.deprecated-grab-bag :as public-settings]
    [metabase.sso.core :as sso]
    [metabase.util :as u]
    [metabase.util.i18n :refer [deferred-tru tru]]
@@ -146,6 +146,7 @@
   "Logout."
   ;; `metabase-session-key` gets added automatically by the [[metabase.server.middleware.session]] middleware
   [_route-params _query-params _body {:keys [metabase-session-key], :as _request}]
+  (api/check-404 (not-empty metabase-session-key))
   (let [session-key-hashed (session/hash-session-key metabase-session-key)
         rows-deleted (t2/delete! :model/Session {:where [:or [:= :key_hashed session-key-hashed] [:= :id metabase-session-key]]})]
     (api/check-404 (> rows-deleted 0))

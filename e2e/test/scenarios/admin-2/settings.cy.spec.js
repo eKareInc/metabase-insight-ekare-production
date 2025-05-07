@@ -64,7 +64,7 @@ H.describeWithSnowplow("scenarios > admin > settings", () => {
     //       If we update UI in the future (for example: we show an error within a popup/modal), the test in current form could fail.
     cy.log("Making sure we display an error message in UI");
     // Same reasoning for regex as above
-    H.undoToast().contains(/^Error: Invalid site URL/);
+    H.undoToast().contains(/^Invalid site URL/);
   });
 
   it("should save a setting", () => {
@@ -104,21 +104,24 @@ H.describeWithSnowplow("scenarios > admin > settings", () => {
 
     cy.intercept("GET", "**/api/health", "ok").as("httpsCheck");
 
-    // settings have loaded, but there's no redirect setting visible
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.contains("Site URL");
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.contains("Redirect to HTTPS").should("not.exist");
+    cy.findByTestId("admin-layout-content").within(() => {
+      cy.contains("Site Url");
+      cy.contains("Redirect to HTTPS").should("not.exist");
 
-    // switch site url to use https
-    cy.findByTestId("site-url-setting")
-      .findByRole("textbox", { name: "input-prefix" })
-      .click();
+      // switch site url to use https
+      cy.findByTestId("site-url-setting")
+        .findByRole("textbox", { name: "input-prefix" })
+        .click();
+    });
+
     H.popover().contains("https://").click();
 
     cy.wait("@httpsCheck");
-    // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
-    cy.contains("Redirect to HTTPS").parent().parent().contains("Disabled");
+    cy.findByTestId("admin-layout-content")
+      .contains("Redirect to HTTPS")
+      .parent()
+      .parent()
+      .contains("Disabled");
 
     H.restore(); // avoid leaving https site url
   });
@@ -126,7 +129,7 @@ H.describeWithSnowplow("scenarios > admin > settings", () => {
   it("should display an error if the https redirect check fails", () => {
     cy.visit("/admin/settings/general");
 
-    cy.intercept("GET", "**/api/health", req => {
+    cy.intercept("GET", "**/api/health", (req) => {
       req.reply({ forceNetworkError: true });
     }).as("httpsCheck");
     // switch site url to use https
@@ -238,7 +241,7 @@ H.describeWithSnowplow("scenarios > admin > settings", () => {
     // 1. Get the array of ALL available settings
     cy.request("GET", "/api/setting").then(({ body }) => {
       // 2. Create a stubbed version of that array by passing modified "site-url" settings
-      const STUBBED_BODY = body.map(setting => {
+      const STUBBED_BODY = body.map((setting) => {
         if (setting.key === "site-url") {
           const STUBBED_SITE_URL = Object.assign({}, setting, {
             is_env_setting: true,
@@ -251,7 +254,7 @@ H.describeWithSnowplow("scenarios > admin > settings", () => {
       });
 
       // 3. Stub the whole response
-      cy.intercept("GET", "/api/setting", req => {
+      cy.intercept("GET", "/api/setting", (req) => {
         req.reply({ body: STUBBED_BODY });
       }).as("appSettings");
     });
@@ -402,8 +405,8 @@ describe.skip(
 
       refresh();
 
-      getCellText().then(res => {
-        cy.get("@tempResult").then(temp => {
+      getCellText().then((res) => {
+        cy.get("@tempResult").then((temp) => {
           if (res === temp) {
             cy.wrap(res).as("cachedResult");
           } else {
@@ -441,7 +444,7 @@ describe.skip(
         H.NativeEditor.type(nativeQuery);
         H.runNativeQuery();
 
-        getCellText().then(res => {
+        getCellText().then((res) => {
           cy.wrap(res).as("tempResult");
         });
 
@@ -451,7 +454,7 @@ describe.skip(
       it("should respect previously set cache duration (metabase#18458)", () => {
         refreshUntilCached();
 
-        cy.get("@cachedResult").then(cachedValue => {
+        cy.get("@cachedResult").then((cachedValue) => {
           /**
            * 5s is longer than what we set the cache to last:
            * Approx 2s for an Average Runtime x multiplier of 2.
@@ -462,7 +465,7 @@ describe.skip(
 
           refresh();
 
-          getCellText().then(newValue => {
+          getCellText().then((newValue) => {
             expect(newValue).to.not.eq(cachedValue);
           });
         });
@@ -545,9 +548,12 @@ describe("scenarios > admin > settings > email settings", () => {
       Cypress.config().baseUrl + "/admin/settings/email",
     );
     cy.findByTestId("smtp-connection-card").should("exist");
-
     // Non SMTP-settings should save automatically
-    cy.findByLabelText("From Address").type("mailer@metabase.test").blur();
+    cy.findByLabelText("From Address")
+      .clear()
+      .type("mailer@metabase.test")
+      .blur();
+
     cy.findByLabelText("From Name").type("Sender Name").blur();
     cy.findByLabelText("Reply-To Address")
       .type("reply-to@metabase.test")
@@ -645,7 +651,7 @@ describe("scenarios > admin > license and billing", () => {
   const STORE_MANAGED_FEATURE_KEY = "metabase-store-managed";
   const NO_UPSELL_FEATURE_HEY = "no-upsell";
   // mocks data the will be returned by enterprise useLicense hook
-  const mockBillingTokenFeatures = features => {
+  const mockBillingTokenFeatures = (features) => {
     return cy.intercept("GET", "/api/premium-features/token/status", {
       "valid-thru": "2099-12-31T12:00:00",
       valid: true,
@@ -685,10 +691,10 @@ describe("scenarios > admin > license and billing", () => {
       // create an admin user who is also connected to our test harbormaster account
       cy.request("GET", "/api/permissions/group")
         .then(({ body: groups }) => {
-          const adminGroup = groups.find(g => g.name === "Administrators");
+          const adminGroup = groups.find((g) => g.name === "Administrators");
           return cy
             .createUserFromRawData(harborMasterConnectedAccount)
-            .then(user => Promise.resolve([adminGroup.id, user]));
+            .then((user) => Promise.resolve([adminGroup.id, user]));
         })
         .then(([adminGroupId, user]) => {
           const data = { user_id: user.id, group_id: adminGroupId };
@@ -696,7 +702,7 @@ describe("scenarios > admin > license and billing", () => {
             .request("POST", "/api/permissions/membership", data)
             .then(() => Promise.resolve(user));
         })
-        .then(user => {
+        .then((user) => {
           cy.signOut(); // stop being normal admin user and be store connected admin user
           return cy.request("POST", "/api/session", {
             username: user.email,
@@ -729,7 +735,7 @@ describe("scenarios > admin > license and billing", () => {
         NO_UPSELL_FEATURE_HEY,
       ]);
       // force an error
-      cy.intercept("GET", "/api/ee/billing", req => {
+      cy.intercept("GET", "/api/ee/billing", (req) => {
         req.reply({ statusCode: 500 });
       });
       cy.visit("/admin/settings/license");
@@ -942,7 +948,7 @@ describe("scenarios > admin > localization", () => {
 
     H.popover().within(() => {
       cy.findByText("Filter by this column").click();
-      cy.findByText("Specific dates…").click();
+      cy.findByText("Fixed date range…").click();
       cy.findByText("On").click();
 
       // ensure the date picker is ready
@@ -1018,7 +1024,7 @@ describe("scenarios > admin > settings > map settings", () => {
     );
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("Load").click();
-    cy.wait("@load").then(interception => {
+    cy.wait("@load").then((interception) => {
       expect(interception.response.statusCode).to.eq(200);
     });
   });
@@ -1067,7 +1073,7 @@ describe("scenarios > admin > settings > map settings", () => {
 
   it("should show an informative error when adding a calid URL that contains GeoJSON that does not use lat/lng coordinates", () => {
     //intercept call to api/geojson and return projected.geojson. Call to load file actually happens in the BE
-    cy.fixture("../../e2e/support/assets/projected.geojson").then(data => {
+    cy.fixture("../../e2e/support/assets/projected.geojson").then((data) => {
       cy.intercept("GET", "/api/geojson*", data);
     });
 
@@ -1098,7 +1104,7 @@ describe("notifications", { tags: "@external" }, () => {
       failOnStatusCode: false,
       url: `${H.WEBHOOK_TEST_HOST}/api/session/${H.WEBHOOK_TEST_SESSION_ID}/requests`,
       method: "DELETE",
-    }).then(response => {
+    }).then((response) => {
       cy.log("Deleted requests.");
     });
   });
@@ -1161,13 +1167,13 @@ describe("notifications", { tags: "@external" }, () => {
       },
     ];
 
-    AUTH_METHODS.forEach(auth => {
+    AUTH_METHODS.forEach((auth) => {
       it(`${auth.display} Auth`, () => {
         cy.visit("/admin/settings/notifications");
         cy.findByRole("heading", { name: "Add a webhook" }).click();
 
         H.modal().within(() => {
-          COMMON_FIELDS.forEach(field => {
+          COMMON_FIELDS.forEach((field) => {
             cy.findByLabelText(field.label).type(field.value);
           });
 
@@ -1283,29 +1289,37 @@ describe("admin > settings > updates", () => {
     cy.signInAsAdmin();
     cy.visit("/admin/settings/updates");
 
-    cy.intercept("GET", "/api/session/properties", (req, res) => {
-      req.continue(res => {
-        res.body["version-info"] = versionInfo;
+    cy.intercept("GET", "/api/session/properties", (req) => {
+      req.continue((res) => {
         res.body.version.tag = currentVersion;
         return res.body;
       });
     });
+
+    cy.intercept("GET", "/api/setting/version-info", (req) => {
+      req.reply(versionInfo);
+    });
   });
 
   it("should show the updates page", () => {
-    cy.findByLabelText("Check for updates").should("be.visible");
+    cy.findByTestId("check-for-updates-setting")
+      .findByText("Check for updates")
+      .should("be.visible");
+
     cy.findByTestId("update-channel-setting")
       .findByText("Types of releases to check for")
       .should("be.visible");
 
     cy.findByTestId("settings-updates").within(() => {
-      cy.findByText("Metabase 1.86.76 is available. You're running 1.86.70");
+      cy.findByText("Metabase 1.86.76 is available. You're running 1.86.70.");
       cy.findByText("Some old feature").should("be.visible");
     });
 
     cy.log("hide most things if updates are turned off");
 
-    cy.findByLabelText("Check for updates").click();
+    cy.findByTestId("check-for-updates-setting")
+      .findByText("Check for updates")
+      .click();
 
     cy.findByTestId("settings-updates").within(() => {
       cy.findByText("Types of releases to check for").should("not.exist");
@@ -1318,7 +1332,7 @@ describe("admin > settings > updates", () => {
       cy.findByText(/Metabase 1\.86\.76 is available/).should("be.visible");
       cy.findByText("Some old feature").should("be.visible");
       cy.findByText("New latest feature").should("be.visible");
-      cy.findByText("Stable releases").click();
+      cy.findByDisplayValue("Stable releases").click();
     });
 
     H.popover().findByText("Beta releases").click();
@@ -1328,7 +1342,7 @@ describe("admin > settings > updates", () => {
         "be.visible",
       );
       cy.findByText("New beta feature").should("be.visible");
-      cy.findByText("Beta releases").click();
+      cy.findByDisplayValue("Beta releases").click();
     });
 
     H.popover().findByText("Nightly builds").click();

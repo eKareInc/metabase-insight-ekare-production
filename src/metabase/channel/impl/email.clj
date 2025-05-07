@@ -14,7 +14,7 @@
    [metabase.channel.template.handlebars :as handlebars]
    [metabase.models.params.shared :as shared.params]
    [metabase.notification.models :as models.notification]
-   [metabase.public-settings :as public-settings]
+   [metabase.settings.deprecated-grab-bag :as public-settings]
    [metabase.util :as u]
    [metabase.util.i18n :refer [trs]]
    [metabase.util.log :as log]
@@ -24,6 +24,8 @@
    [metabase.util.ui-logic :as ui-logic]
    [metabase.util.urls :as urls]
    [ring.util.codec :as codec]))
+
+(set! *warn-on-reflection* true)
 
 (def ^:private EmailMessage
   [:map
@@ -70,7 +72,7 @@
   [timezone part options]
   (case (:type part)
     :card
-    (channel.render/render-pulse-section timezone (channel.shared/realize-data-rows part) options)
+    (channel.render/render-pulse-section timezone (channel.shared/maybe-realize-data-rows part) options)
 
     :text
     {:content (markdown/process-markdown (:text part) :html)}
@@ -195,7 +197,7 @@
                                                :icon_cid        (:content-id icon-attachment)
                                                :content         html-content
                                                ;; UI only allow one subscription per card notification
-                                               :alert_schedule  (messages/notification-card-schedule-text (first subscriptions))
+                                               :alert_schedule  (some-> subscriptions first :cron_schedule channel.shared/friendly-cron-description)
                                                :goal_value      goal
                                                :management_text (if (nil? non-user-email)
                                                                   "Manage your subscriptions"

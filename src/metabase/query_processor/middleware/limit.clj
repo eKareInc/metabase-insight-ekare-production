@@ -2,8 +2,8 @@
   "Middleware that handles limiting the maximum number of rows returned by a query."
   (:require
    [metabase.legacy-mbql.util :as mbql.u]
-   [metabase.models.setting :as setting]
    [metabase.query-processor.util :as qp.util]
+   [metabase.settings.core :as setting]
    [metabase.util :as u]
    [metabase.util.i18n :refer [deferred-tru]]))
 
@@ -68,7 +68,7 @@
   (when-not (disable-max-results? query)
     (let [context (-> query :info :context)
           download-context? #{:csv-download :json-download :xlsx-download}
-          attachment-context? #{:dashboard-subscription :pulse}
+          attachment-context? #{:dashboard-subscription :pulse :notification}
           download-limit (when (download-context? context) (download-row-limit))
           attachment-limit (when (attachment-context? context) (attachment-row-limit))
           res (u/safe-min (mbql.u/query->max-rows-limit query)

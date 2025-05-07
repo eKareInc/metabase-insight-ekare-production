@@ -93,7 +93,7 @@ export interface DashCardProps {
   /** Auto-scroll to this card on mount */
   autoScroll: boolean;
   /** Callback to execute when the dashcard has auto-scrolled to itself */
-  reportAutoScrolledToDashcard: () => void;
+  reportAutoScrolledToDashcard?: () => void;
 
   className?: string;
 }
@@ -129,7 +129,7 @@ function DashCardInner({
   reportAutoScrolledToDashcard,
   className,
 }: DashCardProps) {
-  const dashcardData = useSelector(state =>
+  const dashcardData = useSelector((state) =>
     getDashcardData(state, dashcard.id),
   );
   const store = useStore();
@@ -141,7 +141,7 @@ function DashCardInner({
   const cardRootRef = useRef<HTMLDivElement>(null);
 
   const handlePreviewToggle = useCallback(() => {
-    setIsPreviewingCard(wasPreviewingCard => !wasPreviewingCard);
+    setIsPreviewingCard((wasPreviewingCard) => !wasPreviewingCard);
   }, []);
 
   useMount(() => {
@@ -152,7 +152,7 @@ function DashCardInner({
 
     if (autoScroll) {
       cardRootRef?.current?.scrollIntoView({ block: "nearest" });
-      reportAutoScrolledToDashcard();
+      reportAutoScrolledToDashcard?.();
     }
   });
 
@@ -179,7 +179,7 @@ function DashCardInner({
   }, [mainCard, dashcard]);
 
   const series = useMemo(() => {
-    return cards.map(card => {
+    return cards.map((card) => {
       const isSlow = card.id ? slowCards[card.id] : false;
       const isUsuallyFast =
         card.query_average_duration &&
@@ -207,11 +207,11 @@ function DashCardInner({
 
   const { expectedDuration, isSlow } = useMemo(() => {
     const expectedDuration = Math.max(
-      ...series.map(s => s.card.query_average_duration || 0),
+      ...series.map((s) => s.card.query_average_duration || 0),
     );
-    const isUsuallyFast = series.every(s => s.isUsuallyFast);
+    const isUsuallyFast = series.every((s) => s.isUsuallyFast);
     let isSlow: CardSlownessStatus = false;
-    if (isLoading && series.some(s => s.isSlow)) {
+    if (isLoading && series.some((s) => s.isSlow)) {
       isSlow = isUsuallyFast ? "usually-fast" : "usually-slow";
     }
     return { expectedDuration, isSlow };
@@ -329,7 +329,7 @@ function DashCardInner({
           },
           className,
         )}
-        style={theme => {
+        style={(theme) => {
           const { border } = theme.other.dashboard.card;
 
           return {

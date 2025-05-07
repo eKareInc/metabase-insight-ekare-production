@@ -14,22 +14,24 @@
    [metabase.driver.h2]
    [metabase.driver.mysql]
    [metabase.driver.postgres]
-   [metabase.embed.settings :as embed.settings]
+   [metabase.embedding.settings :as embed.settings]
    [metabase.events :as events]
    [metabase.logger :as logger]
    [metabase.models.database :as database]
-   [metabase.models.setting :as setting]
    [metabase.notification.core :as notification]
    [metabase.plugins :as plugins]
    [metabase.plugins.classloader :as classloader]
    [metabase.premium-features.core :as premium-features :refer [defenterprise]]
-   [metabase.public-settings :as public-settings]
-   [metabase.sample-data :as sample-data]
+   [metabase.sample-data.core :as sample-data]
    [metabase.server.core :as server]
+   [metabase.settings.core :as setting]
+   [metabase.settings.deprecated-grab-bag :as public-settings]
    [metabase.setup.core :as setup]
+   [metabase.startup.core :as startup]
    [metabase.task :as task]
    [metabase.util :as u]
    [metabase.util.log :as log]
+   [metabase.util.queue :as queue]
    [metabase.util.system-info :as u.system-info])
   (:import
    (java.lang.management ManagementFactory)))
@@ -96,6 +98,7 @@
   "General application shutdown function which should be called once at application shutdown."
   []
   (log/info "Metabase Shutting Down ...")
+  (queue/stop-listeners!)
   (task/stop-scheduler!)
   (server/stop-web-server!)
   (analytics/shutdown!)
@@ -146,6 +149,7 @@
   ;; the test we are using is if there is at least 1 User in the database
   (let [new-install? (not (setup/has-user-setup))]
     ;; initialize Metabase from an `config.yml` file if present (Enterprise Edition™ only)
+    (task/init-scheduler!)
     (config-from-file/init-from-file-if-code-available!)
     (init-status/set-progress! 0.6)
     (when new-install?
@@ -170,9 +174,10 @@
   (embed.settings/check-and-sync-settings-on-startup! env/env)
   (init-status/set-progress! 0.95)
   (setting/migrate-encrypted-settings!)
+  (database/check-health!)
+  (startup/run-startup-logic!)
   (task/start-scheduler!)
-   ;; In case we could not do this earlier (e.g. for DBs added via config file), because the scheduler was not up yet:
-  (database/check-health-and-schedule-tasks!)
+  (queue/start-listeners!)
   (init-status/set-complete!)
   (let [start-time (.getStartTime (ManagementFactory/getRuntimeMXBean))
         duration   (- (System/currentTimeMillis) start-time)]

@@ -6,11 +6,12 @@
    [medley.core :as m]
    [metabase.driver.h2 :as h2]
    [metabase.http-client :as client]
-   [metabase.models.setting :as setting :refer [defsetting]]
-   [metabase.public-settings :as public-settings]
    [metabase.request.core :as request]
    [metabase.session.api :as api.session]
    [metabase.session.models.session :as session]
+   [metabase.settings.core :as setting :refer [defsetting]]
+   [metabase.settings.deprecated-grab-bag :as public-settings]
+   [metabase.settings.models.setting]
    [metabase.sso.ldap-test-util :as ldap.test]
    [metabase.test :as mt]
    [metabase.test.data.users :as test.users]
@@ -192,11 +193,13 @@
 (deftest logout-test
   (reset-throttlers!)
   (testing "DELETE /api/session"
+    (testing "Test that logout 404s if there is no session key supplied"
+      (client/client :delete 404 "session"))
     (testing "Test that we can logout"
       ;; clear out cached session tokens so next time we make an API request it log in & we'll know we have a valid
       ;; Session
       (test.users/clear-cached-session-tokens!)
-      (let [session-key       (client/authenticate (test.users/user->credentials :rasta))
+      (let [session-key        (client/authenticate (test.users/user->credentials :rasta))
             session-key-hashed (session/hash-session-key session-key)
             login-history-id (t2/select-one-pk :model/LoginHistory :session_id (t2/select-one-pk :model/Session :key_hashed session-key-hashed))]
         (testing "LoginHistory should have been recorded"
@@ -239,8 +242,8 @@
                    (mt/user-http-request :rasta :post 204 "session/forgot_password"
                                          {:email (:username (mt/user->credentials :rasta))}))
                 "Request should return no content")
-            (is (= true
-                   (reset-fields-set?))
+            (is (true?
+                 (reset-fields-set?))
                 "User `:reset_token` and `:reset_triggered` should be updated")
             (is (mt/received-email-subject? :rasta #"Password Reset")))))
       (testing "We use `site-url` in the email"
@@ -477,7 +480,7 @@
 
     (testing "Authenticated settings manager"
       (mt/with-test-user :lucky
-        (with-redefs [setting/has-advanced-setting-access? (constantly true)]
+        (with-redefs [metabase.settings.models.setting/has-advanced-setting-access? (constantly true)]
           (is (= (set (keys (setting/user-readable-values-map #{:public :authenticated :settings-manager})))
                  (set (keys (mt/user-http-request :lucky :get 200 "session/properties"))))))))
 
@@ -519,6 +522,14 @@
       (is (= nil
              (-> (mt/client :get 200 "session/properties" (mt/user->credentials :rasta))
                  keys #{:premium-embedding-token}))))))
+
+(deftest properties-skip-include-in-list?=false
+  (reset-throttlers!)
+  (testing "GET /session/properties"
+    (testing "don't return the version-info property"
+      (is (= nil
+             (-> (mt/client :get 200 "session/properties" (mt/user->credentials :crowberto))
+                 keys #{:version-info}))))))
 
 ;;; ------------------------------------------- TESTS FOR GOOGLE SIGN-IN ---------------------------------------------
 

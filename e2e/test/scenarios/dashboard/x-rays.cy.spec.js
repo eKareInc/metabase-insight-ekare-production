@@ -84,7 +84,7 @@ describe("scenarios > x-rays", { tags: "@slow" }, () => {
     cy.icon("warning").should("not.exist");
   });
 
-  ["X-ray", "Compare to the rest"].forEach(action => {
+  ["X-ray", "Compare to the rest"].forEach((action) => {
     it(`"${action.toUpperCase()}" should work on a nested question made from base native question (metabase#15655)`, () => {
       if (action === "Compare to the rest") {
         cy.log(
@@ -126,7 +126,7 @@ describe("scenarios > x-rays", { tags: "@slow" }, () => {
           timeout: 15 * 1000,
         });
 
-        cy.wait("@xray").then(xhr => {
+        cy.wait("@xray").then((xhr) => {
           expect(xhr.response.body.cause).not.to.exist;
           expect(xhr.response.statusCode).not.to.eq(500);
         });
@@ -187,6 +187,12 @@ describe("scenarios > x-rays", { tags: "@slow" }, () => {
     cy.findAllByTestId("dashcard").contains("18,760");
     // eslint-disable-next-line no-unscoped-text-selectors -- deprecated usage
     cy.findByText("How these transactions are distributed");
+
+    H.openNavigationSidebar();
+
+    H.navigationSidebar()
+      .findByRole("link", { name: /Automatically generated dashboards/i })
+      .should("exist");
   });
 
   it("should start loading cards from top to bottom", () => {
@@ -407,7 +413,7 @@ function waitForSatisfyingResponse(
     throw `${maxRequests} requests exceeded`; // fail the test
   }
 
-  cy.wait(alias).then(interception => {
+  cy.wait(alias).then((interception) => {
     const isMatch = Cypress._.isMatch(interception.response, partialResponse);
     if (!isMatch) {
       waitForSatisfyingResponse(alias, partialResponse, maxRequests, level + 1);

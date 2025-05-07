@@ -16,7 +16,7 @@ const mapDispatchToProps = {
 /**
  * @deprecated HOCs are deprecated
  */
-export default ComposedComponent =>
+export default (ComposedComponent) =>
   connect(
     mapStateToProps,
     mapDispatchToProps,
@@ -36,7 +36,7 @@ export default ComposedComponent =>
         if (
           nextProps.column &&
           (this.props.value !== nextProps.value ||
-            this.props.column !== nextProps.column)
+            this.props.column?.id !== nextProps.column.id)
         ) {
           this.props.fetchRemapping(nextProps.value, nextProps.column.id);
         }

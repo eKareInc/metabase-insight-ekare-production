@@ -1,18 +1,21 @@
 import { createContext, useContext, useEffect, useMemo } from "react";
 
+import { StaticQuestionSdkMode } from "embedding-sdk/components/public/StaticQuestion/mode";
 import { useLoadQuestion } from "embedding-sdk/hooks/private/use-load-question";
 import { transformSdkQuestion } from "embedding-sdk/lib/transform-question";
 import { useSdkSelector } from "embedding-sdk/store";
 import { getPlugins } from "embedding-sdk/store/selectors";
+import type { MetabasePluginsConfig } from "embedding-sdk/types/plugins";
+import type { EntityTypeFilterKeys } from "embedding-sdk/types/question";
 import type { DataPickerValue } from "metabase/common/components/DataPicker";
-import { useValidatedEntityId } from "metabase/lib/entity-id/hooks/use-validated-entity-id";
+import type { MetabasePluginsConfig as InternalMetabasePluginsConfig } from "metabase/embedding-sdk/types/plugins";
 import { useCreateQuestion } from "metabase/query_builder/containers/use-create-question";
 import { useSaveQuestion } from "metabase/query_builder/containers/use-save-question";
 import { getEmbeddingMode } from "metabase/visualizations/click-actions/lib/modes";
+import { EmbeddingSdkMode } from "metabase/visualizations/click-actions/modes/EmbeddingSdkMode";
 import type Question from "metabase-lib/v1/Question";
 
 import type {
-  EntityTypeFilterKeys,
   InteractiveQuestionContextType,
   InteractiveQuestionProviderProps,
 } from "./types";
@@ -39,11 +42,11 @@ const FILTER_MODEL_MAP: Record<EntityTypeFilterKeys, DataPickerValue["model"]> =
 const mapEntityTypeFilterToDataPickerModels = (
   entityTypeFilter: InteractiveQuestionProviderProps["entityTypeFilter"],
 ): InteractiveQuestionContextType["modelsFilterList"] => {
-  return entityTypeFilter?.map(entityType => FILTER_MODEL_MAP[entityType]);
+  return entityTypeFilter?.map((entityType) => FILTER_MODEL_MAP[entityType]);
 };
 
 export const InteractiveQuestionProvider = ({
-  questionId: initialQuestionId,
+  questionId,
   options = DEFAULT_OPTIONS,
   deserializedCard,
   componentPlugins,
@@ -55,18 +58,9 @@ export const InteractiveQuestionProvider = ({
   entityTypeFilter,
   targetCollection,
   initialSqlParameters,
+  withDownloads,
+  variant,
 }: InteractiveQuestionProviderProps) => {
-  const {
-    id: questionId,
-    isLoading: isLoadingValidatedId,
-    isError: isCardIdError,
-  } = useValidatedEntityId({
-    type: "card",
-
-    // If the question is new, we won't have a question id yet.
-    id: initialQuestionId === "new" ? undefined : initialQuestionId,
-  });
-
   const handleCreateQuestion = useCreateQuestion();
   const handleSaveQuestion = useSaveQuestion();
 
@@ -123,7 +117,7 @@ export const InteractiveQuestionProvider = ({
 
   const globalPlugins = useSdkSelector(getPlugins);
 
-  const combinedPlugins = useMemo(() => {
+  const plugins: MetabasePluginsConfig = useMemo(() => {
     return { ...globalPlugins, ...componentPlugins };
   }, [globalPlugins, componentPlugins]);
 
@@ -132,14 +126,16 @@ export const InteractiveQuestionProvider = ({
       question &&
       getEmbeddingMode({
         question,
-        plugins: combinedPlugins ?? undefined,
+        queryMode:
+          variant === "static" ? StaticQuestionSdkMode : EmbeddingSdkMode,
+        plugins: plugins as InternalMetabasePluginsConfig,
       })
     );
-  }, [question, combinedPlugins]);
+  }, [question, variant, plugins]);
 
   const questionContext: InteractiveQuestionContextType = {
-    originalId: initialQuestionId,
-    isQuestionLoading: isQuestionLoading || isLoadingValidatedId,
+    originalId: questionId,
+    isQuestionLoading: isQuestionLoading,
     isQueryRunning,
     resetQuestion: loadAndQueryQuestion,
     onReset: loadAndQueryQuestion,
@@ -148,7 +144,7 @@ export const InteractiveQuestionProvider = ({
     replaceQuestion,
     updateQuestion,
     navigateToNewCard,
-    plugins: combinedPlugins,
+    plugins,
     question,
     originalQuestion,
     queryResults,
@@ -158,7 +154,8 @@ export const InteractiveQuestionProvider = ({
     modelsFilterList: mapEntityTypeFilterToDataPickerModels(entityTypeFilter),
     isSaveEnabled,
     targetCollection,
-    isCardIdError,
+    withDownloads,
+    variant,
   };
 
   useEffect(() => {

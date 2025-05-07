@@ -7,6 +7,7 @@
    [clojure.core.memoize :as memoize]
    [clojure.set :as set]
    [clojure.string :as str]
+   [metabase.api-keys.core :as api-key]
    [metabase.api.common
     :as api
     :refer [*current-user-id* *current-user-permissions-set*]]
@@ -14,7 +15,6 @@
    [metabase.config :as config :refer [*request-id*]]
    [metabase.db :as mdb]
    [metabase.events :as events]
-   [metabase.models.api-key :as api-key]
    [metabase.models.collection.root :as collection.root]
    [metabase.models.interface :as mi]
    [metabase.models.serialization :as serdes]
@@ -600,17 +600,24 @@
              [:collection :c]
              [{:union-all (keep identity [{:select [:c.id :c.location :c.archived :c.archive_operation_id :c.archived_directly]
                                            :from   [[:collection :c]]
-                                           :join   [[:permissions :p]
-                                                    [:= :c.id :p.collection_id]
-                                                    [:permissions_group :pg] [:= :pg.id :p.group_id]
-                                                    [:permissions_group_membership :pgm] [:= :pgm.group_id :pg.id]]
-                                           :where  [:and
-                                                    [:= :pgm.user_id [:inline current-user-id]]
-                                                    [:= :p.perm_type (h2x/literal "perms/collection-access")]
-                                                    [:or
-                                                     [:= :p.perm_value (h2x/literal "read-and-write")]
-                                                     (when (= :read (:permission-level visibility-config))
-                                                       [:= :p.perm_value (h2x/literal "read")])]]}
+                                           :where [:exists {:select [1]
+                                                            :from [[:permissions :p]]
+                                                            :where [:and
+                                                                    [:= :c.id :p.collection_id]
+                                                                    [:= :p.perm_type (h2x/literal "perms/collection-access")]
+                                                                    [:or
+                                                                     [:= :p.perm_value (h2x/literal "read-and-write")]
+                                                                     (when (= :read (:permission-level visibility-config))
+                                                                       [:= :p.perm_value (h2x/literal "read")])]
+                                                                    [:exists {:select [1]
+                                                                              :from [[:permissions_group :pg]]
+                                                                              :where [:and
+                                                                                      [:= :pg.id :p.group_id]
+                                                                                      [:exists {:select [1]
+                                                                                                :from [[:permissions_group_membership :pgm]]
+                                                                                                :where [:and
+                                                                                                        [:= :pgm.group_id :pg.id]
+                                                                                                        [:= :pgm.user_id [:inline current-user-id]]]}]]}]]}]}
                                           {:select [:c.id :c.location :c.archived :c.archive_operation_id :c.archived_directly]
                                            :from   [[:collection :c]]
                                            :where  [:= :type (h2x/literal "trash")]}

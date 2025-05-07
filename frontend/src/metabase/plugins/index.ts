@@ -34,6 +34,8 @@ import type {
   ModelFilterSettings,
 } from "metabase/browse/models";
 import type { LinkProps } from "metabase/core/components/Link";
+import type { EmbeddingEntityType } from "metabase/embedding-sdk/store";
+import type { DataSourceSelectorProps } from "metabase/embedding-sdk/types/components/data-picker";
 import { getIconBase } from "metabase/lib/icon";
 import PluginPlaceholder from "metabase/plugins/components/PluginPlaceholder";
 import type { SearchFilterComponent } from "metabase/search/types";
@@ -42,6 +44,7 @@ import type Question from "metabase-lib/v1/Question";
 import type Database from "metabase-lib/v1/metadata/Database";
 import type { UiParameter } from "metabase-lib/v1/parameters/types";
 import type {
+  BaseEntityId,
   BaseUser,
   Bookmark,
   CacheableDashboard,
@@ -54,12 +57,14 @@ import type {
   Dashboard,
   Database as DatabaseType,
   Dataset,
+  FieldId,
   Group,
   GroupPermissions,
   GroupsPermissions,
   ModelCacheRefreshStatus,
   Pulse,
   Revision,
+  TableId,
   User,
 } from "metabase-types/api";
 import type { AdminPathKey, State } from "metabase-types/store";
@@ -73,8 +78,10 @@ import type {
 // functions called when the application is started
 export const PLUGIN_APP_INIT_FUNCTIONS = [];
 
-// function to determine the landing page
-export const PLUGIN_LANDING_PAGE = [];
+export const PLUGIN_LANDING_PAGE = {
+  getLandingPage: () => "/",
+  LandingPageWidget: PluginPlaceholder,
+};
 
 export const PLUGIN_REDUX_MIDDLEWARES = [];
 
@@ -90,6 +97,10 @@ export const PLUGIN_ADMIN_ALLOWED_PATH_GETTERS: ((
 
 export const PLUGIN_ADMIN_TOOLS = {
   COMPONENT: null,
+};
+
+export const PLUGIN_WHITELABEL = {
+  WhiteLabelSettingsPage: PluginPlaceholder,
 };
 
 export const PLUGIN_ADMIN_TROUBLESHOOTING = {
@@ -173,7 +184,9 @@ export const PLUGIN_ADMIN_USER_FORM_FIELDS = {
 };
 
 // menu items in people management tab
-export const PLUGIN_ADMIN_USER_MENU_ITEMS = [];
+export const PLUGIN_ADMIN_USER_MENU_ITEMS = [] as Array<
+  (user: User) => { title: string; link: string }
+>;
 export const PLUGIN_ADMIN_USER_MENU_ROUTES = [];
 
 // auth settings
@@ -197,7 +210,6 @@ export const PLUGIN_LDAP_FORM_FIELDS = {
     settings: {
       [setting: string]: {
         display_name?: string | undefined;
-        warningMessage?: string | undefined;
         description?: string | ReactNode | undefined;
         note?: string | undefined;
       };
@@ -285,7 +297,9 @@ export const PLUGIN_LLM_AUTODESCRIPTION: PluginLLMAutoDescription = {
 
 const AUTHORITY_LEVEL_REGULAR: CollectionAuthorityLevelConfig = {
   type: null,
-  name: t`Regular`,
+  get name() {
+    return t`Regular`;
+  },
   icon: "folder",
 };
 
@@ -313,7 +327,7 @@ export const PLUGIN_COLLECTIONS = {
   ): CollectionAuthorityLevelConfig | CollectionInstanceAnaltyicsConfig =>
     AUTHORITY_LEVEL_REGULAR,
   useGetDefaultCollectionId: null as GetCollectionIdType | null,
-  CUSTOM_INSTANCE_ANALYTICS_COLLECTION_ENTITY_ID: "",
+  CUSTOM_INSTANCE_ANALYTICS_COLLECTION_ENTITY_ID: "" as BaseEntityId | "",
   INSTANCE_ANALYTICS_ADMIN_READONLY_MESSAGE: UNABLE_TO_CHANGE_ADMIN_PERMISSIONS,
   getAuthorityLevelMenuItems: (
     _collection: Collection,
@@ -326,9 +340,8 @@ export const PLUGIN_COLLECTIONS = {
   canCleanUp: (_collection: Collection) => false as boolean,
   useGetCleanUpMenuItems: (
     _collection: Collection,
-  ): { menuItems: JSX.Element[]; showIndicator: boolean } => ({
+  ): { menuItems: JSX.Element[] } => ({
     menuItems: [],
-    showIndicator: false,
   }),
   cleanUpRoute: null as React.ReactElement | null,
   cleanUpAlert: (() => null) as (props: {
@@ -526,11 +539,21 @@ export const PLUGIN_MODEL_PERSISTENCE = {
 export const PLUGIN_EMBEDDING = {
   isEnabled: () => false,
   isInteractiveEmbeddingEnabled: (_state: State) => false,
+  SimpleDataPicker: (_props: SimpleDataPickerProps) => null,
+  DataSourceSelector: (_props: DataSourceSelectorProps) => null,
 };
+
+export interface SimpleDataPickerProps {
+  filterByDatabaseId: number | null;
+  selectedEntity?: TableId;
+  isInitiallyOpen: boolean;
+  triggerElement: ReactNode;
+  setSourceTableFn: (tableId: TableId) => void;
+  entityTypes: EmbeddingEntityType[];
+}
 
 export const PLUGIN_EMBEDDING_SDK = {
   isEnabled: () => false,
-  SimpleDataPicker: (_props: any) => null,
 };
 
 export const PLUGIN_CONTENT_VERIFICATION = {
@@ -569,7 +592,7 @@ export const PLUGIN_AUDIT = {
   InsightsLink: PluginPlaceholder as ComponentType<InsightsLinkProps>,
 };
 
-type GsheetConnectionModalProps = {
+type GdriveConnectionModalProps = {
   isModalOpen: boolean;
   onClose: () => void;
   reconnect: boolean;
@@ -577,11 +600,13 @@ type GsheetConnectionModalProps = {
 
 export const PLUGIN_UPLOAD_MANAGEMENT = {
   UploadManagementTable: PluginPlaceholder,
-  GsheetsSyncStatus: PluginPlaceholder,
-  GsheetConnectionModal:
-    PluginPlaceholder as ComponentType<GsheetConnectionModalProps>,
-  GsheetMenuItem: PluginPlaceholder as ComponentType<{ onClick: () => void }>,
-  GsheetConnectButton: PluginPlaceholder,
+  GdriveSyncStatus: PluginPlaceholder,
+  GdriveConnectionModal:
+    PluginPlaceholder as ComponentType<GdriveConnectionModalProps>,
+  GdriveSidebarMenuItem: PluginPlaceholder as ComponentType<{
+    onClick: () => void;
+  }>,
+  GdriveDbMenu: PluginPlaceholder,
 };
 
 export const PLUGIN_IS_EE_BUILD = {
@@ -594,6 +619,29 @@ export const PLUGIN_RESOURCE_DOWNLOADS = {
    */
   areDownloadsEnabled: (_args: {
     hide_download_button?: boolean | null;
-    downloads?: boolean | null;
-  }) => true,
+    downloads?: string | boolean | null;
+  }) => ({ pdf: true, results: true }),
+};
+
+export const PLUGIN_DB_ROUTING = {
+  DatabaseRoutingSection: PluginPlaceholder as ComponentType<{
+    database: DatabaseType;
+  }>,
+  getDatabaseNameFieldProps: (_isSlug: boolean) => ({}),
+  getDestinationDatabaseRoutes: (_IsAdmin: any) =>
+    null as React.ReactElement | null,
+  useRedirectDestinationDatabase: (
+    _database: Pick<DatabaseType, "id" | "router_database_id"> | undefined,
+  ): void => {},
+  getPrimaryDBEngineFieldState: (
+    _database: Pick<Database, "router_user_attribute">,
+  ): "default" | "hidden" | "disabled" => "default",
+};
+
+export const PLUGIN_API = {
+  getFieldValuesUrl: (fieldId: FieldId) => `/api/field/${fieldId}/values`,
+  getRemappedFieldValueUrl: (fieldId: FieldId, remappedFieldId: FieldId) =>
+    `/api/field/${fieldId}/remapping/${remappedFieldId}`,
+  getSearchFieldValuesUrl: (fieldId: FieldId, searchFieldId: FieldId) =>
+    `/api/field/${fieldId}/search/${searchFieldId}`,
 };

@@ -78,25 +78,17 @@ import { GridLayout } from "./grid/GridLayout";
 
 type GridBreakpoint = "desktop" | "mobile";
 
-type LayoutItem = {
-  i: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  minW: number;
-  minH: number;
-  dashcard: BaseDashboardCard;
-};
-
 type ExplicitSizeProps = {
   width: number;
 };
 
-interface DashboardGridState {
+interface DashboardGridInnerState {
   visibleCardIds: Set<number>;
   initialCardSizes: { [key: string]: { w: number; h: number } };
-  layouts: { desktop: LayoutItem[]; mobile: LayoutItem[] };
+  layouts: {
+    desktop: ReactGridLayout.Layout[];
+    mobile: ReactGridLayout.Layout[];
+  };
   addSeriesModalDashCard: BaseDashboardCard | null;
   replaceCardModalDashCard: BaseDashboardCard | null;
   isDragging: boolean;
@@ -137,17 +129,17 @@ const connector = connect(mapStateToProps, mapDispatchToProps, null, {
 
 type DashboardGridReduxProps = ConnectedProps<typeof connector>;
 
-type OwnProps = {
+export type DashboardGridProps = {
   dashboard: Dashboard;
   selectedTabId: DashboardTabId | null;
   slowCards: Record<DashCardId, boolean>;
-  isEditing: boolean;
-  isEditingParameter: boolean;
+  isEditing?: boolean;
+  isEditingParameter?: boolean;
   /** If public sharing or static/public embed */
   isPublicOrEmbedded?: boolean;
   isXray?: boolean;
-  isFullscreen: boolean;
-  isNightMode: boolean;
+  isFullscreen?: boolean;
+  isNightMode?: boolean;
   withCardTitle?: boolean;
   clickBehaviorSidebarDashcard: DashboardCard | null;
   getClickActionMode?: ClickActionModeGetter;
@@ -157,27 +149,26 @@ type OwnProps = {
   navigateToNewCardFromDashboard?: (
     opts: NavigateToNewCardFromDashboardOpts,
   ) => void;
-  onEditingChange?: (dashboard: Dashboard | null) => void;
   downloadsEnabled: boolean;
-  autoScrollToDashcardId: DashCardId | undefined;
-  reportAutoScrolledToDashcard: () => void;
+  autoScrollToDashcardId?: DashCardId;
+  reportAutoScrolledToDashcard?: () => void;
 };
 
-type DashboardGridProps = OwnProps &
+type DashboardGridInnerProps = Required<DashboardGridProps> &
   DashboardGridReduxProps &
   ExplicitSizeProps & {
     forwardedRef?: ForwardedRef<HTMLDivElement>;
   };
 
 class DashboardGridInner extends Component<
-  DashboardGridProps,
-  DashboardGridState
+  DashboardGridInnerProps,
+  DashboardGridInnerState
 > {
   static contextType = ContentViewportContext;
 
   _pauseAnimationTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(props: DashboardGridProps, context: unknown) {
+  constructor(props: DashboardGridInnerProps, context: unknown) {
     super(props, context);
 
     const visibleCardIds = getVisibleCardIds(
@@ -212,13 +203,6 @@ class DashboardGridInner extends Component<
     };
   }
 
-  static defaultProps = {
-    width: 0,
-    isEditing: false,
-    isEditingParameter: false,
-    withCardTitle: true,
-  };
-
   componentDidMount() {
     // In order to skip the initial cards animation we must let the grid layout calculate
     // the initial card positions. The timer is necessary to enable animation only
@@ -234,7 +218,7 @@ class DashboardGridInner extends Component<
     }
   }
 
-  componentDidUpdate(prevProps: DashboardGridProps) {
+  componentDidUpdate(prevProps: DashboardGridInnerProps) {
     if (prevProps.dashboard.dashcards !== this.props.dashboard.dashcards) {
       this.setState({
         dashcardCountByCardId: this.getDashcardCountByCardId(
@@ -245,9 +229,9 @@ class DashboardGridInner extends Component<
   }
 
   static getDerivedStateFromProps(
-    nextProps: DashboardGridProps,
-    state: DashboardGridState,
-  ): Partial<DashboardGridState> {
+    nextProps: DashboardGridInnerProps,
+    state: DashboardGridInnerState,
+  ): Partial<DashboardGridInnerState> {
     const { dashboard, dashcardData, isEditing, selectedTabId } = nextProps;
     const lastProps = state._lastProps;
 
@@ -257,7 +241,7 @@ class DashboardGridInner extends Component<
           dashcardData,
           state.visibleCardIds,
         )
-      : new Set(dashboard.dashcards.map(card => card.id));
+      : new Set(dashboard.dashcards.map((card) => card.id));
 
     const visibleCards = getVisibleCards(
       dashboard.dashcards,
@@ -301,7 +285,7 @@ class DashboardGridInner extends Component<
     layout,
     breakpoint,
   }: {
-    layout: LayoutItem[];
+    layout: ReactGridLayout.Layout[];
     breakpoint: GridBreakpoint;
   }) => {
     const { setMultipleDashCardAttributes, isEditing } = this.props;
@@ -315,9 +299,9 @@ class DashboardGridInner extends Component<
 
     const changes: SetDashCardAttributesOpts[] = [];
 
-    layout.forEach(layoutItem => {
+    layout.forEach((layoutItem) => {
       const dashboardCard = this.getVisibleCards().find(
-        card => String(card.id) === layoutItem.i,
+        (card) => String(card.id) === layoutItem.i,
       );
       if (dashboardCard) {
         const keys = ["h", "w", "x", "y"];
@@ -355,7 +339,12 @@ class DashboardGridInner extends Component<
     isEditing = this.props.isEditing,
     selectedTabId = this.props.selectedTabId,
   ) => {
-    return getVisibleCards(cards, visibleCardIds, isEditing, selectedTabId);
+    return getVisibleCards(
+      cards,
+      visibleCardIds,
+      isEditing,
+      selectedTabId,
+    ) as DashboardCard[];
   };
 
   getDashcardCountByCardId = (cards: BaseDashboardCard[]) =>
@@ -446,7 +435,7 @@ class DashboardGridInner extends Component<
     };
 
     const replaceCardModalRecentFilter = (items: RecentItem[]) => {
-      return items.filter(item => {
+      return items.filter((item) => {
         if (isRecentCollectionItem(item) && item.dashboard) {
           if (item.dashboard.id !== dashboard.id) {
             return false;
@@ -530,7 +519,7 @@ class DashboardGridInner extends Component<
       totalNumGridCols: number;
       downloadsEnabled: boolean;
       shouldAutoScrollTo: boolean;
-      reportAutoScrolledToDashcard: () => void;
+      reportAutoScrolledToDashcard?: () => void;
     },
   ) {
     return (
@@ -577,8 +566,8 @@ class DashboardGridInner extends Component<
   get isEditingLayout() {
     const { isEditing, isEditingParameter, clickBehaviorSidebarDashcard } =
       this.props;
-    return (
-      isEditing && !isEditingParameter && clickBehaviorSidebarDashcard == null
+    return Boolean(
+      isEditing && !isEditingParameter && clickBehaviorSidebarDashcard == null,
     );
   }
 
@@ -634,7 +623,7 @@ class DashboardGridInner extends Component<
     const { layouts } = this.state;
     const rowHeight = this.getRowHeight();
     return (
-      <GridLayout
+      <GridLayout<DashboardCard>
         className={cx({
           [DashboardS.DashEditing]: this.isEditingLayout,
           [DashboardS.DashDragging]: this.state.isDragging,
@@ -705,13 +694,33 @@ const getUndoReplaceCardMessage = ({ type }: Card) => {
   throw new Error(`Unknown card.type: ${type}`);
 };
 
-const DashboardGrid = forwardRef<HTMLDivElement, DashboardGridProps>(
-  function _DashboardGrid(props, ref) {
-    return <DashboardGridInner {...props} forwardedRef={ref} />;
+const DashboardGrid = forwardRef<HTMLDivElement, DashboardGridInnerProps>(
+  function _DashboardGrid(
+    {
+      isEditing = false,
+      isEditingParameter = false,
+      withCardTitle = true,
+      isNightMode = false,
+      width = 0,
+      ...restProps
+    },
+    ref,
+  ) {
+    return (
+      <DashboardGridInner
+        width={width}
+        isEditing={isEditing}
+        isEditingParameter={isEditingParameter}
+        withCardTitle={withCardTitle}
+        isNightMode={isNightMode}
+        {...restProps}
+        forwardedRef={ref}
+      />
+    );
   },
 );
 
 export const DashboardGridConnected = _.compose(
   ExplicitSize(),
   connector,
-)(DashboardGrid) as ComponentType<OwnProps>;
+)(DashboardGrid) as ComponentType<DashboardGridProps>;

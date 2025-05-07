@@ -7,6 +7,10 @@ import EntityMenu from "metabase/components/EntityMenu";
 import { useDispatch, useSelector } from "metabase/lib/redux";
 import * as Urls from "metabase/lib/urls";
 import { setOpenModal } from "metabase/redux/ui";
+import {
+  getEmbedOptions,
+  getIsEmbeddingIframe,
+} from "metabase/selectors/embed";
 import { getSetting } from "metabase/selectors/settings";
 import type { CollectionId } from "metabase-types/api";
 
@@ -48,8 +52,12 @@ const NewItemMenu = ({
   onCloseNavbar,
 }: NewItemMenuProps) => {
   const dispatch = useDispatch();
+  const entityTypes = useSelector(
+    (state) => getEmbedOptions(state).entity_types,
+  );
+  const isEmbeddingIframe = useSelector(getIsEmbeddingIframe);
 
-  const lastUsedDatabaseId = useSelector(state =>
+  const lastUsedDatabaseId = useSelector((state) =>
     getSetting(state, "last-used-native-database-id"),
   );
 
@@ -85,20 +93,16 @@ const NewItemMenu = ({
       });
     }
 
-    items.push(
-      {
-        title: t`Dashboard`,
-        icon: "dashboard",
-        action: () => dispatch(setOpenModal("dashboard")),
-      },
-      {
-        title: t`Collection`,
-        icon: "folder",
-        action: () => dispatch(setOpenModal("collection")),
-      },
-    );
+    items.push({
+      title: t`Dashboard`,
+      icon: "dashboard",
+      action: () => dispatch(setOpenModal("dashboard")),
+    });
 
-    if (hasNativeWrite) {
+    if (
+      hasNativeWrite &&
+      (!isEmbeddingIframe || entityTypes.includes("model"))
+    ) {
       const collectionQuery = collectionId
         ? `?collectionId=${collectionId}`
         : "";
@@ -111,7 +115,12 @@ const NewItemMenu = ({
       });
     }
 
-    if (hasModels && hasDatabaseWithActionsEnabled && hasNativeWrite) {
+    if (
+      hasModels &&
+      hasDatabaseWithActionsEnabled &&
+      hasNativeWrite &&
+      !isEmbeddingIframe
+    ) {
       items.push({
         title: t`Action`,
         icon: "bolt",
@@ -119,30 +128,19 @@ const NewItemMenu = ({
       });
     }
 
-    if (hasDataAccess) {
-      items.push({
-        title: t`Metric`,
-        icon: "metric",
-        link: Urls.newQuestion({
-          mode: "query",
-          cardType: "metric",
-          collectionId,
-        }),
-        onClose: onCloseNavbar,
-      });
-    }
-
     return items;
   }, [
     hasDataAccess,
     hasNativeWrite,
+    isEmbeddingIframe,
+    entityTypes,
     hasModels,
     hasDatabaseWithActionsEnabled,
     collectionId,
     onCloseNavbar,
     hasDatabaseWithJsonEngine,
-    dispatch,
     lastUsedDatabaseId,
+    dispatch,
   ]);
 
   return (
